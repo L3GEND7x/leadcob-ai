@@ -34,7 +34,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--previous")
-    ap.add_argument("--uf", default="AM", help="UFs do mapa DataJud, separadas por vírgula")
+    ap.add_argument("--uf", default="AM", help="UFs do mapa DataJud, separadas por vírgula (no máximo 6 por rodada)")
+    ap.add_argument("--trigger", help="id da tarefa agendada que os botões de busca da página disparam")
     a = ap.parse_args(argv)
 
     os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/snapshot.db"
@@ -48,7 +49,7 @@ def main(argv=None):
         for name, path in [("PNCP", "/api/capture/pncp?mode=busca&max_pages=1"), ("Vagas", "/api/capture/jobs")]:
             r = c.post(path)
             status[name] = "ok" if r.status_code == 200 else f"falhou ({r.status_code})"
-        ufs = [u.strip().upper() for u in a.uf.split(",") if u.strip()]
+        ufs = list(dict.fromkeys(u.strip().upper() for u in a.uf.split(",") if u.strip()))[:6]
         market = {}
         for uf in ufs:
             r = c.post(f"/api/market/datajud?uf={uf}")
@@ -64,6 +65,9 @@ def main(argv=None):
             "/segments": g("/segments"), "/sources": g("/sources"), "/capture/runs": g("/capture/runs"),
             "prospects_all": prev.get("prospects_all", []),
         }
+        for k, v in prev.items():  # mapas de outras UFs continuam até a próxima atualização delas
+            if k.startswith("/market/datajud?uf="):
+                data[k] = v
         for uf, m in market.items():
             data[f"/market/datajud?uf={uf}"] = m
     # contadores coerentes com o que a página mostra
@@ -73,7 +77,9 @@ def main(argv=None):
              proven=sum(o.get("commercial_signal") == "oportunidade_comprovada" for o in ops),
              to_confirm=sum(o["kind"] == "public_procurement" and o.get("commercial_signal") == "sinal_a_confirmar" for o in ops))
     now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=-4)))
-    data["__meta"] = {"atualizado": now.strftime("%d/%m/%Y %H:%M") + " (Manaus)", "status": status, "ufs": list(market)}
+    all_ufs = sorted(k.split("=")[1] for k in data if k.startswith("/market/datajud?uf="))
+    data["__meta"] = {"atualizado": now.strftime("%d/%m/%Y %H:%M") + " (Manaus)", "status": status,
+                      "ufs": list(market) + [u for u in all_ufs if u not in market], "trigger_id": a.trigger}
     Path(a.out).write_text(render(data), encoding="utf-8")
     print(json.dumps(data["__meta"], ensure_ascii=False))
 
@@ -84,13 +90,14 @@ def render(data: dict) -> str:
     body = html[html.index("<body>") + 6:html.index("</body>")].replace('<script src="/static/app.js"></script>', "")
     fonts = re.search(r'<link href="https://fonts.googleapis.com[^>]+>', html).group(0)
     i = js.index("async function api("); j = js.index("}", js.index("return r.json();", i)) + 1
-    js = js[:i] + DEMO_API + js[j:]
+    js = js[:i] + "async function api(path, opt = {}) { return LC.api(path, opt); }" + js[j:]
+    js = RUNTIME_JS.read_text(encoding="utf-8") + "\n" + js
     ufs = data["__meta"]["ufs"] or ["AM"]
     js = js.replace("u === 'AM' ? 'selected' : ''", f"u === '{ufs[0]}' ? 'selected' : ''")
     meta = data["__meta"]
     falhas = "; ".join(f"{k}: {v}" for k, v in meta["status"].items() if v != "ok")
     banner = (f"<b>Atualizado em {meta['atualizado']}</b> com dados reais (PNCP, vagas Greenhouse/Lever, DataJud; "
-              f"empresas-alvo da última importação da Receita). Atualiza de hora em hora (aos 10 minutos). Botões de busca ficam desativados nesta página."
+              f"empresas-alvo da última importação da Receita). Atualiza sozinha de hora em hora (aos 10 minutos); os botões de busca pedem uma atualização na hora (3 a 6 minutos)."
               + (f" <b>Falhas nesta rodada:</b> {falhas}." if falhas else ""))
     return f"""<title>LeadCob AI</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -110,30 +117,7 @@ def render(data: dict) -> str:
 """
 
 
-DEMO_API = """async function api(path, opt = {}) {
-  const D = window.__DEMO;
-  if (opt.method && opt.method !== 'GET') {
-    toast('Nesta página os dados se atualizam sozinhos de hora em hora; as buscas manuais funcionam na versão instalada.', 6000);
-    throw Error(JSON.stringify({ detail: 'Ação indisponível nesta página.' }));
-  }
-  if (path.startsWith('/prospects')) {
-    const p = new URLSearchParams(path.split('?')[1] || '');
-    const q = (p.get('q') || '').toLowerCase(), seg = p.get('segment'), uf = (p.get('uf') || '').toUpperCase(), size = p.get('size');
-    return D.prospects_all.filter(c => (!seg || c.target_profile === seg) && (!uf || c.state === uf) && (!size || c.company_size === size)
-      && (!q || (c.name + ' ' + (c.trade_name || '') + ' ' + (c.cnpj || '')).toLowerCase().includes(q))
-      && !(c.cnae_main || '').startsWith('8291'));
-  }
-  if (path.startsWith('/market/datajud')) {
-    if (path in D) return D[path];
-    throw Error(JSON.stringify({ detail: 'Sem fotografia desta UF nesta página.' }));
-  }
-  if (path in D) return D[path];
-  if (path.startsWith('/opportunities')) {
-    const st = new URLSearchParams(path.split('?')[1] || '').get('status');
-    return D['/opportunities'].filter(o => !st || o.status === st);
-  }
-  throw Error(JSON.stringify({ detail: 'Indisponível nesta página.' }));
-}"""
+RUNTIME_JS = Path(__file__).with_name("snapshot_runtime.js")
 
 if __name__ == "__main__":
     main()

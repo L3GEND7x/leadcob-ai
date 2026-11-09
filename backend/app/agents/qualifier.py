@@ -3,8 +3,8 @@ from app.services.scoring import score_opportunity
 
 class QualificationAgent:
     def run(self, opportunity):
-        if opportunity.kind == "public_procurement" and opportunity.commercial_signal:
-            # Editais já chegam pontuados pelo classificador de contratações públicas.
+        if opportunity.commercial_signal and opportunity.evidence_level:
+            # Registros captados (editais, vagas) já chegam pontuados pelo classificador da fonte.
             proven = opportunity.commercial_signal == "oportunidade_comprovada"
             return {"score": opportunity.score, "reason": opportunity.score_reason,
                     "recommended_status": "qualified" if proven else "review"}
