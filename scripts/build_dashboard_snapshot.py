@@ -90,7 +90,7 @@ def render(data: dict) -> str:
     meta = data["__meta"]
     falhas = "; ".join(f"{k}: {v}" for k, v in meta["status"].items() if v != "ok")
     banner = (f"<b>Atualizado em {meta['atualizado']}</b> com dados reais (PNCP, vagas Greenhouse/Lever, DataJud; "
-              f"empresas-alvo da última importação da Receita). Atualiza a cada 30 minutos. Botões de busca ficam desativados nesta página."
+              f"empresas-alvo da última importação da Receita). Atualiza de hora em hora (aos 10 minutos). Botões de busca ficam desativados nesta página."
               + (f" <b>Falhas nesta rodada:</b> {falhas}." if falhas else ""))
     return f"""<title>LeadCob AI</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -113,7 +113,7 @@ def render(data: dict) -> str:
 DEMO_API = """async function api(path, opt = {}) {
   const D = window.__DEMO;
   if (opt.method && opt.method !== 'GET') {
-    toast('Nesta página os dados se atualizam sozinhos a cada 30 minutos; as buscas manuais funcionam na versão instalada.', 6000);
+    toast('Nesta página os dados se atualizam sozinhos de hora em hora; as buscas manuais funcionam na versão instalada.', 6000);
     throw Error(JSON.stringify({ detail: 'Ação indisponível nesta página.' }));
   }
   if (path.startsWith('/prospects')) {
