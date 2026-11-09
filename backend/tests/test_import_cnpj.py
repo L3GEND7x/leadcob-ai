@@ -130,3 +130,21 @@ def test_job_end_to_end(fake_rfb):
     db.close()
     again = J.main(["--segments", "credito_fomento", "--uf", "AM", "--parts", "0", "--min-size", "05"])
     assert [r["cnpj_basico"] for r in again] == ["11111111"]
+
+
+def test_job_reads_local_zip_folder(tmp_path, fake_rfb):
+    rel = tmp_path / "2026-10"; rel.mkdir()
+    (rel / "Cnaes.zip").write_bytes(zipped([["6491300", "Factoring"]]))
+    (rel / "Municipios.zip").write_bytes(zipped([["0255", "MANAUS"]]))
+    (rel / "Naturezas.zip").write_bytes(zipped([["2062", "LTDA"]]))
+    (rel / "Estabelecimentos0.zip").write_bytes(zipped([est("77777777", "6491300")]))
+    (rel / "Empresas1.zip").write_bytes(zipped([emp("00000001", "X"), emp("77777777", "LOCAL FOMENTO LTDA")]))
+    before = len(fake_rfb)
+    recs = J.main(["--local-dir", str(tmp_path), "--release", "2026-10", "--segments", "credito_fomento", "--parts", "0", "--dry-run"])
+    assert recs[0]["razao_social"] == "LOCAL FOMENTO LTDA" and recs[0]["municipio"] == "MANAUS"
+    assert len(fake_rfb) == before  # nenhuma leitura remota
+
+
+def test_local_dir_requires_release(tmp_path):
+    with pytest.raises(SystemExit):
+        J.main(["--local-dir", str(tmp_path)])

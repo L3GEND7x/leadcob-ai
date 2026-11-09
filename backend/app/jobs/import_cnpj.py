@@ -40,8 +40,28 @@ def parse_parts(spec: str) -> list[int]:
     return sorted(set(out))
 
 
-def lookup_table(release: str, name: str, http) -> dict[str, str]:
-    return {row[0]: row[1] for row in R.iter_remote_rows(release, name, http) if len(row) >= 2}
+class Source:
+    """Lê os ZIPs do compartilhamento da Receita (HTTP Range) ou de uma pasta local."""
+
+    def __init__(self, release: str, http=None, local_dir: str | None = None):
+        self.release, self.http, self.local_dir = release, http, local_dir
+
+    def rows(self, name: str):
+        if self.local_dir:
+            from pathlib import Path
+            base = Path(self.local_dir)
+            path = base / self.release / name if (base / self.release / name).exists() else base / name
+            if not path.exists():
+                raise FileNotFoundError(f"{name} não encontrado em {base} (nem em {base / self.release})")
+            return R.iter_local_rows(path)
+        return R.iter_remote_rows(self.release, name, self.http, block=8 * 1024 * 1024)
+
+    def first_row(self, name: str):
+        return next(iter(self.rows(name)), None)
+
+
+def lookup_table(src: "Source", name: str) -> dict[str, str]:
+    return {row[0]: row[1] for row in src.rows(name) if len(row) >= 2}
 
 
 def filter_establishments(rows, segments: list[str] | None, ufs: set[str] | None, only_active: bool = True,
@@ -145,11 +165,13 @@ def plan_company_parts(starts: dict[int, str], basicos) -> dict[int, list[str]]:
     return plan
 
 
-def company_part_starts(release: str, http) -> dict[int, str]:
+def company_part_starts(src: "Source") -> dict[int, str]:
     starts = {}
     for part in range(10):
-        f = R.HttpRangeFile(R.file_url(release, f"Empresas{part}.zip"), http, block=256 * 1024)
-        first = next(R.iter_csv_rows(io.BufferedReader(f)), None)
+        try:
+            first = src.first_row(f"Empresas{part}.zip")
+        except FileNotFoundError:
+            continue  # pasta local sem todas as partições
         if first:
             starts[part] = first[P_BASICO]
     return starts
@@ -206,6 +228,7 @@ def main(argv=None):
     ap.add_argument("--min-size", choices=["01", "03", "05"], help="porte mínimo: 01 ME, 03 EPP, 05 demais")
     ap.add_argument("--limit", type=int, help="máximo de empresas (para testes)")
     ap.add_argument("--dry-run", action="store_true", help="não grava no banco")
+    ap.add_argument("--local-dir", help="pasta com os ZIPs já baixados (ex.: data/cnpj/2026-10); exige --release")
     a = ap.parse_args(argv)
 
     segments = [s for s in a.segments.split(",") if s] or None
@@ -214,18 +237,21 @@ def main(argv=None):
         ap.error(f"perfis desconhecidos: {unknown}")
     ufs = {u.strip().upper() for u in a.uf.split(",") if u.strip()} or None
     t0 = time.time(); stats: dict = {}
+    if a.local_dir and not a.release:
+        ap.error("--local-dir exige --release (competência AAAA-MM dos arquivos)")
     with R.client() as http:
         release = a.release or R.latest_release(http)
+        src = Source(release, http, a.local_dir)
         print(f"Publicação {release} · perfis {segments or 'todos'} · UF {sorted(ufs) if ufs else 'todas'}", flush=True)
-        cnaes = lookup_table(release, "Cnaes.zip", http)
-        municipios = lookup_table(release, "Municipios.zip", http)
-        naturezas = lookup_table(release, "Naturezas.zip", http)
+        cnaes = lookup_table(src, "Cnaes.zip")
+        municipios = lookup_table(src, "Municipios.zip")
+        naturezas = lookup_table(src, "Naturezas.zip")
         found: dict[str, dict] = {}
         for part in parse_parts(a.parts):
             remaining = (a.limit - len(found)) if a.limit else None
             if remaining is not None and remaining <= 0:
                 break
-            rows = R.iter_remote_rows(release, f"Estabelecimentos{part}.zip", http, block=8 * 1024 * 1024)
+            rows = src.rows(f"Estabelecimentos{part}.zip")
             for rec in filter_establishments(rows, segments, ufs, only_headquarters=not a.include_branches,
                                              limit=remaining, stats=stats):
                 rec["cnae_descricao"] = cnaes.get(rec["cnae_principal"])
@@ -237,10 +263,9 @@ def main(argv=None):
             by_basico = {r["cnpj_basico"]: r for r in found.values()}
             # Empresas é particionado por faixa de CNPJ básico: lê só os arquivos
             # necessários e para ao passar do maior CNPJ procurado em cada um.
-            plan = plan_company_parts(company_part_starts(release, http), by_basico)
+            plan = plan_company_parts(company_part_starts(src), by_basico)
             for part, basicos in sorted(plan.items()):
-                fill_with_fallback(lambda: R.iter_remote_rows(release, f"Empresas{part}.zip", http, block=8 * 1024 * 1024),
-                                   by_basico, basicos, stats)
+                fill_with_fallback(lambda: src.rows(f"Empresas{part}.zip"), by_basico, basicos, stats)
                 print(f"  Empresas{part}: {stats.get('filled', 0)}/{len(by_basico)} completadas ({time.time() - t0:.0f}s)", flush=True)
             if stats.get("full_rereads"):
                 print(f"  AVISO: {stats['full_rereads']} arquivo(s) Empresas relidos por completo (ordem inesperada).", flush=True)
@@ -258,7 +283,7 @@ def main(argv=None):
         for r in records[:10]:
             print("  ", r["cnpj"], r.get("razao_social") or r.get("nome_fantasia"), r["cnae_principal"], r.get("municipio"), r["uf"], r.get("porte"))
         return records
-    created, updated = save(records, release)
+    created, updated = save(records, release + (" (arquivos locais)" if a.local_dir else ""))
     print(f"Gravado: {created} novas, {updated} atualizadas", flush=True)
     return records
 

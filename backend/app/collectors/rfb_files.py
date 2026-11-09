@@ -142,3 +142,9 @@ def iter_remote_rows(release: str, name: str, http: httpx.Client | None = None, 
     finally:
         if own:
             http.close()
+
+
+def iter_local_rows(path):
+    """ZIP já baixado (ideia do pacote v0.3): mesmo parser, lido do disco."""
+    with open(path, "rb") as fh:
+        yield from iter_csv_rows(fh)

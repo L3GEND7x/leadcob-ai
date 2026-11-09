@@ -1,0 +1,44 @@
+{
+  "verified_at": "2026-11-09",
+  "legend": {
+    "integrada": "conectada ao sistema e testada com dados reais",
+    "consultada": "documentação ou página de referência usada no desenvolvimento",
+    "planejada": "possibilidade ainda NÃO conectada — não tratar como integração"
+  },
+  "sources": [
+    {"category": "integrada", "name": "PNCP — índice de busca do portal", "url": "https://pncp.gov.br/api/search/", "official": true, "documented": false,
+     "use": "Descoberta nacional de editais por termo", "status": "Validada em 09/11/2026; instável (respostas vazias intermitentes); resultado tratado como indício"},
+    {"category": "integrada", "name": "PNCP — API de consulta", "url": "https://pncp.gov.br/api/consulta/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}", "official": true, "documented": true,
+     "use": "Confirmação do edital (objeto, prazo, valor, modalidade) e varredura por data", "status": "Validada em 09/11/2026; tamanhoPagina máximo aceito = 50"},
+    {"category": "integrada", "name": "Receita Federal — arquivos de dados abertos do CNPJ", "url": "https://arquivos.receitafederal.gov.br/index.php/s/gn672Ad4CF8N6TK", "official": true, "documented": true,
+     "use": "Base de empresas-alvo por CNAE/UF/porte (job mensal, leitura em fluxo por HTTP Range ou ZIPs locais)", "status": "Validada em 09/11/2026 (publicação 2026-10); espelho com os mesmos arquivos: https://arquivos.receitafederal.gov.br/index.php/s/YggdBLfdninEJX9"},
+    {"category": "integrada", "name": "BrasilAPI — CNPJ", "url": "https://brasilapi.com.br/api/cnpj/v1/{cnpj}", "official": false, "documented": true,
+     "use": "Consulta individual de CNPJ (republica os dados abertos da Receita)", "status": "Validada em 09/11/2026; conferida com o importador (4/4 registros iguais)"},
+    {"category": "integrada", "name": "Minha Receita — CNPJ", "url": "https://minhareceita.org/{cnpj}", "official": false, "documented": true,
+     "use": "Reserva da BrasilAPI (mesmo esquema)", "status": "Validada em 09/11/2026"},
+    {"category": "integrada", "name": "Greenhouse — Job Board API", "url": "https://boards-api.greenhouse.io/v1/boards/{token}/jobs", "official": true, "documented": true,
+     "use": "Vagas publicadas por empresa (board configurado)", "status": "Validada em 09/11/2026: 12 boards existentes (10 com vagas) entre 46 identificadores testados; ideia do conector veio do pacote v0.3"},
+    {"category": "integrada", "name": "Lever — Postings API", "url": "https://api.lever.co/v0/postings/{site}", "official": true, "documented": true,
+     "use": "Vagas publicadas por empresa (board configurado)", "status": "Validada em 09/11/2026: 2 boards existentes (1 com vagas) entre 31 identificadores testados"},
+
+    {"category": "consultada", "name": "Receita Federal — Dados abertos de cadastros", "url": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/dados-abertos/cadastros", "official": true, "status": "Página acessível em 09/11/2026"},
+    {"category": "consultada", "name": "Receita Federal — Repositório de dados abertos", "url": "https://www.gov.br/receitafederal/dados", "official": true, "status": "Página acessível em 09/11/2026"},
+    {"category": "consultada", "name": "Receita Federal — Layout/metadados do CNPJ (PDF)", "url": "https://www.gov.br/receitafederal/dados/cnpj-metadados.pdf", "official": true, "status": "Conferido campo a campo com o importador em 09/11/2026 (Estabelecimentos 30 campos; Empresas 7)"},
+    {"category": "consultada", "name": "dados.gov.br — Conjunto CNPJ", "url": "https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica---cnpj", "official": true, "status": "Página acessível em 09/11/2026"},
+    {"category": "consultada", "name": "Receita Federal — CNPJ alfanumérico", "url": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/acoes-e-programas/programas-e-atividades/cnpj-alfanumerico", "official": true, "status": "Confirma IN RFB 2.229 (publicada em 15/10/2024) e atribuição a novas inscrições a partir de jul/2026; validação do DV implementada e testada com o exemplo 12.ABC.345/01DE-35"},
+    {"category": "consultada", "name": "PNCP — Swagger da API de consulta", "url": "https://pncp.gov.br/api/consulta/swagger-ui/index.html", "official": true, "status": "Página acessível em 09/11/2026"},
+    {"category": "consultada", "name": "Greenhouse — documentação da Job Board API", "url": "https://docs.greenhouse.io/job-board", "official": true, "status": "Página acessível em 09/11/2026"},
+    {"category": "consultada", "name": "Lever — documentação da Postings API", "url": "https://github.com/lever/postings-api", "official": true, "status": "Não acessível deste ambiente (bloqueio de rede); endpoint validado diretamente"},
+    {"category": "consultada", "name": "ANPD — Guia orientativo de legítimo interesse", "url": "https://www.gov.br/anpd/pt-br/centrais-de-conteudo/materiais-educativos-e-publicacoes/guia_orientativo_hipoteses_legais_tratamento_de_dados_pessoais_legitimo_interesse", "official": true, "status": "Página acessível em 09/11/2026"},
+    {"category": "consultada", "name": "LGPD — Lei 13.709/2018", "url": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm", "official": true, "status": "Não respondeu deste ambiente em 09/11/2026 — conferir manualmente"},
+
+    {"category": "planejada", "name": "DataJud (CNJ) — API pública de processos", "url": null, "official": true,
+     "use": "Sinal de demanda: empresas autoras de muitas execuções/monitórias", "status": "NÃO conectada; endereço e termos de uso a verificar"},
+    {"category": "planejada", "name": "Gupy — portal de vagas", "url": null, "official": false,
+     "use": "Maior cobertura de vagas no Brasil", "status": "NÃO conectada; não há API pública documentada para busca; verificar termos antes de qualquer uso"},
+    {"category": "planejada", "name": "Diários oficiais municipais", "url": null, "official": true,
+     "use": "Licitações de municípios que não publicam no PNCP", "status": "NÃO conectada; fonte e termos a verificar"},
+    {"category": "planejada", "name": "Sites institucionais das empresas", "url": null, "official": false,
+     "use": "Contato institucional e sinais comerciais", "status": "Somente cadastro manual"}
+  ]
+}

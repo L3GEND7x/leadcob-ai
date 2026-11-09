@@ -1,4 +1,7 @@
 import hashlib
+import json
+import re
+from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,12 +9,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.agents.pipeline import run_pipeline
-from app.collectors import cnpj_api, pncp
+from app.collectors import cnpj_api, jobboards, pncp
 from app.db.database import get_db
 from app.db.models import CaptureRun, Company, Opportunity
 from app.schemas import OpportunityCreate
 from app.services.cnpj import clean_cnpj, format_cnpj
 from app.services.procurement import parse_dt, score_procurement
+from app.services.jobs import COMPETITOR_CNAE, score_job
 from app.services.segments import SEGMENTS, profile_for
 from app.services.scoring import score_opportunity
 
@@ -116,15 +120,19 @@ def run_agents(opportunity_id: int, db: Session = Depends(get_db)):
     return {"opportunity": serialize(o), "agents": result}
 
 
+SOURCES_FILE = Path(__file__).resolve().parents[3] / "config" / "sources.json"
+
+
 @router.get("/sources")
-def sources():
-    return [
-        {"name": "Receita Federal — Dados Abertos CNPJ (arquivos mensais)", "type": "base de empresas-alvo", "status": "conectada (job em lote)"},
-        {"name": "BrasilAPI / Minha Receita", "type": "consulta individual de CNPJ", "status": "conectada"},
-        {"name": "Portais de vagas e páginas de carreira", "type": "sinal de contratação", "status": "planejada"},
-        {"name": "PNCP — busca do portal + API oficial de consulta", "type": "compras públicas", "status": "conectada (validada com dados reais em 09/11/2026)"},
-        {"name": "Sites institucionais", "type": "sinal comercial", "status": "adaptador manual"},
-    ]
+def sources(category: str | None = Query(default=None, pattern="^(integrada|consultada|planejada)$")):
+    """Catálogo de fontes: integradas (testadas com dados reais), consultadas e planejadas."""
+    data = json.loads(SOURCES_FILE.read_text(encoding="utf-8"))
+    items = [s for s in data["sources"] if not category or s["category"] == category]
+    try:
+        boards = len(jobboards.configured_boards())
+    except ValueError:
+        boards = None
+    return {"verified_at": data["verified_at"], "legend": data["legend"], "job_boards_configured": boards, "sources": items}
 
 
 # ------------------------------------------------------------------ captação
@@ -293,10 +301,20 @@ def segments():
 
 
 @router.get("/prospects")
-def prospects(segment: str | None = None, uf: str | None = None, q: str | None = None,
+def prospects(segment: str | None = None, uf: str | None = None, q: str | None = None, cnae: str | None = None,
+              size: str | None = Query(default=None, description="MICRO EMPRESA | EMPRESA DE PEQUENO PORTE | DEMAIS"),
+              min_capital: float | None = None, include_competitors: bool = False,
               limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
     """Base de empresas-alvo: cadastro por perfil de CNAE — NÃO é sinal de demanda."""
     query = db.query(Company, func.count(Opportunity.id)).outerjoin(Opportunity).filter(Company.target_profile.isnot(None))
+    if cnae:
+        query = query.filter(Company.cnae_main.like(re.sub(r"\D", "", cnae) + "%"))
+    if size:
+        query = query.filter(Company.company_size == size.upper())
+    if min_capital is not None:
+        query = query.filter(Company.capital_social >= min_capital)
+    if not include_competitors:
+        query = query.filter((Company.cnae_main.is_(None)) | (~Company.cnae_main.like(COMPETITOR_CNAE + "%")))
     if segment:
         query = query.filter(Company.target_profile == segment)
     if uf:
@@ -309,3 +327,84 @@ def prospects(segment: str | None = None, uf: str | None = None, q: str | None =
         query = query.filter(cond)
     rows = query.group_by(Company.id).order_by(Company.capital_social.desc().nullslast(), Company.name).limit(limit).all()
     return [serialize_company(c, n) for c, n in rows]
+
+
+# -------------------------------------------------------------------- vagas
+ROLE_LABEL = {"operacao_interna": "equipe própria de cobrança (argumento: terceirizar/complementar)",
+              "estrategia_dados": "área de recuperação estruturada (argumento: credenciamento como assessoria)"}
+
+
+def _company_for_job(db: Session, item: dict):
+    company = db.query(Company).filter_by(cnpj=item["cnpj"]).first() if item["cnpj"] else None
+    if not company and not item["cnpj"]:
+        company = db.query(Company).filter(func.lower(Company.name) == item["company_name"].lower()).first()
+    if not company:
+        board = item["board"]
+        company = Company(name=item["company_name"], cnpj=item["cnpj"], segment=board.get("segment"),
+                          city=board.get("city"), state=(board.get("state") or None))
+        db.add(company); db.flush()
+    if company.cnpj and not company.cnae_main:  # melhor esforço: CNAE revela concorrentes
+        try:
+            from app.jobs.import_cnpj import apply_registry
+            data = cnpj_api.lookup(company.cnpj)
+            apply_registry(company, data, source=f"{data['source']} (dados abertos da Receita Federal)")
+        except Exception:
+            pass
+    return company
+
+
+@router.post("/capture/jobs")
+def capture_jobs(db: Session = Depends(get_db)):
+    try:
+        batch = jobboards.fetch_job_opportunities()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if not batch["boards_configured"]:
+        raise HTTPException(400, "Nenhum board configurado (config/job_boards.json ou JOB_BOARD_SOURCES_JSON).")
+    run = CaptureRun(source_name="Greenhouse / Lever — career boards públicos", status="running")
+    db.add(run); db.commit(); db.refresh(run)
+    created = updated = closed = competitors = 0
+    seen_keys = set()
+    for item in batch["records"]:
+        company = _company_for_job(db, item)
+        item["competitor"] = bool(company.cnae_main and company.cnae_main.startswith(COMPETITOR_CNAE))
+        competitors += item["competitor"]
+        item["cnpj"] = company.cnpj
+        key = item["source_key"]; seen_keys.add(key)
+        o = db.query(Opportunity).filter_by(source_key=key).first()
+        if o:
+            updated += 1
+        else:
+            o = Opportunity(company_id=company.id, kind="hiring", source_key=key, status="review"); db.add(o); created += 1
+        score, reason = score_job(item)
+        provider = "Greenhouse" if item["provider"] == "greenhouse" else "Lever"
+        o.title = item["title"]
+        o.description = item["description"][:5000] or item["title"]
+        o.evidence = (f"Vaga publicada no board {provider} '{item['board']['token']}' ({item['company_name']}) | "
+                      f"Local: {item['location'] or 'não informado'} | Publicação: {item['published'] or 'não informada'} | "
+                      f"Leitura: {ROLE_LABEL.get(item['role_type'], item['role_type'])} | {item['relevance_reason']}"
+                      + (" | ATENÇÃO: empresa do ramo de cobrança — concorrente" if item["competitor"] else "")
+                      + ". Vaga indica contratação interna; não comprova intenção de terceirizar.")
+        o.source_name = f"{provider} — career board público"
+        o.source_url = item["url"]
+        o.score, o.score_reason = score, reason
+        o.relevance, o.relevance_reason = ("descartar" if item["competitor"] else item["relevance"]), item["relevance_reason"]
+        o.opportunity_class = "concorrente" if item["competitor"] else item["role_type"]
+        o.evidence_level, o.commercial_signal = "fonte_primaria", "sinal_a_confirmar"
+        o.modality_name, o.confidence, o.is_verified = provider, 0.7, False
+    # Vagas que sumiram de um board consultado com sucesso: encerradas (histórico preservado).
+    for prefix in batch["boards_fetched"]:
+        for o in db.query(Opportunity).filter(Opportunity.source_key.like(prefix + "%")).all():
+            if o.source_key not in seen_keys and o.opportunity_class != "vaga_encerrada":
+                o.opportunity_class = "vaga_encerrada"; o.score = max(0, o.score - 15); closed += 1
+    run.status = "partial" if batch["errors"] else "completed"
+    run.records_seen = batch["jobs_read"]; run.records_created = created; run.records_skipped = len(batch["discarded_samples"])
+    run.message = (f"boards: {batch['boards_configured']} configurados, {len(batch['boards_fetched'])} lidos; "
+                   f"vagas lidas: {batch['jobs_read']}; aderentes: {len(batch['records'])}; novas: {created}; "
+                   f"atualizadas: {updated}; encerradas: {closed}; concorrentes: {competitors}; falhas: {len(batch['errors'])}")
+    run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"run_id": run.id, "status": run.status, "boards_configured": batch["boards_configured"],
+            "boards_fetched": len(batch["boards_fetched"]), "jobs_read": batch["jobs_read"], "matches": len(batch["records"]),
+            "created": created, "updated": updated, "closed": closed, "competitors": competitors,
+            "discarded_samples": batch["discarded_samples"], "errors": batch["errors"], "message": run.message}

@@ -99,3 +99,46 @@ def test_cnpj_lookup_enrich_and_prospects(monkeypatch):
             raise cnpj_api.CNPJUnavailable("x")
         monkeypatch.setattr(cnpj_api, "lookup", boom)
         assert c.get("/api/cnpj/05156977000116").status_code == 502
+
+
+def test_capture_jobs_flags_competitor_and_closes_missing(monkeypatch):
+    from app.collectors import cnpj_api, jobboards
+    from app.services.jobs import classify_job
+    board = {"provider": "greenhouse", "token": "acme", "company_name": "Acme Cobranças"}
+    def rec(i, title):
+        return {**classify_job(title, location="São Paulo, SP"), "source_key": f"job:greenhouse:acme:{i}", "provider": "greenhouse",
+                "board": board, "company_name": "Acme Cobranças", "cnpj": "11222333000181", "title": title,
+                "location": "São Paulo, SP", "description": "x", "url": f"https://x/{i}", "published": None}
+    first = {"records": [rec(1, "Analista de Cobrança"), rec(2, "Supervisor de Cobrança")], "boards_configured": 1,
+             "boards_fetched": ["job:greenhouse:acme:"], "jobs_read": 2, "discarded_samples": [], "errors": []}
+    monkeypatch.setattr(jobboards, "fetch_job_opportunities", lambda: first)
+    monkeypatch.setattr(cnpj_api, "lookup", lambda c: {"cnpj": c, "razao_social": "ACME COBRANCAS LTDA", "cnae_principal": "8291100",
+                                                         "cnae_descricao": "Atividades de cobranças", "source": "BrasilAPI"})
+    with TestClient(app) as c:
+        r = c.post("/api/capture/jobs").json()
+        assert r["created"] == 2 and r["competitors"] == 2
+        jobs = [o for o in c.get("/api/opportunities", params={"kind": "hiring"}).json() if o["source_key"] and o["source_key"].startswith("job:greenhouse:acme")]
+        assert all(o["opportunity_class"] == "concorrente" and o["score"] == 0 for o in jobs)
+        second = {**first, "records": [rec(1, "Analista de Cobrança")]}
+        monkeypatch.setattr(jobboards, "fetch_job_opportunities", lambda: second)
+        assert c.post("/api/capture/jobs").json()["closed"] == 1
+        assert c.get("/api/prospects", params={"cnae": "8291"}).json() == []  # concorrentes fora da prospecção
+
+
+def test_sources_catalog_is_consistent():
+    import json, re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    data = json.loads((root / "config" / "sources.json").read_text(encoding="utf-8"))
+    doc = (root / "docs" / "fontes.md").read_text(encoding="utf-8")
+    for s in data["sources"]:
+        assert s["category"] in ("integrada", "consultada", "planejada")
+        assert s["name"] in doc
+        if s.get("url"):
+            assert "utm_" not in s["url"]
+        if s["category"] == "planejada":
+            assert "NÃO conectada" in s["status"] or "manual" in s["status"]
+    with TestClient(app) as c:
+        r = c.get("/api/sources", params={"category": "integrada"}).json()
+        assert r["sources"] and all(s["category"] == "integrada" for s in r["sources"])
+        assert r["job_boards_configured"] >= 1
