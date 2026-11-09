@@ -127,7 +127,7 @@ async function renderProspects() {
     $('p-rows').innerHTML = rows.length ? rows.map(c => `<tr>
       <td><strong>${esc(c.name)}</strong><small>${esc(c.cnpj_formatted || '')}${c.trade_name ? ' · ' + esc(c.trade_name) : ''}</small>${c.opportunities ? `<div class="badges"><span class="badge ok">${c.opportunities} SINAL(IS) VINCULADO(S)</span></div>` : ''}</td>
       <td>${esc(c.cnae_main || '—')}<small>${esc(c.cnae_desc || '')}</small></td>
-      <td>${esc(c.target_profile_label || c.target_profile || '—')}</td>
+      <td>${esc(c.target_profile_label || c.target_profile || '—')}<small>${esc((c.debt_types || []).join(' · '))}</small></td>
       <td>${esc([c.city, c.state].filter(Boolean).join(' / ') || '—')}</td>
       <td>${esc(c.company_size || '—')}<small>${c.capital_social ? money(c.capital_social) : ''}</small></td>
       <td><small>${esc(c.registry_source || '')}</small></td>
@@ -167,5 +167,33 @@ async function loadSegments() {
   try { const segs = await api('/segments'); $('p-segment').innerHTML += segs.map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join(''); } catch (e) {}
 }
 
+const UFS = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+function fmt(n) { return (n ?? 0).toLocaleString('pt-BR'); }
+function bars(items, labelKey, extra) {
+  const max = Math.max(1, ...items.map(x => x.processos));
+  return items.map(x => `<div class="bar"><span>${esc(x[labelKey] || x.codigo_ibge || '—')}</span><b>${fmt(x.processos)}</b><i style="--w:${(100 * x.processos / max).toFixed(1)}%"></i>${extra ? `<small>${esc(extra(x))}</small>` : ''}</div>`).join('');
+}
+function renderMarket(d) {
+  $('m-body').innerHTML = `<article class="panel"><small>TIPOS DE INADIMPLÊNCIA · ${esc(d.tribunal)} · ${esc(d.periodo.inicio)} a ${esc(d.periodo.fim)}</small>
+      <div class="kpi">${fmt(d.total_processos)}</div><p class="note">processos de cobrança ajuizados no período</p>
+      ${bars(d.tipos_de_inadimplencia, 'label', x => 'assuntos: ' + x.assuntos.join(', '))}
+      <p class="note">Não classificados (genéricos): ${esc(d.assuntos_nao_classificados.slice(0, 6).map(a => `${a.nome} (${fmt(a.processos)})`).join(' · '))}</p></article>
+    <article class="panel"><small>CLASSES</small>${bars(d.classes, 'nome')}<small style="display:block;margin-top:14px">MUNICÍPIOS</small>${bars(d.municipios.slice(0, 10), 'nome')}
+      <p class="note">${esc(d.limites.join(' '))}<br>Fotografia de ${when(d.created_at)}.</p></article>`;
+}
+async function loadMarket() {
+  const uf = $('m-uf').value;
+  try { renderMarket(await api('/market/datajud?uf=' + uf)); }
+  catch (e) { $('m-body').innerHTML = `<p class="note">Sem dados de ${esc(uf)} ainda. Clique em "Atualizar pelo DataJud" (10 s a 2 min).</p>`; }
+}
+async function refreshMarket() {
+  const btn = $('m-refresh'), uf = $('m-uf').value;
+  btn.disabled = true; btn.textContent = 'Consultando DataJud…';
+  try { renderMarket(await api('/market/datajud?uf=' + uf, { method: 'POST' })); toast(`Mapa de ${uf} atualizado.`); }
+  catch (e) { let m = 'O DataJud não respondeu (o CNJ limita a fila de buscas). Tente em instantes.'; try { m = JSON.parse(e.message).detail || m } catch (_) {} toast(m, 7000); }
+  finally { btn.disabled = false; btn.textContent = '⟳ Atualizar pelo DataJud'; }
+}
+$('m-uf').innerHTML = UFS.map(u => `<option ${u === 'AM' ? 'selected' : ''}>${u}</option>`).join('');
+
 $('status').addEventListener('change', load);
-load(); loadSegments(); renderProspects(); loadSources();
+load(); loadSegments(); renderProspects(); loadSources(); loadMarket();

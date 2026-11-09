@@ -65,10 +65,34 @@ def test_lookup_not_found_and_invalid():
 
 @pytest.mark.parametrize("cnae,expected", [
     ("4623199", "atacado"), ("4687701", "atacado"), ("4644301", "atacado"),
-    # representantes comerciais (46.1): comissão, sem carteira própria
-    ("4611700", None), ("4616800", None), ("4618499", None), ("4619200", None),
-    ("6491300", "credito_fomento"), ("4711302", None),
+    # representantes (46.1): continuam na base, com perfil próprio (prioridade baixa) — não são "atacado"
+    ("4611700", "representacao_comercial"), ("4619200", "representacao_comercial"),
+    ("4711302", "varejo"), ("4781400", "varejo"),          # varejo entra: do pequeno ao grande
+    ("8513900", "educacao_privada"), ("8112500", "condominios"), ("6550200", "planos_seguros"),
+    ("9313100", "academias_clubes"), ("4511101", "concessionarias_veiculos"), ("6491300", "credito_fomento"),
+    ("8291100", "concorrente_cobranca"), ("8411600", "setor_publico"),
+    ("9700500", None), ("9900800", None),                   # serviços domésticos e organismos internacionais
 ])
 def test_segment_profiles(cnae, expected):
     from app.services.segments import profile_for
     assert profile_for(cnae) == expected
+
+
+def test_every_cnae_division_has_a_profile():
+    """Nenhum setor fica de fora: toda divisão da CNAE (01–96) recebe perfil."""
+    from app.services.segments import profile_for
+    divisions = [f"{d:02d}" for d in range(1, 97)]
+    missing = [d for d in divisions if profile_for(d + "00000") is None]
+    assert missing == []
+
+
+def test_wanted_filter_still_restricts():
+    from app.services.segments import profile_for
+    assert profile_for("4711302", ["atacado"]) is None and profile_for("4623199", ["atacado"]) == "atacado"
+
+
+def test_debt_types_for_profiles():
+    from app.services.segments import SEGMENTS, DEBT_TYPES, debt_types_for
+    assert [d["key"] for d in debt_types_for("condominios")] == ["aluguel_condominio"]
+    for key, seg in SEGMENTS.items():
+        assert all(t in DEBT_TYPES for t in seg["debt_types"]), key

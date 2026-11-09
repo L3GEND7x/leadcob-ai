@@ -76,3 +76,15 @@ class CaptureRun(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MarketSnapshot(Base):
+    """Fotografia de mercado (ex.: DataJud por UF). Dado agregado, sem partes."""
+    __tablename__ = "market_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(60), index=True)
+    uf: Mapped[str] = mapped_column(String(2), index=True)
+    period_start: Mapped[str] = mapped_column(String(10))
+    period_end: Mapped[str] = mapped_column(String(10))
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
