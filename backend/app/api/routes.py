@@ -6,11 +6,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.agents.pipeline import run_pipeline
-from app.collectors import pncp
+from app.collectors import cnpj_api, pncp
 from app.db.database import get_db
 from app.db.models import CaptureRun, Company, Opportunity
 from app.schemas import OpportunityCreate
+from app.services.cnpj import clean_cnpj, format_cnpj
 from app.services.procurement import parse_dt, score_procurement
+from app.services.segments import SEGMENTS, profile_for
 from app.services.scoring import score_opportunity
 
 router = APIRouter(prefix="/api")
@@ -33,12 +35,25 @@ def serialize(o):
         "opportunity_class": o.opportunity_class, "evidence_level": o.evidence_level,
         "commercial_signal": o.commercial_signal, "deadline": iso(o.deadline),
         "estimated_value": o.estimated_value, "modality_name": o.modality_name,
+        "cnae_main": o.company.cnae_main, "cnae_desc": o.company.cnae_desc, "company_size": o.company.company_size,
+    }
+
+
+def serialize_company(c, opportunities: int = 0):
+    return {
+        "id": c.id, "name": c.name, "trade_name": c.trade_name, "cnpj": c.cnpj, "cnpj_formatted": format_cnpj(c.cnpj) if c.cnpj else None,
+        "segment": c.segment, "city": c.city, "state": c.state, "cnae_main": c.cnae_main, "cnae_desc": c.cnae_desc,
+        "registration_status": c.registration_status, "company_size": c.company_size, "legal_nature": c.legal_nature,
+        "capital_social": c.capital_social, "opened_at": c.opened_at, "target_profile": c.target_profile,
+        "target_profile_label": SEGMENTS.get(c.target_profile, {}).get("label"),
+        "registry_source": c.registry_source, "registry_updated_at": iso(c.registry_updated_at),
+        "opportunities": opportunities,
     }
 
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "LeadCob AI", "version": "0.2.1"}
+    return {"status": "ok", "service": "LeadCob AI", "version": "0.3.0"}
 
 
 @router.get("/dashboard/summary")
@@ -52,6 +67,7 @@ def summary(db: Session = Depends(get_db)):
         "proven": count(commercial_signal="oportunidade_comprovada"),
         "to_confirm": count(kind="public_procurement", commercial_signal="sinal_a_confirmar"),
         "open_procurements": count(kind="public_procurement", opportunity_class="edital_aberto"),
+        "prospects": db.query(Company).filter(Company.target_profile.isnot(None)).count(),
         "average_score": round(avg, 1),
     }
 
@@ -103,7 +119,8 @@ def run_agents(opportunity_id: int, db: Session = Depends(get_db)):
 @router.get("/sources")
 def sources():
     return [
-        {"name": "Receita Federal — Dados Abertos CNPJ", "type": "cadastro empresarial", "status": "planejada"},
+        {"name": "Receita Federal — Dados Abertos CNPJ (arquivos mensais)", "type": "base de empresas-alvo", "status": "conectada (job em lote)"},
+        {"name": "BrasilAPI / Minha Receita", "type": "consulta individual de CNPJ", "status": "conectada"},
         {"name": "Portais de vagas e páginas de carreira", "type": "sinal de contratação", "status": "planejada"},
         {"name": "PNCP — busca do portal + API oficial de consulta", "type": "compras públicas", "status": "conectada (validada com dados reais em 09/11/2026)"},
         {"name": "Sites institucionais", "type": "sinal comercial", "status": "adaptador manual"},
@@ -232,3 +249,63 @@ def capture_runs(db: Session = Depends(get_db)):
     return [{"id": r.id, "source_name": r.source_name, "status": r.status, "records_seen": r.records_seen,
              "records_created": r.records_created, "records_skipped": r.records_skipped, "message": r.message,
              "started_at": iso(r.started_at), "finished_at": iso(r.finished_at)} for r in rows]
+
+
+# ---------------------------------------------------------------------- CNPJ
+def _lookup_or_http_error(cnpj: str) -> dict:
+    try:
+        return cnpj_api.lookup(cnpj)
+    except cnpj_api.CNPJInvalid as exc:
+        raise HTTPException(400, str(exc))
+    except cnpj_api.CNPJNotFound as exc:
+        raise HTTPException(404, str(exc))
+    except cnpj_api.CNPJUnavailable:
+        raise HTTPException(502, "BrasilAPI e Minha Receita não responderam. Tente novamente em instantes.")
+
+
+@router.get("/cnpj/{cnpj}")
+def cnpj_lookup(cnpj: str):
+    """Consulta sem gravar (para preencher formulários)."""
+    data = _lookup_or_http_error(cnpj)
+    data["cnpj_formatted"] = format_cnpj(data["cnpj"])
+    data["target_profile"] = profile_for(data.get("cnae_principal"))
+    return data
+
+
+@router.post("/companies/{company_id}/enrich")
+def enrich_company(company_id: int, db: Session = Depends(get_db)):
+    from app.jobs.import_cnpj import apply_registry
+    c = db.query(Company).filter_by(id=company_id).first()
+    if not c:
+        raise HTTPException(404, "Empresa não encontrada")
+    if not c.cnpj:
+        raise HTTPException(400, "Empresa sem CNPJ cadastrado")
+    data = _lookup_or_http_error(c.cnpj)
+    data["target_profile"] = c.target_profile or profile_for(data.get("cnae_principal"))
+    apply_registry(c, data, source=f"{data['source']} (dados abertos da Receita Federal)")
+    db.commit(); db.refresh(c)
+    return serialize_company(c, len(c.opportunities))
+
+
+@router.get("/segments")
+def segments():
+    return [{"key": k, **v} for k, v in SEGMENTS.items()]
+
+
+@router.get("/prospects")
+def prospects(segment: str | None = None, uf: str | None = None, q: str | None = None,
+              limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
+    """Base de empresas-alvo: cadastro por perfil de CNAE — NÃO é sinal de demanda."""
+    query = db.query(Company, func.count(Opportunity.id)).outerjoin(Opportunity).filter(Company.target_profile.isnot(None))
+    if segment:
+        query = query.filter(Company.target_profile == segment)
+    if uf:
+        query = query.filter(Company.state == uf.upper())
+    if q:
+        digits = clean_cnpj(q)
+        cond = Company.name.ilike(f"%{q}%") | Company.trade_name.ilike(f"%{q}%")
+        if digits:
+            cond = cond | Company.cnpj.like(f"{digits}%")
+        query = query.filter(cond)
+    rows = query.group_by(Company.id).order_by(Company.capital_social.desc().nullslast(), Company.name).limit(limit).all()
+    return [serialize_company(c, n) for c, n in rows]

@@ -72,3 +72,30 @@ def test_record_reclassified_as_discard_leaves_dashboard(monkeypatch):
         c.post("/api/capture/pncp")
         assert c.get("/api/dashboard/summary").json()["proven"] == before - 1
         assert len(c.get("/api/opportunities", params={"status": "discarded"}).json()) >= 1
+
+
+def test_cnpj_lookup_enrich_and_prospects(monkeypatch):
+    from app.collectors import cnpj_api
+    from app.db.database import SessionLocal
+    from app.db.models import Company
+
+    data = {"cnpj": "05156977000116", "razao_social": "EXEMPLO FOMENTO LTDA", "nome_fantasia": "EXEMPLO",
+            "cnae_principal": "6491300", "cnae_descricao": "Factoring", "cnaes_secundarios": [],
+            "situacao_cadastral": "ATIVA", "porte": "DEMAIS", "natureza_juridica": "LTDA", "municipio": "MARINGA",
+            "uf": "PR", "capital_social": 150000.0, "data_inicio_atividade": "2002-07-01", "matriz": True,
+            "opcao_mei": False, "source": "BrasilAPI"}
+    monkeypatch.setattr(cnpj_api, "lookup", lambda c: dict(data))
+    with TestClient(app) as c:
+        r = c.get("/api/cnpj/05156977000116").json()
+        assert r["cnpj_formatted"] == "05.156.977/0001-16" and r["target_profile"] == "credito_fomento"
+        db = SessionLocal(); comp = Company(name="Sem dados", cnpj="05156977000116"); db.add(comp); db.commit(); cid = comp.id; db.close()
+        e = c.post(f"/api/companies/{cid}/enrich").json()
+        assert e["name"] == "EXEMPLO FOMENTO LTDA" and e["target_profile"] == "credito_fomento" and e["company_size"] == "DEMAIS"
+        assert any(p["id"] == cid for p in c.get("/api/prospects", params={"segment": "credito_fomento", "uf": "PR"}).json())
+        assert c.get("/api/dashboard/summary").json()["prospects"] >= 1
+        assert {s["key"] for s in c.get("/api/segments").json()} >= {"atacado", "credito_fomento"}
+
+        def boom(_):
+            raise cnpj_api.CNPJUnavailable("x")
+        monkeypatch.setattr(cnpj_api, "lookup", boom)
+        assert c.get("/api/cnpj/05156977000116").status_code == 502
