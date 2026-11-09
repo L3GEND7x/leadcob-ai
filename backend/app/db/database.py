@@ -2,8 +2,21 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.core.config import settings
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+IS_SQLITE = settings.database_url.startswith("sqlite")
+# timeout: espera até 30 s por um banco ocupado (ex.: captação gravando enquanto os agentes rodam)
+connect_args = {"check_same_thread": False, "timeout": 30} if IS_SQLITE else {}
 engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
+
+if IS_SQLITE:
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _):
+        # WAL deixa leituras e uma escrita acontecerem ao mesmo tempo
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 class Base(DeclarativeBase): pass
 def get_db():

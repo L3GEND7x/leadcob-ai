@@ -66,7 +66,7 @@ async function runAgents(id) {
     const r = await api(`/agents/run/${id}`, { method: 'POST' });
     const issues = r.agents.audit.issues.length ? ` · ${r.agents.audit.issues.length} alerta(s) de auditoria` : '';
     toast(`Agentes concluídos · score ${r.opportunity.score}/100${issues}`); load();
-  } catch (e) { toast('Falha ao executar agentes.'); }
+  } catch (e) { let m = 'Falha ao executar agentes.'; try { m = JSON.parse(e.message).detail || m } catch (_) {} toast(m, 8000); }
 }
 
 function toast(t, ms = 3500) {
@@ -88,11 +88,14 @@ async function capturePNCP() {
   btn.disabled = true; btn.textContent = 'Consultando PNCP… (pode levar 1–3 min)';
   try {
     const r = await api('/capture/pncp?mode=busca&max_pages=2', { method: 'POST' });
-    const partial = r.status === 'partial' ? ` · ${r.errors.length} consulta(s) falharam — repita mais tarde` : '';
+    const partial = r.fallback ? ' · a busca do portal não respondeu; usada a API oficial (cobertura menor)'
+      : r.status === 'partial' ? ` · ${r.errors.length} consulta(s) falharam — repita mais tarde` : '';
     toast(`PNCP: ${r.found} encontrados · ${r.discarded} descartados por aderência · ${r.proven} comprovadas · ${r.to_confirm} sinais a confirmar · ${r.created} novos${partial}`, 9000);
     await load();
   } catch (e) {
-    toast('O PNCP não respondeu (a API limita rajadas de consultas). Tente novamente em alguns minutos.', 7000); console.error(e); lastRun();
+    let m = 'O PNCP não respondeu (a API limita rajadas de consultas). Tente novamente em alguns minutos.';
+    try { m = JSON.parse(e.message).detail || m } catch (_) {}
+    toast(m, 8000); console.error(e); lastRun();
   } finally { btn.disabled = false; btn.textContent = '⌕ Buscar editais PNCP'; }
 }
 
