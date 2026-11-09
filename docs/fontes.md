@@ -52,6 +52,7 @@ Verificado em 2026-11-09. Fonte única: `config/sources.json` (também em `GET /
 ## Regras de uso
 
 - Uma fonte só entra em **integrada** depois de testada com dados reais; a data fica registrada.
+- No painel (v0.5), cada fonte aparece como **Integrada e testada**, **Com erro de coleta** (a última captação daquela fonte falhou), **Consultada**, **Indisponível** (não foi possível acessar deste ambiente) ou **Planejada**.
 - Fontes de terceiros (BrasilAPI, Minha Receita) republicam dados oficiais: a fonte primária continua sendo o órgão público.
 - Endpoints não documentados (índice de busca do PNCP) geram **indícios**, confirmados na API oficial antes de virar oportunidade comprovada.
 - O DataJud público mede volume e tipo de cobrança judicial; **não** identifica empresas.

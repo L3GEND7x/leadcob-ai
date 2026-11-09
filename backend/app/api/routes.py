@@ -58,7 +58,7 @@ def serialize_company(c, opportunities: int = 0):
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "LeadCob AI", "version": "0.4.0"}
+    return {"status": "ok", "service": "LeadCob AI", "version": "0.5.0"}
 
 
 @router.get("/dashboard/summary")
@@ -129,10 +129,37 @@ SOURCES_FILE = Path(__file__).resolve().parents[3] / "config" / "sources.json"
 
 
 @router.get("/sources")
-def sources(category: str | None = Query(default=None, pattern="^(integrada|consultada|planejada)$")):
-    """Catálogo de fontes: integradas (testadas com dados reais), consultadas e planejadas."""
+def sources(category: str | None = Query(default=None, pattern="^(integrada|consultada|planejada)$"),
+            db: Session = Depends(get_db)):
+    """Catálogo de fontes: integradas (testadas com dados reais), consultadas e planejadas.
+
+    `display_status` usa os cinco estados do painel: Integrada e testada, Com erro de coleta (última
+    captação daquela fonte falhou), Consultada, Indisponível (não foi possível acessar) e Planejada.
+    """
     data = json.loads(SOURCES_FILE.read_text(encoding="utf-8"))
-    items = [s for s in data["sources"] if not category or s["category"] == category]
+    items = [dict(s) for s in data["sources"] if not category or s["category"] == category]
+    last = {}
+    for prefix in ("PNCP", "Greenhouse"):
+        run = (db.query(CaptureRun).filter(CaptureRun.source_name.like(prefix + "%"))
+               .order_by(CaptureRun.started_at.desc()).first())
+        if run:
+            last[prefix] = run
+    for s in items:
+        if s["category"] == "integrada":
+            fam = "PNCP" if s["name"].startswith("PNCP") else "Greenhouse" if s["name"].split()[0] in ("Greenhouse", "Lever") else None
+            run = last.get(fam) if fam else None
+            if run and run.status == "failed":
+                s["display_status"] = "Com erro de coleta"
+                s["last_error"] = f"{iso(run.started_at)}: {run.message}"[:300]
+            else:
+                s["display_status"] = "Integrada e testada"
+            if run:
+                s["last_run"] = {"status": run.status, "started_at": iso(run.started_at), "message": (run.message or "")[:300]}
+        elif s["category"] == "consultada":
+            unavailable = s["status"].startswith(("Não acessível", "Não respondeu", "[NECESSÁRIO CONFERIR]"))
+            s["display_status"] = "Indisponível" if unavailable else "Consultada"
+        else:
+            s["display_status"] = "Planejada"
     try:
         boards = len(jobboards.configured_boards())
     except ValueError:

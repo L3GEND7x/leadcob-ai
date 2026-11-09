@@ -1,4 +1,4 @@
-# LeadCob AI — MVP 0.4.0
+# LeadCob AI — 0.5.0
 
 Plataforma individual de inteligência comercial para captar **qualquer empresa que tenha inadimplentes** —
 de qualquer setor e porte, do pequeno varejista ao grande grupo — e **todos os tipos de inadimplência**
@@ -17,18 +17,26 @@ Sem `DATABASE_URL`, usa SQLite local. Bancos criados em versões anteriores são
 
 **Testes:** `cd backend && pip install pytest && python -m pytest`.
 
+## Módulos (0.5.0)
+Central de comando · Inteligência do dia · Encontrar empresas · Sinais e oportunidades · CRM comercial (ficha,
+histórico, tarefas, supressão) · Radar de mercado · Fontes de dados · Configurações.
+Rotina sugerida: `docs/manual-uso-diario.md`. Pontuação: `docs/lead-score.md`. O que está pronto e o que falta:
+`docs/status-v0.5.md`.
+
 ## API
 - `GET /api/health`
-- `GET /api/dashboard/summary` — inclui `proven` (oportunidades comprovadas) e `to_confirm` (sinais a confirmar)
-- `GET /api/opportunities` (filtros `kind`, `status`, `signal`, `q`; descartados só com `status=discarded`)
-- `POST /api/opportunities`
-- `POST /api/agents/run/{id}`
-- `POST /api/capture/pncp` (`mode=busca|varredura`, `only_open`, `include_review`, `max_pages`, `days`)
-- `POST /api/capture/jobs` — vagas em boards Greenhouse/Lever configurados
-- `GET /api/capture/runs`
-- `GET /api/cnpj/{cnpj}` · `POST /api/companies/{id}/enrich`
-- `GET /api/prospects` (filtros `segment`, `uf`, `cnae`, `size`, `min_capital`, `q`) · `GET /api/segments`
-- `GET /api/sources` — catálogo (integradas, consultadas, planejadas)
+- `GET /api/command-center` — indicadores, funil e listas de trabalho do dia
+- `GET /api/daily-intelligence?limit=5` — empresas do dia com evidência, serviço sugerido e próxima ação
+- `GET /api/companies/search` — busca nacional (`q`, `region`, `uf`, `municipio`, `cnae`, `profile`, `debt_type`, `size`,
+  `situacao`, `capital_min/max`, `years_min/max`, `stage`, `band`, `has_signal`, `sort`, `page`, `per_page`) · `GET /api/regions`
+- `POST /api/companies` · `GET|PATCH /api/companies/{id}` (ficha: etapa, próxima atividade, valor potencial, notas)
+- `POST /api/companies/{id}/interactions` · `POST /api/companies/{id}/tasks` · `GET /api/tasks` · `PATCH /api/tasks/{id}`
+- `GET /api/pipeline` · `GET|POST /api/suppression` · `DELETE /api/suppression/{id}` · `GET|PUT /api/settings`
+- `GET /api/export/companies.csv` — só dados de PJ, sem empresas suprimidas
+- `GET /api/dashboard/summary` · `GET|POST /api/opportunities` · `POST /api/agents/run/{id}`
+- `POST /api/capture/pncp` (`mode=busca|varredura`, `only_open`, `include_review`, `max_pages`, `days`) · `POST /api/capture/jobs` · `GET /api/capture/runs`
+- `GET /api/cnpj/{cnpj}` · `POST /api/companies/{id}/enrich` · `GET /api/prospects` · `GET /api/segments`
+- `GET /api/sources` — catálogo com estado de cada fonte
 - `POST|GET /api/market/datajud?uf=AM` — mapa de inadimplência judicializada · `GET /api/debt-types`
 
 ## Estado real desta entrega
@@ -41,7 +49,7 @@ Sem `DATABASE_URL`, usa SQLite local. Bancos criados em versões anteriores são
 | Sinais de terceirização | — | **Não há fonte que comprove demanda**: cadastro e vagas são indícios; exige contato direto |
 
 Catálogo completo de fontes: `docs/fontes.md`. Histórico e decisões: `CHANGELOG.md`.
-Os três registros iniciais (vagas/terceirização) são exemplos demonstrativos.
+Nenhum dado fictício é criado (os exemplos de demonstração só existem com `DEMO_SEED=true`).
 Sem autenticação, HTTPS ou publicação em servidor: **não expor na internet**.
 
 ## Segurança antes de publicar na internet
