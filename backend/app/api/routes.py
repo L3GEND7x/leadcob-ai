@@ -117,7 +117,11 @@ def run_agents(opportunity_id: int, db: Session = Depends(get_db)):
     o = db.query(Opportunity).options(joinedload(Opportunity.company)).filter_by(id=opportunity_id).first()
     if not o:
         raise HTTPException(404, "Oportunidade não encontrada")
-    result = run_pipeline(db, o)
+    try:
+        result = run_pipeline(db, o)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, f"Os agentes não concluíram: {type(exc).__name__}: {str(exc)[:200]}")
     return {"opportunity": serialize(o), "agents": result}
 
 
@@ -199,6 +203,17 @@ def capture_pncp(mode: str = Query(default="busca", pattern="^(busca|varredura)$
             batch = pncp.scan_publications(days=days, max_pages=max_pages)
     except Exception as exc:  # erro inesperado do coletor
         batch = {"records": [], "pages_read": 0, "errors": [f"{type(exc).__name__}: {str(exc)[:300]}"], "confirmed": 0}
+    fallback = False
+    if mode == "busca" and batch["pages_read"] == 0:
+        # O índice de busca do portal é instável; a API oficial costuma responder.
+        first_errors = batch["errors"]
+        try:
+            batch = pncp.scan_publications(days=days, max_pages=max_pages)
+        except Exception as exc:
+            batch = {"records": [], "pages_read": 0, "errors": [f"{type(exc).__name__}: {str(exc)[:300]}"], "confirmed": 0}
+        batch["errors"] = first_errors[:3] + batch["errors"]
+        fallback = True
+        mode = "varredura (contingência: a busca do portal não respondeu)"
 
     if batch["pages_read"] == 0:
         run.status = "failed"
@@ -248,7 +263,7 @@ def capture_pncp(mode: str = Query(default="busca", pattern="^(busca|varredura)$
     return {"run_id": run.id, "status": run.status, "source": "PNCP", "mode": mode, "pages_read": batch["pages_read"],
             "found": len(batch["records"]), "confirmed": batch.get("confirmed", 0), "created": created, "updated": updated,
             "discarded": discarded, "proven": proven, "to_confirm": len(stored) - proven,
-            "discarded_samples": discarded_samples, "errors": batch["errors"][:10], "message": run.message,
+            "discarded_samples": discarded_samples, "errors": batch["errors"][:10], "message": run.message, "fallback": fallback,
             "duplicates_skipped": updated}  # compatibilidade com o frontend v0.2
 
 

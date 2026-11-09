@@ -55,7 +55,9 @@ def test_capture_classifies_stores_and_deduplicates(monkeypatch):
 
 
 def test_capture_total_failure_returns_502(monkeypatch):
-    monkeypatch.setattr(pncp, "search_opportunities", lambda **_: {"records": [], "pages_read": 0, "confirmed": 0, "errors": ["RemoteProtocolError"]})
+    down = lambda **_: {"records": [], "pages_read": 0, "confirmed": 0, "errors": ["RemoteProtocolError"]}
+    monkeypatch.setattr(pncp, "search_opportunities", down)
+    monkeypatch.setattr(pncp, "scan_publications", down)  # busca e contingência fora do ar
     with TestClient(app) as c:
         assert c.post("/api/capture/pncp").status_code == 502
         assert c.get("/api/capture/runs").json()[0]["status"] == "failed"
@@ -155,3 +157,23 @@ def test_market_datajud_snapshot(monkeypatch):
         assert c.post("/api/market/datajud", params={"uf": "RR"}).json()["total_processos"] == 10
         assert c.get("/api/market/datajud", params={"uf": "RR"}).json()["tribunal"] == "TJRR"
         assert any(d["key"] == "mensalidades" for d in c.get("/api/debt-types").json())
+
+
+def test_pncp_falls_back_to_official_api_when_search_is_down(monkeypatch):
+    monkeypatch.setattr(pncp, "search_opportunities", lambda **_: {"records": [], "pages_read": 0, "confirmed": 0, "errors": ["busca: RemoteProtocolError"]})
+    monkeypatch.setattr(pncp, "scan_publications", lambda **_: {"records": [rec("77777777000177-1-000001/2026", "serviços de cobrança extrajudicial")],
+                                                                 "pages_read": 6, "confirmed": 1, "errors": []})
+    with TestClient(app) as c:
+        r = c.post("/api/capture/pncp").json()
+        assert r["fallback"] is True and r["created"] == 1 and "contingência" in r["mode"]
+
+
+def test_agents_error_returns_reason(monkeypatch):
+    import app.api.routes as routes
+    def boom(db, o):
+        raise RuntimeError("database is locked")
+    monkeypatch.setattr(routes, "run_pipeline", boom)
+    with TestClient(app) as c:
+        oid = c.get("/api/opportunities").json()[0]["id"]
+        r = c.post(f"/api/agents/run/{oid}")
+        assert r.status_code == 500 and "database is locked" in r.json()["detail"]
