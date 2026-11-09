@@ -192,9 +192,25 @@ def save(records: list[dict], release: str) -> tuple[int, int]:
                 db.add(c); created += 1
             apply_registry(c, rec, source=f"Receita Federal — dados abertos {release}")
         db.commit()
+        changed = reprofile(db)
+        if changed:
+            print(f"Perfis reavaliados: {changed} empresa(s) mudaram de perfil ou saíram da base-alvo", flush=True)
     finally:
         db.close()
     return created, updated
+
+
+def reprofile(db) -> int:
+    """Reavalia o perfil de todas as empresas já gravadas (regras de CNAE podem mudar)."""
+    from app.db.models import Company
+    changed = 0
+    for c in db.query(Company).filter(Company.cnae_main.isnot(None)).yield_per(1000):
+        new = profile_for(c.cnae_main)
+        if c.target_profile and new != c.target_profile:
+            c.target_profile = new
+            changed += 1
+    db.commit()
+    return changed
 
 
 def apply_registry(c, rec: dict, source: str):

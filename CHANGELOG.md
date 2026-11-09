@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 — 09/11/2026
+- Perfil "atacado" passa a usar CNAE 46.2 a 46.9. O grupo 46.1 (representantes comerciais e
+  agentes do comércio) saiu: trabalham por comissão e não têm carteira própria. Na primeira
+  importação real (15 empresas), eram 4 de 13 do perfil.
+- Cada importação reavalia o perfil das empresas já gravadas, de modo que uma mudança de regra
+  também limpa registros antigos.
+- Painel: porte e capital em linhas separadas na tabela de empresas-alvo.
+- Primeira importação real gravada: 15 de 15 razões sociais completadas em 987 s, sendo 846 s
+  gastos no arquivo Empresas0 (570 MB) para completar apenas 2 empresas de CNPJ recente.
+
 ## 0.3.0 — 09/11/2026
 ### CNPJ (Receita Federal)
 - Consulta individual (BrasilAPI → Minha Receita), validação de CNPJ alfanumérico.
