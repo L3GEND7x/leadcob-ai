@@ -15,6 +15,12 @@ def get_db():
 # Colunas acrescentadas depois da v0.1. `create_all` não altera tabelas
 # existentes, então bancos antigos recebem as colunas aqui (SQLite e PostgreSQL).
 LATE_COLUMNS = {
+    "companies": {
+        "trade_name": "VARCHAR(220)", "cnae_main": "VARCHAR(7)", "cnae_desc": "VARCHAR(255)", "cnae_secondary": "TEXT",
+        "registration_status": "VARCHAR(30)", "company_size": "VARCHAR(40)", "legal_nature": "VARCHAR(160)",
+        "capital_social": "FLOAT", "opened_at": "VARCHAR(10)", "target_profile": "VARCHAR(40)",
+        "registry_source": "VARCHAR(120)", "registry_updated_at": "TIMESTAMP",
+    },
     "opportunities": {
         "source_key": "VARCHAR(180)", "relevance": "VARCHAR(20)", "relevance_reason": "TEXT",
         "opportunity_class": "VARCHAR(30)", "evidence_level": "VARCHAR(30)", "commercial_signal": "VARCHAR(30)",

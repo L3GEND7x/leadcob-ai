@@ -72,3 +72,73 @@ def test_record_reclassified_as_discard_leaves_dashboard(monkeypatch):
         c.post("/api/capture/pncp")
         assert c.get("/api/dashboard/summary").json()["proven"] == before - 1
         assert len(c.get("/api/opportunities", params={"status": "discarded"}).json()) >= 1
+
+
+def test_cnpj_lookup_enrich_and_prospects(monkeypatch):
+    from app.collectors import cnpj_api
+    from app.db.database import SessionLocal
+    from app.db.models import Company
+
+    data = {"cnpj": "05156977000116", "razao_social": "EXEMPLO FOMENTO LTDA", "nome_fantasia": "EXEMPLO",
+            "cnae_principal": "6491300", "cnae_descricao": "Factoring", "cnaes_secundarios": [],
+            "situacao_cadastral": "ATIVA", "porte": "DEMAIS", "natureza_juridica": "LTDA", "municipio": "MARINGA",
+            "uf": "PR", "capital_social": 150000.0, "data_inicio_atividade": "2002-07-01", "matriz": True,
+            "opcao_mei": False, "source": "BrasilAPI"}
+    monkeypatch.setattr(cnpj_api, "lookup", lambda c: dict(data))
+    with TestClient(app) as c:
+        r = c.get("/api/cnpj/05156977000116").json()
+        assert r["cnpj_formatted"] == "05.156.977/0001-16" and r["target_profile"] == "credito_fomento"
+        db = SessionLocal(); comp = Company(name="Sem dados", cnpj="05156977000116"); db.add(comp); db.commit(); cid = comp.id; db.close()
+        e = c.post(f"/api/companies/{cid}/enrich").json()
+        assert e["name"] == "EXEMPLO FOMENTO LTDA" and e["target_profile"] == "credito_fomento" and e["company_size"] == "DEMAIS"
+        assert any(p["id"] == cid for p in c.get("/api/prospects", params={"segment": "credito_fomento", "uf": "PR"}).json())
+        assert c.get("/api/dashboard/summary").json()["prospects"] >= 1
+        assert {s["key"] for s in c.get("/api/segments").json()} >= {"atacado", "credito_fomento"}
+
+        def boom(_):
+            raise cnpj_api.CNPJUnavailable("x")
+        monkeypatch.setattr(cnpj_api, "lookup", boom)
+        assert c.get("/api/cnpj/05156977000116").status_code == 502
+
+
+def test_capture_jobs_flags_competitor_and_closes_missing(monkeypatch):
+    from app.collectors import cnpj_api, jobboards
+    from app.services.jobs import classify_job
+    board = {"provider": "greenhouse", "token": "acme", "company_name": "Acme Cobranças"}
+    def rec(i, title):
+        return {**classify_job(title, location="São Paulo, SP"), "source_key": f"job:greenhouse:acme:{i}", "provider": "greenhouse",
+                "board": board, "company_name": "Acme Cobranças", "cnpj": "11222333000181", "title": title,
+                "location": "São Paulo, SP", "description": "x", "url": f"https://x/{i}", "published": None}
+    first = {"records": [rec(1, "Analista de Cobrança"), rec(2, "Supervisor de Cobrança")], "boards_configured": 1,
+             "boards_fetched": ["job:greenhouse:acme:"], "jobs_read": 2, "discarded_samples": [], "errors": []}
+    monkeypatch.setattr(jobboards, "fetch_job_opportunities", lambda: first)
+    monkeypatch.setattr(cnpj_api, "lookup", lambda c: {"cnpj": c, "razao_social": "ACME COBRANCAS LTDA", "cnae_principal": "8291100",
+                                                         "cnae_descricao": "Atividades de cobranças", "source": "BrasilAPI"})
+    with TestClient(app) as c:
+        r = c.post("/api/capture/jobs").json()
+        assert r["created"] == 2 and r["competitors"] == 2
+        jobs = [o for o in c.get("/api/opportunities", params={"kind": "hiring"}).json() if o["source_key"] and o["source_key"].startswith("job:greenhouse:acme")]
+        assert all(o["opportunity_class"] == "concorrente" and o["score"] == 0 for o in jobs)
+        second = {**first, "records": [rec(1, "Analista de Cobrança")]}
+        monkeypatch.setattr(jobboards, "fetch_job_opportunities", lambda: second)
+        assert c.post("/api/capture/jobs").json()["closed"] == 1
+        assert c.get("/api/prospects", params={"cnae": "8291"}).json() == []  # concorrentes fora da prospecção
+
+
+def test_sources_catalog_is_consistent():
+    import json, re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    data = json.loads((root / "config" / "sources.json").read_text(encoding="utf-8"))
+    doc = (root / "docs" / "fontes.md").read_text(encoding="utf-8")
+    for s in data["sources"]:
+        assert s["category"] in ("integrada", "consultada", "planejada")
+        assert s["name"] in doc
+        if s.get("url"):
+            assert "utm_" not in s["url"]
+        if s["category"] == "planejada":
+            assert "NÃO conectada" in s["status"] or "manual" in s["status"]
+    with TestClient(app) as c:
+        r = c.get("/api/sources", params={"category": "integrada"}).json()
+        assert r["sources"] and all(s["category"] == "integrada" for s in r["sources"])
+        assert r["job_boards_configured"] >= 1

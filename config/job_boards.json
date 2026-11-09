@@ -1,0 +1,11 @@
+{
+  "_doc": "Boards públicos verificados em 09/11/2026 pela própria API do fornecedor (Greenhouse: GET /v1/boards/{token}; Lever: GET /v0/postings/{token}). company_name = nome retornado pelo board. Preencha cnpj apenas com CNPJ conferido (ex.: GET /api/cnpj/{cnpj}); com CNPJ, o LeadCob consulta o CNAE e identifica concorrentes (8291-1/00).",
+  "boards": [
+    {"provider": "greenhouse", "token": "c6bank", "company_name": "C6 Bank", "segment": "Banco", "verified_at": "2026-11-09"},
+    {"provider": "greenhouse", "token": "inter", "company_name": "Inter Carreiras", "segment": "Banco", "verified_at": "2026-11-09"},
+    {"provider": "greenhouse", "token": "stone", "company_name": "Stone - Linkedin", "segment": "Meios de pagamento", "verified_at": "2026-11-09"},
+    {"provider": "greenhouse", "token": "quintoandar", "company_name": "Grupo QuintoAndar", "segment": "Imobiliário / crédito", "verified_at": "2026-11-09"},
+    {"provider": "greenhouse", "token": "ebanx", "company_name": "EBANX", "segment": "Meios de pagamento", "verified_at": "2026-11-09"},
+    {"provider": "lever", "token": "neon", "company_name": "neon", "segment": "Banco digital", "verified_at": "2026-11-09"}
+  ]
+}
