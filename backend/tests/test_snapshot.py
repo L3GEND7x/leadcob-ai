@@ -51,3 +51,17 @@ def test_published_page_replays_crm_actions():
     assert [p["cnpj"] for p in d["prospects_all"]] == ["92498138000180"]
     assert d["prospects_all"][0]["created_at"].startswith("2026-11-01")
     assert {"/command-center", "/daily-intelligence?limit=5", "/pipeline", "/settings", "/regions", "/debt-types"} <= d.keys()
+
+
+def test_crm_actions_can_come_from_page_database_export():
+    """A tarefa horária exporta o banco da página como <pasta>/<coleção>/<doc_id>.json."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from build_dashboard_snapshot import load_crm
+    tmp = Path(tempfile.mkdtemp())
+    (tmp / "crm_eventos").mkdir(); (tmp / "oportunidades_manuais").mkdir()
+    (tmp / "crm_eventos" / "zz9.json").write_text(json.dumps({"tipo": "config", "em": "2026-11-09T10:00:00Z", "dados": {}}))
+    (tmp / "crm_eventos" / "aa1.json").write_text(json.dumps({"tipo": "tarefa", "em": "2026-11-09T11:00:00Z", "chave": "x", "dados": {}}))
+    (tmp / "oportunidades_manuais" / "m7.json").write_text(json.dumps({"company_name": "X", "criadoEm": "2026-11-09T09:00:00Z"}))
+    events, manual = load_crm(str(tmp))
+    assert [e["id"] for e in events] == ["zz9", "aa1"]   # ordem pela hora da ação
+    assert manual[0]["_doc"] == "m7"

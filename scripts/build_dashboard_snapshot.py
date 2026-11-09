@@ -2,7 +2,7 @@
 
 Uso (na raiz do repositório):
     python scripts/build_dashboard_snapshot.py --out painel.html [--previous pagina_anterior.html]
-        [--uf AM,PA] [--trigger trig_...] [--crm acoes_crm.json]
+        [--uf AM,PA] [--trigger trig_...] [--crm pasta_exportada_do_banco_da_pagina]
 
 Passos:
  1. cria um banco temporário e carrega as empresas da página anterior (base CNPJ da Receita e
@@ -42,7 +42,12 @@ def load_crm(path: str | None) -> tuple[list[dict], list[dict]]:
     """{"eventos": [{id, em, tipo, chave, dados}], "oportunidades_manuais": [{_doc, ...}]} (ou só a lista de eventos)."""
     if not path or not Path(path).exists():
         return [], []
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if Path(path).is_dir():   # exportação do banco da página: <dir>/<coleção>/<doc_id>.json
+        read = lambda sub, key: [{**json.loads(f.read_text(encoding="utf-8")), key: f.stem}
+                                 for f in sorted((Path(path) / sub).glob("*.json"))]
+        raw = {"eventos": read("crm_eventos", "id"), "oportunidades_manuais": read("oportunidades_manuais", "_doc")}
+    else:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
     events = raw.get("eventos", []) if isinstance(raw, dict) else raw
     manual = raw.get("oportunidades_manuais", []) if isinstance(raw, dict) else []
     events = sorted((e for e in events if isinstance(e, dict) and e.get("tipo")), key=lambda e: (e.get("em") or "", e.get("id") or ""))
@@ -238,7 +243,8 @@ def main(argv=None):
     ap.add_argument("--previous")
     ap.add_argument("--uf", default="AM", help="UFs do mapa DataJud, separadas por vírgula (no máximo 6 por rodada)")
     ap.add_argument("--trigger", help="id da tarefa agendada que os botões de busca da página disparam")
-    ap.add_argument("--crm", help="JSON com as ações do CRM gravadas na página (coleção crm_eventos)")
+    ap.add_argument("--crm", help="ações gravadas na página: pasta exportada do banco da página (crm_eventos/ e "
+                                  "oportunidades_manuais/, um JSON por documento) ou um JSON único")
     ap.add_argument("--offline", action="store_true", help="não consulta fontes externas (teste local)")
     a = ap.parse_args(argv)
 
