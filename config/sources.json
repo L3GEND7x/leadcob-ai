@@ -76,7 +76,7 @@
       "official": true,
       "documented": true,
       "use": "Mapa de inadimplência judicializada por UF: classes de cobrança, tipos de dívida (assuntos) e municípios",
-      "status": "Validada em 09/11/2026 (TJAM: 29.566 processos de cobrança em 12 meses). NÃO identifica partes, por desenho da API (resguardo de dados de partes). Fila de buscas do CNJ devolve HTTP 429 com frequência: há retentativa"
+      "status": "Validada em 09/11/2026 nos 27 tribunais estaduais (api_publica_tj{uf}; DF = tjdft). TJAM: 29.566 processos de cobrança em 12 meses). NÃO identifica partes, por desenho da API (resguardo de dados de partes). Fila de buscas do CNJ devolve HTTP 429 com frequência: há retentativa"
     },
     {
       "category": "integrada",

@@ -25,6 +25,7 @@ Manaus concentra 24.685.
 - Somas por assunto não são exclusivas: um processo pode ter vários assuntos.
 
 ## Operação
+- Endereços dos 27 tribunais estaduais conferidos em 09/11/2026: `api_publica_tj{uf}`, com DF = `tjdft`.
 - Chave: pública, publicada pelo CNJ em https://datajud-wiki.cnj.jus.br/api-publica/acesso — pode mudar.
   Em HTTP 401/403, atualize `DATAJUD_API_KEY`.
 - A fila de buscas do CNJ devolve HTTP 429 com frequência (observado em 09/11/2026): o conector tenta de novo

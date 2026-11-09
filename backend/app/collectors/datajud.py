@@ -42,6 +42,8 @@ class DataJudError(RuntimeError):
     pass
 
 
+# Índices conferidos nas 27 UFs em 09/11/2026 (api_publica_tj{uf}; DF = tjdft), com o total histórico
+# de Execuções de Título Extrajudicial, de 13.040 (TJRR) a 1.498.166 (TJMG).
 def tribunal_for(uf: str) -> str:
     uf = uf.upper()
     if uf not in UFS:
