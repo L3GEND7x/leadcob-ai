@@ -1,0 +1,34 @@
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from app.core.config import settings
+
+connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+class Base(DeclarativeBase): pass
+def get_db():
+    db = SessionLocal()
+    try: yield db
+    finally: db.close()
+
+
+# Colunas acrescentadas depois da v0.1. `create_all` não altera tabelas
+# existentes, então bancos antigos recebem as colunas aqui (SQLite e PostgreSQL).
+LATE_COLUMNS = {
+    "opportunities": {
+        "source_key": "VARCHAR(180)", "relevance": "VARCHAR(20)", "relevance_reason": "TEXT",
+        "opportunity_class": "VARCHAR(30)", "evidence_level": "VARCHAR(30)", "commercial_signal": "VARCHAR(30)",
+        "deadline": "TIMESTAMP", "estimated_value": "FLOAT", "modality_name": "VARCHAR(80)", "origin_url": "VARCHAR(1000)",
+    }
+}
+def ensure_schema():
+    from app.db import models  # noqa: F401 — registra todas as tabelas no metadata
+    Base.metadata.create_all(bind=engine)
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table, cols in LATE_COLUMNS.items():
+            existing = {c["name"] for c in insp.get_columns(table)}
+            for name, ddl in cols.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_opportunities_source_key ON opportunities (source_key)"))

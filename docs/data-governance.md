@@ -1,0 +1,3 @@
+# Governança e LGPD
+
+Finalidade limitada à inteligência comercial B2B. Priorizar dados empresariais e canais institucionais. Não presumir que dado publicamente acessível pode ser reutilizado sem limites. Documentar base legal, finalidade, necessidade e salvaguardas para qualquer dado pessoal. Não coletar CPF, dados financeiros privados ou dados sensíveis para prospecção. Respeitar termos, APIs, robots.txt, limites e controles técnicos. Não contornar login, paywall, CAPTCHA ou bloqueios. Registrar origem, data, finalidade e prazo de revisão. Manter opt-out/lista de supressão. Abordagens em escala exigem aprovação humana. Diferenciar fatos de inferências: vaga aberta não prova intenção de terceirizar cobrança.

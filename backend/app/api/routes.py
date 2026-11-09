@@ -1,0 +1,234 @@
+import hashlib
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
+
+from app.agents.pipeline import run_pipeline
+from app.collectors import pncp
+from app.db.database import get_db
+from app.db.models import CaptureRun, Company, Opportunity
+from app.schemas import OpportunityCreate
+from app.services.procurement import parse_dt, score_procurement
+from app.services.scoring import score_opportunity
+
+router = APIRouter(prefix="/api")
+KINDS = ("hiring", "outsourcing", "public_procurement")
+
+
+def iso(value):
+    return value.isoformat() if value else None
+
+
+def serialize(o):
+    return {
+        "id": o.id, "company_id": o.company_id, "company_name": o.company.name, "cnpj": o.company.cnpj,
+        "segment": o.company.segment, "city": o.company.city, "state": o.company.state, "kind": o.kind,
+        "title": o.title, "source_key": o.source_key, "description": o.description, "evidence": o.evidence,
+        "source_name": o.source_name, "source_url": o.source_url, "origin_url": o.origin_url,
+        "score": o.score, "score_reason": o.score_reason, "status": o.status, "confidence": o.confidence,
+        "is_verified": o.is_verified, "collected_at": iso(o.collected_at),
+        "relevance": o.relevance, "relevance_reason": o.relevance_reason,
+        "opportunity_class": o.opportunity_class, "evidence_level": o.evidence_level,
+        "commercial_signal": o.commercial_signal, "deadline": iso(o.deadline),
+        "estimated_value": o.estimated_value, "modality_name": o.modality_name,
+    }
+
+
+@router.get("/health")
+def health():
+    return {"status": "ok", "service": "LeadCob AI", "version": "0.2.1"}
+
+
+@router.get("/dashboard/summary")
+def summary(db: Session = Depends(get_db)):
+    active = lambda: db.query(Opportunity).filter(Opportunity.status != "discarded")
+    count = lambda **kw: active().filter_by(**kw).count()
+    avg = active().with_entities(func.avg(Opportunity.score)).scalar() or 0
+    return {
+        "total": active().count(), "hiring": count(kind="hiring"), "outsourcing": count(kind="outsourcing"),
+        "public_procurement": count(kind="public_procurement"), "qualified": count(status="qualified"),
+        "proven": count(commercial_signal="oportunidade_comprovada"),
+        "to_confirm": count(kind="public_procurement", commercial_signal="sinal_a_confirmar"),
+        "open_procurements": count(kind="public_procurement", opportunity_class="edital_aberto"),
+        "average_score": round(avg, 1),
+    }
+
+
+@router.get("/opportunities")
+def list_opportunities(kind: str | None = None, status: str | None = None, signal: str | None = None,
+                       q: str | None = Query(default=None), db: Session = Depends(get_db)):
+    query = db.query(Opportunity).options(joinedload(Opportunity.company))
+    if kind in KINDS:
+        query = query.filter(Opportunity.kind == kind)
+    if status:
+        query = query.filter(Opportunity.status == status)
+    else:
+        query = query.filter(Opportunity.status != "discarded")
+    if signal in ("oportunidade_comprovada", "sinal_a_confirmar"):
+        query = query.filter(Opportunity.commercial_signal == signal)
+    if q:
+        query = query.join(Company).filter(Company.name.ilike(f"%{q}%") | Opportunity.title.ilike(f"%{q}%"))
+    rows = query.order_by(Opportunity.score.desc(), Opportunity.collected_at.desc()).limit(250).all()
+    return [serialize(o) for o in rows]
+
+
+@router.post("/opportunities")
+def create_opportunity(payload: OpportunityCreate, db: Session = Depends(get_db)):
+    company = db.query(Company).filter(Company.cnpj == payload.cnpj).first() if payload.cnpj else None
+    if not company:
+        company = Company(name=payload.company_name, cnpj=payload.cnpj, segment=payload.segment, city=payload.city,
+                          state=payload.state, website=payload.website, institutional_email=payload.institutional_email)
+        db.add(company); db.flush()
+    score, reason = score_opportunity(payload.kind, payload.description, payload.evidence, payload.source_url)
+    o = Opportunity(company_id=company.id, kind=payload.kind, title=payload.title, description=payload.description,
+                    evidence=payload.evidence, source_name=payload.source_name, source_url=payload.source_url,
+                    score=score, score_reason=reason, status="review", confidence=0.45, is_verified=False,
+                    commercial_signal="sinal_a_confirmar")
+    db.add(o); db.commit()
+    o = db.query(Opportunity).options(joinedload(Opportunity.company)).filter_by(id=o.id).first()
+    return serialize(o)
+
+
+@router.post("/agents/run/{opportunity_id}")
+def run_agents(opportunity_id: int, db: Session = Depends(get_db)):
+    o = db.query(Opportunity).options(joinedload(Opportunity.company)).filter_by(id=opportunity_id).first()
+    if not o:
+        raise HTTPException(404, "Oportunidade não encontrada")
+    result = run_pipeline(db, o)
+    return {"opportunity": serialize(o), "agents": result}
+
+
+@router.get("/sources")
+def sources():
+    return [
+        {"name": "Receita Federal — Dados Abertos CNPJ", "type": "cadastro empresarial", "status": "planejada"},
+        {"name": "Portais de vagas e páginas de carreira", "type": "sinal de contratação", "status": "planejada"},
+        {"name": "PNCP — busca do portal + API oficial de consulta", "type": "compras públicas", "status": "conectada (validada com dados reais em 09/11/2026)"},
+        {"name": "Sites institucionais", "type": "sinal comercial", "status": "adaptador manual"},
+    ]
+
+
+# ------------------------------------------------------------------ captação
+def source_key_for(item):
+    if item.get("control"):
+        return "pncp:" + item["control"]
+    raw = item["company_name"] + item["object"] + (item.get("published") or "")
+    return "pncp:hash:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def evidence_text(item):
+    parts = [
+        f"Objeto (PNCP): {item['object'] or 'não informado'}",
+        f"Controle PNCP: {item.get('control') or 'não informado'}",
+        f"Modalidade: {item.get('modality_name') or item.get('modality_id') or 'não informada'}",
+        f"Situação: {item.get('situation') or 'não informada'}",
+        f"Publicação: {item.get('published') or 'não informada'}",
+        f"Prazo: {item['class_reason']}",
+        f"Aderência: {item['relevance']} — {item['relevance_reason']}",
+        f"Evidência: {'confirmada na API oficial de consulta' if item['evidence_level'] == 'confirmada_api_oficial' else 'indício do índice de busca, sem confirmação na API oficial'}",
+        f"Termos que localizaram o registro: {', '.join(item.get('matched_terms') or [])}",
+    ]
+    return " | ".join(parts) + "."
+
+
+def apply_item(o, item):
+    score, reason = score_procurement(item)
+    proven = item["commercial_signal"] == "oportunidade_comprovada"
+    o.title = item["title"]
+    o.description = ("Edital aberto, aderente e confirmado na API oficial. Ler o edital (habilitação, escopo, prazo, "
+                     "remuneração) antes de decidir participar." if proven else
+                     "Sinal comercial a confirmar: verificar aderência do objeto, prazo e documentação no edital.")
+    o.evidence = evidence_text(item)
+    o.source_name = "PNCP — API oficial" if item["evidence_level"] == "confirmada_api_oficial" else "PNCP — busca do portal"
+    o.source_url = item["url"]
+    o.origin_url = item.get("origin_url")
+    o.score, o.score_reason = score, reason
+    o.relevance, o.relevance_reason = item["relevance"], item["relevance_reason"]
+    o.opportunity_class, o.evidence_level = item["opportunity_class"], item["evidence_level"]
+    o.commercial_signal = item["commercial_signal"]
+    o.deadline = parse_dt(item.get("deadline"))
+    try:
+        value = float(item["estimated_value"]) if item.get("estimated_value") not in (None, "") else None
+        o.estimated_value = value if value else None  # o PNCP usa 0 quando não há valor estimado
+    except (TypeError, ValueError):
+        o.estimated_value = None
+    o.modality_name = item.get("modality_name")
+    o.confidence = 0.8 if proven else (0.6 if item["evidence_level"] == "confirmada_api_oficial" else 0.35)
+    o.is_verified = False  # verificação humana do edital continua obrigatória
+
+
+@router.post("/capture/pncp")
+def capture_pncp(mode: str = Query(default="busca", pattern="^(busca|varredura)$"),
+                 only_open: bool = True, include_review: bool = True,
+                 max_pages: int = Query(default=2, ge=1, le=5), days: int = Query(default=7, ge=1, le=30),
+                 db: Session = Depends(get_db)):
+    run = CaptureRun(source_name=f"PNCP — {mode}", status="running")
+    db.add(run); db.commit(); db.refresh(run)
+    try:
+        if mode == "busca":
+            batch = pncp.search_opportunities(only_open=only_open, max_pages=max_pages)
+        else:
+            batch = pncp.scan_publications(days=days, max_pages=max_pages)
+    except Exception as exc:  # erro inesperado do coletor
+        batch = {"records": [], "pages_read": 0, "errors": [f"{type(exc).__name__}: {str(exc)[:300]}"], "confirmed": 0}
+
+    if batch["pages_read"] == 0:
+        run.status = "failed"
+        run.message = "Nenhuma página do PNCP foi lida. " + " ; ".join(batch["errors"][:5])
+        run.finished_at = datetime.now(timezone.utc); db.commit()
+        raise HTTPException(status_code=502, detail="O PNCP não respondeu. A API costuma limitar rajadas de consultas; tente novamente em alguns minutos.")
+
+    created = updated = discarded = 0
+    discarded_samples = []
+    keep = {"alta", "revisar"} if include_review else {"alta"}
+    for item in batch["records"]:
+        key = source_key_for(item)
+        o = db.query(Opportunity).filter_by(source_key=key).first()
+        if item["relevance"] not in keep:
+            discarded += 1
+            if len(discarded_samples) < 10:
+                discarded_samples.append({"orgao": item["company_name"], "objeto": item["object"][:160], "motivo": item["relevance_reason"]})
+            if o and o.status != "discarded":  # reclassificado após ajuste das regras
+                apply_item(o, item)
+                o.status, o.commercial_signal = "discarded", "descartado"
+            continue
+        if o:
+            updated += 1
+        else:
+            company = db.query(Company).filter_by(cnpj=item["cnpj"]).first() if item["cnpj"] else None
+            if not company:
+                company = Company(name=item["company_name"], cnpj=item["cnpj"], segment="Órgão público",
+                                  city=item["city"], state=item["state"])
+                db.add(company); db.flush()
+            o = Opportunity(company_id=company.id, kind="public_procurement", source_key=key, status="review")
+            db.add(o); created += 1
+        apply_item(o, item)
+
+    stored = [r for r in batch["records"] if r["relevance"] in keep]
+    proven = sum(1 for r in stored if r["commercial_signal"] == "oportunidade_comprovada")
+    run.status = "partial" if batch["errors"] else "completed"
+    run.records_seen = len(batch["records"]); run.records_created = created; run.records_skipped = discarded
+    notes = [f"modo {mode}", f"páginas lidas: {batch['pages_read']}", f"confirmados na API oficial: {batch.get('confirmed', 0)}",
+             f"atualizados: {updated}", f"descartados por aderência: {discarded}"]
+    if batch.get("coverage_note"):
+        notes.append(batch["coverage_note"])
+    if batch["errors"]:
+        notes.append(f"falhas parciais ({len(batch['errors'])}): " + " ; ".join(batch["errors"][:3]))
+    run.message = "; ".join(notes)[:4000]
+    run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"run_id": run.id, "status": run.status, "source": "PNCP", "mode": mode, "pages_read": batch["pages_read"],
+            "found": len(batch["records"]), "confirmed": batch.get("confirmed", 0), "created": created, "updated": updated,
+            "discarded": discarded, "proven": proven, "to_confirm": len(stored) - proven,
+            "discarded_samples": discarded_samples, "errors": batch["errors"][:10], "message": run.message,
+            "duplicates_skipped": updated}  # compatibilidade com o frontend v0.2
+
+
+@router.get("/capture/runs")
+def capture_runs(db: Session = Depends(get_db)):
+    rows = db.query(CaptureRun).order_by(CaptureRun.started_at.desc()).limit(20).all()
+    return [{"id": r.id, "source_name": r.source_name, "status": r.status, "records_seen": r.records_seen,
+             "records_created": r.records_created, "records_skipped": r.records_skipped, "message": r.message,
+             "started_at": iso(r.started_at), "finished_at": iso(r.finished_at)} for r in rows]
