@@ -33,6 +33,8 @@ LATE_COLUMNS = {
         "registration_status": "VARCHAR(30)", "company_size": "VARCHAR(40)", "legal_nature": "VARCHAR(160)",
         "capital_social": "FLOAT", "opened_at": "VARCHAR(10)", "target_profile": "VARCHAR(40)",
         "registry_source": "VARCHAR(120)", "registry_updated_at": "TIMESTAMP",
+        "pipeline_stage": "VARCHAR(30)", "stage_updated_at": "TIMESTAMP", "next_action": "TEXT",
+        "next_action_at": "TIMESTAMP", "potential_value": "FLOAT", "lost_reason": "TEXT", "notes": "TEXT",
     },
     "opportunities": {
         "source_key": "VARCHAR(180)", "relevance": "VARCHAR(20)", "relevance_reason": "TEXT",

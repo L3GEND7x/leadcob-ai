@@ -9,3 +9,5 @@ Finalidade limitada à inteligência comercial B2B. Priorizar dados empresariais
 - Concorrentes (CNAE 8291-1/00) são identificados e excluídos da prospecção por padrão.
 - Empresário individual/MEI (natureza 213-5): excluído por padrão — razão social com nome + CPF em 70% da amostra real. Inclusão só com `--include-individual` e base legal documentada; o CPF é removido do nome.
 - DataJud: só dados agregados (contagens), sem partes; nada identifica pessoas.
+- CRM (v0.5): lista de supressão bloqueia contato, mudança de etapa, busca padrão, inteligência do dia e exportação. Intervalo mínimo entre contatos configurável. Toda mudança de etapa, supressão, exportação e configuração vai para a auditoria (`audit_logs`). O sistema não envia mensagens.
+- Dados fictícios: exemplos de demonstração só com `DEMO_SEED=true`; removidos dos bancos existentes no startup.

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.0 — 09/11/2026
+### Etapa 1 do plano de evolução: operação diária, prospecção, qualificação e CRM
+- **Central de comando** (`/api/command-center`): indicadores do dia, funil de 13 etapas, quem precisa de
+  abordagem, follow-ups atrasados, maior pontuação, novos sinais, sinais recentes e tarefas.
+- **Inteligência do dia** (`/api/daily-intelligence`): 5 empresas por regras explicáveis, com evidência,
+  serviço sugerido, texto de abertura, canal, próxima ação e separação entre fatos, indícios e hipóteses.
+- **Prospecção nacional** (`/api/companies/search`): filtros por região, UF, município, CNAE (principal e
+  secundários), perfil, tipo de inadimplência, porte, situação, capital, anos de atividade, etapa, faixa e sinal.
+- **Lead score explicável** (0–100, `docs/lead-score.md`): 8 componentes com motivo e natureza (fato,
+  indício, hipótese); zerado para concorrentes, suprimidas e cadastros inativos.
+- **CRM**: 13 etapas, ficha da empresa, histórico, interações (avançam a etapa), tarefas, próxima atividade,
+  valor potencial informado, motivo de perda obrigatório, lista de supressão (opt-out), trava contra contato
+  repetido e auditoria. Novas tabelas `interactions`, `tasks`, `suppressions`, `settings`; colunas novas em
+  `companies` aplicadas automaticamente em bancos antigos.
+- **Interface por módulos** (preto, vermelho escuro, branco e grafite), computador e celular.
+- **Fontes** com cinco estados (inclui "Com erro de coleta" pela última captação e "Indisponível").
+- **Exportação CSV** só com dados de PJ, sem empresas suprimidas.
+- **Página publicada**: ações do CRM gravadas no banco da página (`crm_eventos`) e reaplicadas a cada
+  atualização, com a hora original; oportunidades cadastradas na página viram sinais reais no banco.
+### Correções
+- Os 3 registros fictícios de demonstração não são mais criados em banco vazio (só com `DEMO_SEED=true`)
+  e são removidos de bancos existentes, para não aparecerem como empresas reais.
+- Perfil derivado do CNAE quando o banco antigo não o tinha (ex.: representantes comerciais).
+- Dados embutidos na página publicada escapam `</`, evitando quebra do HTML.
+
 ## 0.4.0 — 09/11/2026
 ### Todos os setores, todos os tipos de inadimplência
 - Base de empresas-alvo deixa de filtrar por 8 perfis: **toda empresa ativa de qualquer setor e porte** entra

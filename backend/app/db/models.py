@@ -27,7 +27,17 @@ class Company(Base):
     registry_source: Mapped[str|None] = mapped_column(String(120), nullable=True)
     registry_updated_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # v0.5 — CRM de prospecção (valores informados pelo usuário; nada é inferido)
+    pipeline_stage: Mapped[str|None] = mapped_column(String(30), nullable=True, index=True)
+    stage_updated_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_action: Mapped[str|None] = mapped_column(Text, nullable=True)
+    next_action_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    potential_value: Mapped[float|None] = mapped_column(Float, nullable=True)  # informado/validado pelo usuário
+    lost_reason: Mapped[str|None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str|None] = mapped_column(Text, nullable=True)
     opportunities = relationship("Opportunity", back_populates="company")
+    interactions = relationship("Interaction", back_populates="company", order_by="Interaction.happened_at")
+    tasks = relationship("Task", back_populates="company", order_by="Task.due_at")
 class Opportunity(Base):
     __tablename__ = "opportunities"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -88,3 +98,50 @@ class MarketSnapshot(Base):
     period_end: Mapped[str] = mapped_column(String(10))
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Interaction(Base):
+    """Histórico comercial da empresa (contatos, respostas, reuniões, propostas, mudanças de etapa)."""
+    __tablename__ = "interactions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(30), index=True)
+    channel: Mapped[str|None] = mapped_column(String(30), nullable=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    outcome: Mapped[str|None] = mapped_column(String(30), nullable=True)
+    happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    company = relationship("Company", back_populates="interactions")
+
+
+class Task(Base):
+    """Atividade comercial com prazo (follow-up, pesquisa, abordagem, envio de proposta...)."""
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int|None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(250))
+    kind: Mapped[str] = mapped_column(String(30), default="follow_up")
+    due_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    done: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    done_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    company = relationship("Company", back_populates="tasks")
+
+
+class Suppression(Base):
+    """Lista de supressão (opt-out): empresas que não devem ser contatadas."""
+    __tablename__ = "suppressions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cnpj: Mapped[str|None] = mapped_column(String(14), nullable=True, index=True)
+    company_id: Mapped[int|None] = mapped_column(Integer, nullable=True, index=True)
+    company_name: Mapped[str|None] = mapped_column(String(220), nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Setting(Base):
+    """Configurações do usuário (UFs de atuação, serviço oferecido, intervalo entre contatos...)."""
+    __tablename__ = "settings"
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
