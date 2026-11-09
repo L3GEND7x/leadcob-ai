@@ -1,6 +1,7 @@
 """Importa a base de empresas-alvo a partir dos dados abertos do CNPJ.
 
 Uso (a partir de backend/):
+    python -m app.jobs.import_cnpj --uf AM --parts 0-9                       # todos os setores
     python -m app.jobs.import_cnpj --segments atacado,credito_fomento --uf AM,PA --parts 0-9
     python -m app.jobs.import_cnpj --segments educacao_privada --uf SC --parts 1 --limit 200 --dry-run
 
@@ -9,25 +10,49 @@ arquivo Estabelecimentos tem ~340 MB (o 0 tem ~2,3 GB); a publicação inteira
 leva ~1h45. Filtrar por UF NÃO reduz a leitura (os arquivos não são ordenados
 por UF), só o volume gravado. Rode como job mensal, fora do horário de uso.
 
-O resultado é CADASTRO (quem se parece com o perfil), não sinal de demanda.
+Por padrão importa TODOS os setores (qualquer empresa ativa pode ter inadimplentes) e
+exclui só empresário individual/MEI (natureza 213-5), cuja razão social traz nome e CPF.
+O resultado é CADASTRO, não sinal de demanda.
 """
 from __future__ import annotations
 
 import argparse
 import io
+import re
 import sys
 import time
 from datetime import datetime, timezone
 
 from app.collectors import rfb_files as R
 from app.services.cnpj import PORTE, SITUACAO
-from app.services.segments import SEGMENTS, profile_for
+from app.services.segments import INDIVIDUAL_NATURE, SEGMENTS, profile_for
 
 # Layout validado com dados reais (publicação 2026-10): 30 colunas.
 E_BASICO, E_ORDEM, E_DV, E_MATRIZ, E_FANTASIA, E_SITUACAO = 0, 1, 2, 3, 4, 5
 E_INICIO, E_CNAE, E_CNAE_SEC, E_UF, E_MUNICIPIO = 10, 11, 12, 19, 20
 # Empresas: 7 colunas.
 P_BASICO, P_RAZAO, P_NATUREZA, P_QUALIF, P_CAPITAL, P_PORTE = 0, 1, 2, 3, 4, 5
+
+
+CPF_TAIL = re.compile(r"\s*\d{11}\s*$")
+
+
+def mask_individual_name(name: str | None) -> str | None:
+    """Empresário individual/MEI: a razão social costuma ser NOME + CPF. Remove o CPF."""
+    return CPF_TAIL.sub("", name).strip() if name else name
+
+
+def apply_individual_policy(records: list[dict], include_individual: bool, stats: dict) -> list[dict]:
+    kept = []
+    for r in records:
+        if r.get("natureza_codigo") == INDIVIDUAL_NATURE:
+            stats["individuals"] = stats.get("individuals", 0) + 1
+            if not include_individual:
+                continue
+            r["razao_social"] = mask_individual_name(r.get("razao_social"))
+            r["individual"] = True
+        kept.append(r)
+    return kept
 
 
 def parse_parts(spec: str) -> list[int]:
@@ -236,7 +261,7 @@ def apply_registry(c, rec: dict, source: str):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--release", help="AAAA-MM (padrão: a mais recente)")
-    ap.add_argument("--segments", default="", help="perfis separados por vírgula: " + ", ".join(SEGMENTS))
+    ap.add_argument("--segments", default="", help="restringe a perfis (vazio = TODOS os setores): " + ", ".join(SEGMENTS))
     ap.add_argument("--uf", default="", help="UFs separadas por vírgula (vazio = Brasil)")
     ap.add_argument("--parts", default="0-9", help="arquivos Estabelecimentos/Empresas (ex.: 0-9, 1, 2,5)")
     ap.add_argument("--include-branches", action="store_true", help="incluir filiais (padrão: só matrizes)")
@@ -244,6 +269,11 @@ def main(argv=None):
     ap.add_argument("--min-size", choices=["01", "03", "05"], help="porte mínimo: 01 ME, 03 EPP, 05 demais")
     ap.add_argument("--limit", type=int, help="máximo de empresas (para testes)")
     ap.add_argument("--dry-run", action="store_true", help="não grava no banco")
+    ap.add_argument("--include-individual", action="store_true",
+                    help="inclui empresário individual/MEI (natureza 213-5): a razão social contém nome e CPF da pessoa; "
+                         "o CPF é removido, mas o nome continua sendo dado pessoal — exige base legal documentada (LGPD)")
+    ap.add_argument("--max-records", type=int, default=300_000,
+                    help="limite de segurança de memória; acima disso, divida por --uf ou --segments")
     ap.add_argument("--local-dir", help="pasta com os ZIPs já baixados (ex.: data/cnpj/2026-10); exige --release")
     a = ap.parse_args(argv)
 
@@ -255,6 +285,9 @@ def main(argv=None):
     t0 = time.time(); stats: dict = {}
     if a.local_dir and not a.release:
         ap.error("--local-dir exige --release (competência AAAA-MM dos arquivos)")
+    if a.skip_companies and not a.include_individual:
+        ap.error("sem ler Empresas não dá para identificar empresário individual/MEI; "
+                 "remova --skip-companies ou assuma com --include-individual")
     with R.client() as http:
         release = a.release or R.latest_release(http)
         src = Source(release, http, a.local_dir)
@@ -273,6 +306,9 @@ def main(argv=None):
                 rec["cnae_descricao"] = cnaes.get(rec["cnae_principal"])
                 rec["municipio"] = municipios.get(rec["municipio_codigo"])
                 found[rec["cnpj"]] = rec
+                if len(found) > a.max_records:
+                    raise SystemExit(f"Mais de {a.max_records} empresas em memória: divida a importação por --uf "
+                                     f"ou --segments (ou aumente --max-records se houver memória).")
             print(f"  Estabelecimentos{part}: {stats.get('read', 0)} linhas lidas, {len(found)} empresas no perfil "
                   f"({time.time() - t0:.0f}s)", flush=True)
         if found and not a.skip_companies:
@@ -291,10 +327,14 @@ def main(argv=None):
                 if r.get("natureza_codigo"):
                     r["natureza_juridica"] = naturezas.get(r["natureza_codigo"], r["natureza_codigo"])
     records = list(found.values())
+    if not a.skip_companies:
+        records = apply_individual_policy(records, a.include_individual, stats)
     if a.min_size:
         order = {"MICRO EMPRESA": 1, "EMPRESA DE PEQUENO PORTE": 3, "DEMAIS": 5}
         records = [r for r in records if order.get(r.get("porte"), 0) >= int(a.min_size)]
-    print(f"Total: {len(records)} empresas · linhas fora do layout: {stats.get('bad_layout', 0)}", flush=True)
+    print(f"Total: {len(records)} empresas · linhas fora do layout: {stats.get('bad_layout', 0)} · "
+          f"empresários individuais/MEI {'incluídos (CPF removido)' if a.include_individual else 'excluídos'}: "
+          f"{stats.get('individuals', 0)}", flush=True)
     if a.dry_run:
         for r in records[:10]:
             print("  ", r["cnpj"], r.get("razao_social") or r.get("nome_fantasia"), r["cnae_principal"], r.get("municipio"), r["uf"], r.get("porte"))

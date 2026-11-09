@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — 09/11/2026
+### Todos os setores, todos os tipos de inadimplência
+- Base de empresas-alvo deixa de filtrar por 8 perfis: **toda empresa ativa de qualquer setor e porte** entra
+  (do pequeno varejista ao grande grupo). Os perfis viram rótulos de priorização, com o tipo de inadimplência
+  típico de cada setor; toda divisão da CNAE (01–96) tem perfil (teste garante). Excluídas só as divisões 97
+  (empregador doméstico) e 99 (organismos internacionais).
+- Varejo, construção, veículos, transporte, serviços, setor público, associações etc. passam a ter perfil próprio.
+- Empresário individual/MEI (natureza 213-5) fica fora por padrão: na amostra real, 70% das razões sociais
+  eram nome + CPF. `--include-individual` inclui com o CPF removido (decisão de base legal do usuário).
+- Limite de segurança `--max-records` (padrão 300 mil) para importações grandes: dividir por UF.
+### DataJud (CNJ)
+- Mapa de inadimplência judicializada por UF: classes de cobrança, tipos de dívida e municípios.
+  Não identifica empresas (a API pública não traz partes). Ver `docs/datajud.md`.
+
 ## 0.3.1 — 09/11/2026
 - Perfil "atacado" passa a usar CNAE 46.2 a 46.9. O grupo 46.1 (representantes comerciais e
   agentes do comércio) saiu: trabalham por comissão e não têm carteira própria. Na primeira

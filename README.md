@@ -1,8 +1,10 @@
-# LeadCob AI — MVP 0.3.0
+# LeadCob AI — MVP 0.4.0
 
-Plataforma individual de inteligência comercial B2B para identificar (1) empresas com vagas de cobrança/contas a
-receber, (2) empresas com sinais que possam indicar demanda por recuperação de crédito terceirizada e (3) editais
-públicos de serviços de cobrança. Cobertura pretendida: Brasil.
+Plataforma individual de inteligência comercial para captar **qualquer empresa que tenha inadimplentes** —
+de qualquer setor e porte, do pequeno varejista ao grande grupo — e **todos os tipos de inadimplência**
+(B2B, crediário, financiamentos, mensalidades, aluguéis e condomínios, serviços, faturas de consumo, dívida ativa).
+Frentes: (1) empresas contratando para cobrança, (2) potenciais clientes de terceirização, (3) editais públicos.
+Cobertura: Brasil.
 
 ## Executar
 
@@ -27,13 +29,15 @@ Sem `DATABASE_URL`, usa SQLite local. Bancos criados em versões anteriores são
 - `GET /api/cnpj/{cnpj}` · `POST /api/companies/{id}/enrich`
 - `GET /api/prospects` (filtros `segment`, `uf`, `cnae`, `size`, `min_capital`, `q`) · `GET /api/segments`
 - `GET /api/sources` — catálogo (integradas, consultadas, planejadas)
+- `POST|GET /api/market/datajud?uf=AM` — mapa de inadimplência judicializada · `GET /api/debt-types`
 
 ## Estado real desta entrega
 | Frente | Fonte | Situação (09/11/2026) |
 |---|---|---|
 | Editais públicos | PNCP | Integrada e validada com dados reais (`docs/pncp-connector.md`) |
 | Vagas de cobrança | Greenhouse / Lever | Integrada e validada; cobertura limitada a quem usa essas plataformas (`docs/job-board-connectors.md`) |
-| Base de empresas-alvo | Receita Federal (dados abertos) + BrasilAPI | Integrada e validada; job em lote (`docs/cnpj-connector.md`) |
+| Base de empresas-alvo (todos os setores) | Receita Federal (dados abertos) + BrasilAPI | Integrada e validada; job em lote (`docs/cnpj-connector.md`) |
+| Mapa de inadimplência por UF e tipo | DataJud (CNJ) | Integrada e validada; não identifica empresas (`docs/datajud.md`) |
 | Sinais de terceirização | — | **Não há fonte que comprove demanda**: cadastro e vagas são indícios; exige contato direto |
 
 Catálogo completo de fontes: `docs/fontes.md`. Histórico e decisões: `CHANGELOG.md`.

@@ -7,3 +7,5 @@ Finalidade limitada à inteligência comercial B2B. Priorizar dados empresariais
 - CNPJ: não importar sócios/QSA, e-mail, telefone ou endereço completo. Amostra real dos dados abertos mostrou e-mails pessoais de funcionários e contadores no campo de e-mail cadastral.
 - Vagas: armazenar apenas dados da vaga e da empresa anunciante; nenhum dado de candidatos ou recrutadores.
 - Concorrentes (CNAE 8291-1/00) são identificados e excluídos da prospecção por padrão.
+- Empresário individual/MEI (natureza 213-5): excluído por padrão — razão social com nome + CPF em 70% da amostra real. Inclusão só com `--include-individual` e base legal documentada; o CPF é removido do nome.
+- DataJud: só dados agregados (contagens), sem partes; nada identifica pessoas.

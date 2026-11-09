@@ -150,7 +150,7 @@ def test_local_dir_requires_release(tmp_path):
         J.main(["--local-dir", str(tmp_path)])
 
 
-def test_reprofile_removes_companies_that_left_a_profile():
+def test_reprofile_updates_profiles_when_rules_change():
     from app.db.database import SessionLocal, ensure_schema
     from app.db.models import Company
     ensure_schema()
@@ -160,5 +160,32 @@ def test_reprofile_removes_companies_that_left_a_profile():
     db.commit()
     assert J.reprofile(db) >= 1
     by = {c.cnpj: c.target_profile for c in db.query(Company).filter(Company.cnpj.in_(["99999999000199", "99999998000199"]))}
-    assert by == {"99999999000199": None, "99999998000199": "atacado"}
+    assert by == {"99999999000199": "representacao_comercial", "99999998000199": "atacado"}
     db.close()
+
+
+def test_individual_policy_excludes_or_masks_cpf():
+    recs = [{"natureza_codigo": "2135", "razao_social": "FULANO DE TAL 12345678901"},
+            {"natureza_codigo": "2062", "razao_social": "LOJA DO BAIRRO LTDA"}]
+    stats = {}
+    assert [r["razao_social"] for r in J.apply_individual_policy([dict(r) for r in recs], False, stats)] == ["LOJA DO BAIRRO LTDA"]
+    assert stats["individuals"] == 1
+    kept = J.apply_individual_policy([dict(r) for r in recs], True, {})
+    assert kept[0]["razao_social"] == "FULANO DE TAL" and kept[0]["individual"] is True
+    assert "12345678901" not in str(kept)
+
+
+def test_all_sectors_by_default_and_individuals_excluded(fake_rfb):
+    recs = J.main(["--uf", "AM", "--parts", "0-1", "--dry-run"])
+    assert {r["cnpj_basico"] for r in recs} == {"11111111", "55555555", "66666666"}   # varejo (55555555) agora entra
+    assert next(r for r in recs if r["cnpj_basico"] == "55555555")["target_profile"] == "varejo"
+
+
+def test_skip_companies_requires_explicit_individual_decision():
+    with pytest.raises(SystemExit):
+        J.main(["--skip-companies", "--parts", "1", "--dry-run"])
+
+
+def test_max_records_guard(fake_rfb):
+    with pytest.raises(SystemExit):
+        J.main(["--uf", "AM", "--parts", "0-1", "--max-records", "1", "--dry-run"])

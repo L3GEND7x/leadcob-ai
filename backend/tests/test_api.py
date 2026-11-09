@@ -142,3 +142,16 @@ def test_sources_catalog_is_consistent():
         r = c.get("/api/sources", params={"category": "integrada"}).json()
         assert r["sources"] and all(s["category"] == "integrada" for s in r["sources"])
         assert r["job_boards_configured"] >= 1
+
+
+def test_market_datajud_snapshot(monkeypatch):
+    from app.collectors import datajud
+    fake = {"fonte": "DataJud", "tribunal": "TJRR", "uf": "RR", "periodo": {"inicio": "2025-11-01", "fim": "2026-11-09"},
+            "total_processos": 10, "classes": [], "assuntos": [], "tipos_de_inadimplencia": [], "assuntos_nao_classificados": [],
+            "municipios": [], "limites": []}
+    monkeypatch.setattr(datajud, "market_map", lambda uf, months: dict(fake))
+    with TestClient(app) as c:
+        assert c.get("/api/market/datajud", params={"uf": "RR"}).status_code == 404
+        assert c.post("/api/market/datajud", params={"uf": "RR"}).json()["total_processos"] == 10
+        assert c.get("/api/market/datajud", params={"uf": "RR"}).json()["tribunal"] == "TJRR"
+        assert any(d["key"] == "mensalidades" for d in c.get("/api/debt-types").json())

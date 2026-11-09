@@ -9,14 +9,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.agents.pipeline import run_pipeline
-from app.collectors import cnpj_api, jobboards, pncp
+from app.collectors import cnpj_api, datajud, jobboards, pncp
 from app.db.database import get_db
-from app.db.models import CaptureRun, Company, Opportunity
+from app.db.models import CaptureRun, Company, MarketSnapshot, Opportunity
 from app.schemas import OpportunityCreate
 from app.services.cnpj import clean_cnpj, format_cnpj
 from app.services.procurement import parse_dt, score_procurement
 from app.services.jobs import COMPETITOR_CNAE, score_job
-from app.services.segments import SEGMENTS, profile_for
+from app.services.segments import DEBT_TYPES, SEGMENTS, debt_types_for, profile_for
 from app.services.scoring import score_opportunity
 
 router = APIRouter(prefix="/api")
@@ -50,6 +50,7 @@ def serialize_company(c, opportunities: int = 0):
         "registration_status": c.registration_status, "company_size": c.company_size, "legal_nature": c.legal_nature,
         "capital_social": c.capital_social, "opened_at": c.opened_at, "target_profile": c.target_profile,
         "target_profile_label": SEGMENTS.get(c.target_profile, {}).get("label"),
+        "debt_types": [d["label"] for d in debt_types_for(c.target_profile)],
         "registry_source": c.registry_source, "registry_updated_at": iso(c.registry_updated_at),
         "opportunities": opportunities,
     }
@@ -57,7 +58,7 @@ def serialize_company(c, opportunities: int = 0):
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "LeadCob AI", "version": "0.3.0"}
+    return {"status": "ok", "service": "LeadCob AI", "version": "0.4.0"}
 
 
 @router.get("/dashboard/summary")
@@ -408,3 +409,35 @@ def capture_jobs(db: Session = Depends(get_db)):
             "boards_fetched": len(batch["boards_fetched"]), "jobs_read": batch["jobs_read"], "matches": len(batch["records"]),
             "created": created, "updated": updated, "closed": closed, "competitors": competitors,
             "discarded_samples": batch["discarded_samples"], "errors": batch["errors"], "message": run.message}
+
+
+# ------------------------------------------------- mercado: DataJud (CNJ)
+@router.get("/debt-types")
+def debt_types():
+    return [{"key": k, "label": v["label"], "datajud_assuntos": v["datajud_assuntos"],
+             "perfis": [s for s, seg in SEGMENTS.items() if k in seg.get("debt_types", [])]} for k, v in DEBT_TYPES.items()]
+
+
+@router.post("/market/datajud")
+def market_datajud_refresh(uf: str = Query(..., min_length=2, max_length=2), months: int = Query(default=12, ge=1, le=36),
+                           db: Session = Depends(get_db)):
+    """Consulta o DataJud e guarda a fotografia. Lento (o CNJ limita a fila de buscas): 10 s a 2 min."""
+    try:
+        data = datajud.market_map(uf, months)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except datajud.DataJudError as exc:
+        raise HTTPException(502, str(exc))
+    snap = MarketSnapshot(source="datajud", uf=data["uf"], period_start=data["periodo"]["inicio"],
+                          period_end=data["periodo"]["fim"], payload=data)
+    db.add(snap); db.commit(); db.refresh(snap)
+    return {"snapshot_id": snap.id, "created_at": iso(snap.created_at), **data}
+
+
+@router.get("/market/datajud")
+def market_datajud_latest(uf: str = Query(..., min_length=2, max_length=2), db: Session = Depends(get_db)):
+    snap = (db.query(MarketSnapshot).filter_by(source="datajud", uf=uf.upper())
+            .order_by(MarketSnapshot.created_at.desc()).first())
+    if not snap:
+        raise HTTPException(404, f"Sem fotografia do DataJud para {uf.upper()}. Use POST /api/market/datajud?uf={uf.upper()}.")
+    return {"snapshot_id": snap.id, "created_at": iso(snap.created_at), **snap.payload}

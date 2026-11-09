@@ -10,14 +10,25 @@ mensais da Receita: não é o cadastro em tempo real. Aceita CNPJ numérico e al
 ```bash
 cd backend
 # direto do compartilhamento da Receita (leitura em fluxo, sem baixar ~7 GB)
-python -m app.jobs.import_cnpj --segments atacado,credito_fomento --uf AM,PA --parts 0-9
+python -m app.jobs.import_cnpj --uf AM,PA --parts 0-9                      # todos os setores
+python -m app.jobs.import_cnpj --segments varejo,atacado --uf AM --parts 0-9  # só alguns perfis
 # a partir de ZIPs já baixados (pasta com Cnaes.zip, Municipios.zip, Naturezas.zip,
 # Estabelecimentos*.zip e Empresas*.zip da MESMA competência)
 python -m app.jobs.import_cnpj --local-dir ../data/cnpj --release 2026-10 --segments atacado
 # teste rápido sem gravar
 python -m app.jobs.import_cnpj --segments educacao_privada --parts 1 --limit 20 --dry-run
 ```
-Perfis: `GET /api/segments` (`app/services/segments.py`) — hipóteses comerciais por CNAE.
+Perfis: `GET /api/segments` (`app/services/segments.py`). Desde a v0.4 são rótulos, não filtro:
+toda empresa ativa recebe um perfil e os tipos de inadimplência típicos do setor (`GET /api/debt-types`).
+
+### Empresário individual e MEI
+Natureza 213-5. Na amostra real (3.000 empresas do arquivo Empresas0), 84% eram dessa natureza e 70% delas
+tinham razão social = nome da pessoa + CPF. Por isso ficam fora por padrão. `--include-individual` inclui,
+removendo o CPF do nome — o nome continua sendo dado pessoal: documente a base legal antes (LGPD).
+
+### Volume
+Todos os setores numa UF grande pode passar de centenas de milhares de empresas. O job para em
+`--max-records` (padrão 300 mil) e pede para dividir por UF ou perfil.
 
 ### Como funciona
 1. Lê `Estabelecimentos*.zip` e mantém: situação ATIVA, só matriz (`--include-branches` muda), UF e CNAE do perfil.
