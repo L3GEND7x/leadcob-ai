@@ -61,3 +61,14 @@ def test_lookup_not_found_and_invalid():
         cnpj_api.lookup("05156977000116", http=client(lambda r: httpx.Response(404, json={"message": "x"})))
     with pytest.raises(cnpj_api.CNPJInvalid):  # nem chega à rede
         cnpj_api.lookup("11111111111111", http=client(lambda r: (_ for _ in ()).throw(AssertionError("rede"))))
+
+
+@pytest.mark.parametrize("cnae,expected", [
+    ("4623199", "atacado"), ("4687701", "atacado"), ("4644301", "atacado"),
+    # representantes comerciais (46.1): comissão, sem carteira própria
+    ("4611700", None), ("4616800", None), ("4618499", None), ("4619200", None),
+    ("6491300", "credito_fomento"), ("4711302", None),
+])
+def test_segment_profiles(cnae, expected):
+    from app.services.segments import profile_for
+    assert profile_for(cnae) == expected

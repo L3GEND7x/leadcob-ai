@@ -8,7 +8,10 @@ Códigos = prefixos do CNAE de 7 dígitos (subclasse IBGE).
 SEGMENTS = {
     "atacado": {
         "label": "Comércio atacadista e distribuição",
-        "cnae_prefixes": ["46"],
+        # 46.2 a 46.9. O grupo 46.1 (representantes comerciais e agentes do comércio) fica de fora:
+        # trabalham por comissão e não têm carteira própria — na 1ª importação real (09/11/2026)
+        # eram 4 de 13 empresas do perfil.
+        "cnae_prefixes": ["462", "463", "464", "465", "466", "467", "468", "469"],
         "rationale": "Vendas B2B a prazo geram carteira de duplicatas e inadimplência recorrente.",
     },
     "industria": {

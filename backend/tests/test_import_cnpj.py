@@ -148,3 +148,17 @@ def test_job_reads_local_zip_folder(tmp_path, fake_rfb):
 def test_local_dir_requires_release(tmp_path):
     with pytest.raises(SystemExit):
         J.main(["--local-dir", str(tmp_path)])
+
+
+def test_reprofile_removes_companies_that_left_a_profile():
+    from app.db.database import SessionLocal, ensure_schema
+    from app.db.models import Company
+    ensure_schema()
+    db = SessionLocal()
+    db.add(Company(name="REPRESENTANTE LTDA", cnpj="99999999000199", cnae_main="4611700", target_profile="atacado"))
+    db.add(Company(name="ATACADISTA LTDA", cnpj="99999998000199", cnae_main="4623199", target_profile="atacado"))
+    db.commit()
+    assert J.reprofile(db) >= 1
+    by = {c.cnpj: c.target_profile for c in db.query(Company).filter(Company.cnpj.in_(["99999999000199", "99999998000199"]))}
+    assert by == {"99999999000199": None, "99999998000199": "atacado"}
+    db.close()
