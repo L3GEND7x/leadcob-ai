@@ -28,3 +28,5 @@ code{font-size:10px;color:#c9c9d0}
 .bar small{grid-column:1/3;color:#8a8a93;font-size:10px}
 .kpi{font:800 26px Manrope}
 @media (max-width:900px){.market{grid-template-columns:1fr}}
+/* celular: painéis em grade não estouram a largura */
+.twocol>*,.market>*{min-width:0}.source span{min-width:0;overflow-wrap:anywhere}.source small{overflow-wrap:anywhere}
