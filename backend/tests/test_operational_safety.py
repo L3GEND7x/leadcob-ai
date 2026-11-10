@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.config import settings
 from app.core.security import password_hash
+from app.core.security import validate_configuration
 from app.services import collection, negotiation
 from app.collectors.site_contacts import discover
 from app.db.database import SessionLocal, ensure_schema
@@ -105,6 +106,36 @@ def test_owner_login_and_csrf(monkeypatch):
         assert c.post('/api/contacts/sync', headers={'X-CSRF-Token': csrf}).status_code == 200
         assert c.post('/api/auth/logout', headers={'X-CSRF-Token': csrf}).status_code == 200
         assert c.get('/api/companies/search').status_code == 401
+
+
+def test_production_configuration_and_secure_session(monkeypatch):
+    import pytest
+    ensure_schema()
+    monkeypatch.setattr(settings, 'app_env', 'production')
+    monkeypatch.setattr(settings, 'admin_username', 'owner')
+    monkeypatch.setattr(settings, 'admin_password_hash', password_hash('senha-de-teste-muito-forte'))
+    monkeypatch.setattr(settings, 'public_url', 'https://painel.example.com')
+    monkeypatch.setattr(settings, 'db_host', '')
+    monkeypatch.setattr(settings, 'postgres_password', '')
+    with pytest.raises(RuntimeError, match='PostgreSQL'):
+        validate_configuration()
+    monkeypatch.setattr(settings, 'db_host', 'db')
+    monkeypatch.setattr(settings, 'postgres_password', 'senha-de-banco')
+    validate_configuration()
+    # ASGI TestClient uses the test SQLite database; this exercises HTTPS cookie,
+    # origin and CSRF middleware separately from the unavailable Docker stack.
+    with TestClient(app, base_url='https://painel.example.com') as c:
+        assert c.get('/api/health').status_code == 200
+        assert c.get('/api/companies/search').status_code == 401
+        login = c.post('/api/auth/login', json={'username': 'owner', 'password': 'senha-de-teste-muito-forte'})
+        assert login.status_code == 200
+        assert 'Secure' in login.headers['set-cookie']
+        csrf = login.json()['csrf_token']
+        assert c.get('/api/companies/search').status_code == 200
+        assert c.post('/api/contacts/sync', headers={'X-CSRF-Token': csrf,
+               'Origin': 'https://outro.example.com'}).status_code == 403
+        assert c.post('/api/contacts/sync', headers={'X-CSRF-Token': csrf,
+               'Origin': 'https://painel.example.com'}).status_code == 200
 
 
 def test_assistant_approval_uses_real_task(monkeypatch):

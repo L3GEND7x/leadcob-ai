@@ -58,6 +58,10 @@ def serialize_company(c, opportunities: int = 0):
 
 @router.get("/health")
 def health():
+    from sqlalchemy import text
+    from app.db.database import engine
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
     return {"status": "ok", "service": "LeadCob AI", "version": "0.5.3"}
 
 

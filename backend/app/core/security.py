@@ -4,6 +4,7 @@ import hmac
 import secrets
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -40,10 +41,14 @@ def auth_enabled():
 
 def validate_configuration():
     if settings.app_env == 'production':
-        if not settings.admin_password_hash.startswith('pbkdf2_sha256.'):
+        parts = settings.admin_password_hash.split('.')
+        if len(parts) != 3 or parts[0] != 'pbkdf2_sha256' or len(parts[1]) != 32 or len(parts[2]) != 64:
             raise RuntimeError('Produção exige ADMIN_PASSWORD_HASH. Execute python -m app.core.security.')
-        if not settings.public_url.startswith('https://'):
+        parsed = urlparse(settings.public_url)
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ('', '/'):
             raise RuntimeError('Produção exige PUBLIC_URL HTTPS.')
+        if not settings.db_host or not settings.postgres_password:
+            raise RuntimeError('Produção exige DB_HOST e POSTGRES_PASSWORD para PostgreSQL.')
         if settings.demo_seed:
             raise RuntimeError('DEMO_SEED deve estar desativado em produção.')
 
