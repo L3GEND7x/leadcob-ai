@@ -1,0 +1,75 @@
+name: Teste da implantação online
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configuração temporária de teste
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import secrets
+          password = secrets.token_urlsafe(24)
+          salt = secrets.token_hex(16)
+          digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 600000).hex()
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'leadcob-smoke-password').write_text(password)
+          pathlib.Path('.env').write_text(
+              f'DOMAIN=localhost\nPOSTGRES_PASSWORD={secrets.token_urlsafe(24)}\n'
+              f'ADMIN_USERNAME=ci\nADMIN_PASSWORD_HASH=pbkdf2_sha256.{salt}.{digest}\n'
+              'DEMO_SEED=false\n', encoding='utf-8')
+          PY
+      - name: Validar e iniciar serviços
+        run: |
+          docker compose -f docker-compose.cloud.yml config --quiet
+          docker compose -f docker-compose.cloud.yml up -d --build --wait
+      - name: Verificar HTTPS, banco, login e proteção de gravações
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import ssl
+          import urllib.error
+          import urllib.request
+          import http.cookiejar
+          context = ssl._create_unverified_context()  # somente certificado local efêmero da CI
+          jar = http.cookiejar.CookieJar()
+          opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar),
+                                               urllib.request.HTTPSHandler(context=context))
+          base = 'https://localhost'
+          def request(path, method='GET', body=None, headers=None):
+              payload = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(base + path, data=payload, method=method,
+                  headers={'Content-Type': 'application/json', **(headers or {})})
+              try:
+                  with opener.open(req, timeout=15) as res:
+                      return res.status, json.load(res)
+              except urllib.error.HTTPError as exc:
+                  return exc.code, json.load(exc)
+          assert request('/api/health')[0] == 200
+          assert request('/api/companies/search')[0] == 401
+          password = pathlib.Path(os.environ['RUNNER_TEMP'], 'leadcob-smoke-password').read_text()
+          status, login = request('/api/auth/login', 'POST', {'username': 'ci', 'password': password})
+          assert status == 200
+          assert request('/api/companies/search')[0] == 200
+          assert request('/api/contacts/sync', 'POST')[0] == 403
+          csrf = login['csrf_token']
+          assert request('/api/contacts/sync', 'POST', headers={
+              'X-CSRF-Token': csrf, 'Origin': base})[0] == 200
+          assert request('/api/auth/logout', 'POST', headers={'X-CSRF-Token': csrf})[0] == 200
+          assert request('/api/companies/search')[0] == 401
+          PY
+      - name: Encerrar serviços
+        if: always()
+        run: docker compose -f docker-compose.cloud.yml down -v --remove-orphans
