@@ -57,13 +57,14 @@ def insert(db, company, kind, value, source, url=None):
     return True
 
 @router.get("")
-def list_contacts(q: str = "", kind: str = "", limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+def list_contacts(q: str = "", kind: str = "", company_id: int | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
     query = db.query(BusinessContact, Company).join(Company, BusinessContact.company_id == Company.id)
     blocked_ids = [x.company_id for x in db.query(Suppression).filter(Suppression.company_id.isnot(None)).all()]
     blocked_cnpjs = [x.cnpj for x in db.query(Suppression).filter(Suppression.cnpj.isnot(None)).all()]
     if blocked_ids: query = query.filter(~Company.id.in_(blocked_ids))
     if blocked_cnpjs: query = query.filter(or_(Company.cnpj.is_(None), ~Company.cnpj.in_(blocked_cnpjs)))
     if kind in KINDS: query = query.filter(BusinessContact.kind == kind)
+    if company_id: query = query.filter(BusinessContact.company_id == company_id)
     if q: query = query.filter(or_(Company.name.ilike(f"%{q}%"), Company.cnpj.ilike(f"%{q}%"), BusinessContact.value.ilike(f"%{q}%")))
     total = query.count()
     rows = query.order_by(BusinessContact.id.desc()).offset(offset).limit(limit).all()
@@ -108,3 +109,30 @@ def verify(contact_id: int, status: str = Query(pattern="^(verificado|invalido|a
     db.add(AuditLog(event="contact_reviewed", entity_type="business_contact", entity_id=item.id, details={"status": status}))
     db.commit()
     return {"id": item.id, "status": item.status}
+
+
+@router.post("/discover/{company_id}")
+def discover_from_site(company_id: int, db: Session = Depends(get_db)):
+    """Lê o site oficial cadastrado na ficha e guarda e-mails institucionais do próprio domínio (a verificar)."""
+    from app.collectors import site_contacts
+    c = db.get(Company, company_id)
+    if not c: raise HTTPException(404, "Empresa não encontrada")
+    if is_blocked(db, c): raise HTTPException(403, "Empresa em lista de supressão")
+    if not c.website: raise HTTPException(400, "Cadastre primeiro o site institucional da empresa (confirmado por você) na ficha.")
+    try:
+        result = site_contacts.discover(c.website)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    added = 0
+    for item in result["emails"]:
+        try:
+            if insert(db, c, "email", item["email"], "Site institucional (leitura automática)", item["source_url"]): added += 1
+        except HTTPException:
+            pass
+    if added and not c.institutional_email:
+        c.institutional_email = result["emails"][0]["email"]
+    db.add(AuditLog(event="contacts_discovered", entity_type="company", entity_id=c.id,
+                    details={"pages": result["pages_read"], "found": len(result["emails"]), "added": added}))
+    db.commit()
+    return {**result, "added": added,
+            "note": "Só e-mails institucionais do próprio domínio do site cadastrado. Confira antes de usar (status: a verificar)."}

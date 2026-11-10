@@ -406,6 +406,10 @@ async function viewEmpresa(id) {
         <label class="f">E-mail institucional<input name="institutional_email" type="email" maxlength="255" value="${esc(c.institutional_email || '')}"></label>
         <label class="f full">Anotações<textarea name="notes" maxlength="5000">${esc(c.notes || '')}</textarea></label>
         <div class="end"><button class="primary">Salvar</button></div></form>`)}
+      ${panel('Contatos institucionais', 'Só canais da empresa (nunca pessoais), com a origem registrada', suppressed ? '<p class="note">Empresa na lista de supressão.</p>' : `<div id="co-contacts"><p class="note">Carregando…</p></div>
+        <div class="actions" style="margin:8px 0">${c.website ? `<button class="small" onclick="discoverContacts(${JSON.stringify(c.id)})">⌕ Buscar e-mails no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
+        ${c.website ? '' : '<p class="note">Sem site cadastrado: pesquise, confira que é o site oficial da empresa e salve-o no campo "Site institucional" acima.</p>'}
+        <form id="f-contact" class="form"><label class="f">Canal<select name="kind"><option value="email">E-mail</option><option value="website">Site</option><option value="phone">Telefone</option></select></label><label class="f">Valor<input name="value" required minlength="3" maxlength="500"></label><label class="f full">Onde você encontrou (fonte)<input name="source_name" required minlength="2" maxlength="120" placeholder="Ex.: página Fale Conosco do site oficial"></label><label class="f full">URL da fonte (opcional)<input name="source_url" maxlength="1000"></label><div class="end"><button>＋ Adicionar contato</button></div></form>`)}
       ${panel('Abordagem sugerida', 'Gerada com os fatos desta ficha. Nada é enviado pelo sistema.', suppressed ? '<p class="note">Empresa na lista de supressão: nenhuma abordagem é gerada.</p>' : '<div id="approach"><button class="primary" onclick="loadApproach(' + JSON.stringify(c.id) + ')">✉ Gerar e-mail, WhatsApp, roteiro e follow-ups</button></div>')}
       ${panel('Registrar interação', c.last_outreach_at ? 'Último contato em ' + when(c.last_outreach_at) : 'Nenhum contato registrado', `<form id="f-int" class="form">
         <label class="f">Tipo<select name="kind">${opts(KINDS, 'contato')}</select></label>
@@ -427,7 +431,37 @@ async function viewEmpresa(id) {
     </div></div>`;
   bindSheet(c);
 }
+async function loadCompanyContacts(id) {
+  const box = $('co-contacts'); if (!box) return;
+  try {
+    const d = await api('/contacts?company_id=' + encodeURIComponent(id));
+    const ST = { a_verificar: ['A VERIFICAR', 'warn'], verificado: ['VERIFICADO', 'ok'], invalido: ['INVÁLIDO', 'bad'] };
+    box.innerHTML = d.items.length ? d.items.map(x => `<div class="task"><div class="main"><strong>${esc(x.value)}</strong><small>${esc(x.kind)} · ${x.source_url ? `<a class="src" href="${esc(x.source_url)}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name)} <span class="badge ${ST[x.status][1]}">${ST[x.status][0]}</span></small></div>${x.status !== 'verificado' ? `<button class="small" onclick="verifyContact(${x.id},'verificado')">✓ Confirmar</button>` : ''}${x.status !== 'invalido' ? `<button class="small" onclick="verifyContact(${x.id},'invalido')">✕ Inválido</button>` : ''}</div>`).join('') : '<p class="empty">Nenhum contato institucional cadastrado.</p>';
+  } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Contatos indisponíveis.'))}</p>`; }
+}
+async function discoverContacts(id) {
+  toast('Lendo o site oficial (respeitando robots.txt)…', 8000);
+  try {
+    const r = await send('/contacts/discover/' + id, 'POST');
+    if (!r.pages_read.length) return toast('Não foi possível ler o site: ' + (r.notes[0] || 'sem resposta') + '. Se a rede deste servidor bloqueia sites externos, cadastre o contato à mão com a fonte.', 10000, true);
+    toast(`${r.pages_read.length} página(s) lida(s) · ${r.emails.length} e-mail(s) institucional(is) · ${r.added} novo(s). Confira antes de usar.`, 9000);
+    viewEmpresa(id);
+  } catch (e) { toast(errMsg(e, 'Não foi possível ler o site.'), 9000, true); }
+}
+async function verifyContact(cid, status) {
+  try { await send(`/contacts/${cid}/verify?status=${status}`, 'PATCH'); toast('Contato atualizado.'); loadCompanyContacts(SHEET.id); }
+  catch (e) { toast(errMsg(e), 7000, true); }
+}
 function bindSheet(c) {
+  loadCompanyContacts(c.id);
+  const fc = $('f-contact');
+  if (fc) fc.addEventListener('submit', async e => {
+    e.preventDefault();
+    const body = { company_id: c.id, kind: fc.kind.value, value: fc.value.value.trim(), source_name: fc.source_name.value.trim() };
+    if (fc.source_url.value.trim()) body.source_url = fc.source_url.value.trim();
+    try { await send('/contacts', 'POST', body); toast('Contato adicionado (a verificar).'); fc.reset(); loadCompanyContacts(c.id); }
+    catch (err) { toast(errMsg(err), 7000, true); }
+  });
   const fs = $('f-stage');
   fs.stage.addEventListener('change', () => { $('lost-box').style.display = fs.stage.value === 'perdido' ? '' : 'none'; });
   fs.addEventListener('submit', async e => {

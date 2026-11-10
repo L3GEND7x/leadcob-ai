@@ -444,8 +444,9 @@ const LC = (() => {
       }
       if (route === '/contacts') {
         const all = (D['/contacts'] || { items: [] }).items, q = (p.get('q') || '').toLowerCase(), kind = p.get('kind');
+        const cid = p.get('company_id');
         const items = all.filter(x => { const s = V.byId[String(x.company_id)];
-          return !(s && s.suppressed) && (!kind || x.kind === kind) && (!q || (x.company_name + ' ' + (x.cnpj || '') + ' ' + x.value).toLowerCase().includes(q)); });
+          return !(s && s.suppressed) && (!cid || String(x.company_id) === cid) && (!kind || x.kind === kind) && (!q || (x.company_name + ' ' + (x.cnpj || '') + ' ' + x.value).toLowerCase().includes(q)); });
         return { total: items.length, items: items.slice(0, 100) };
       }
       if (route === '/portfolios') return [];
@@ -501,6 +502,7 @@ const LC = (() => {
     if (route === '/portfolios') fail('Por segurança, carteiras de títulos (dados de devedores de terceiros) não são enviadas para a página publicada. Use a versão instalada para a inteligência de cobrança.');
     if (route === '/contacts/sync') fail('Nesta página a sincronização de contatos roda sozinha a cada atualização (aos 10 minutos de cada hora).');
     if (route === '/contacts') fail('Cadastro de contato funciona na versão instalada.');
+    if (route.startsWith('/contacts/')) fail('Busca e verificação de contatos funcionam na versão instalada (esta página não acessa sites externos).');
     if (route.endsWith('/enrich')) fail('A consulta de CNPJ funciona na versão instalada: esta página não pode acessar sites externos.');
     fail('Ação indisponível nesta página.');
   }

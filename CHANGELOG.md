@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.3 — 10/11/2026
+- **Contatos institucionais na ficha**: lista com origem e status, confirmar/marcar inválido, cadastro manual com fonte
+  obrigatória, link para pesquisar o site oficial (a confirmação é sua).
+- **Busca de e-mails no site oficial** (`POST /api/contacts/discover/{id}`): lê só o site cadastrado na ficha e até 3
+  páginas de contato do mesmo domínio, respeita robots.txt e guarda só caixas institucionais do próprio domínio
+  (contato@, financeiro@...). E-mails de pessoas e de outros domínios são descartados. Tudo entra "a verificar".
+- **Base do AM na página publicada**: `--seed-db` no gerador da página inclui empresas importadas da Receita.
+- Página publicada com fichas completas para as 600 mais bem pontuadas e abordagens prontas para as 300 primeiras.
+
 ## 0.5.2 — 10/11/2026
 ### Etapa 2 (início) e integração da 0.5.1
 - **Aba Contatos empresariais** (pacote 0.5.1, revisado e aprovado): canais institucionais por empresa, com origem, data,
