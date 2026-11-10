@@ -55,6 +55,7 @@ Rotina sugerida: `docs/manual-uso-diario.md`. Pontuação: `docs/lead-score.md`.
 | Mapa de inadimplência por UF e tipo | DataJud (CNJ) | Integrada e validada; não identifica empresas (`docs/datajud.md`) |
 | Sinais de terceirização | — | **Não há fonte que comprove demanda**: cadastro e vagas são indícios; exige contato direto |
 
+Como Claude e ChatGPT trabalham juntos neste repositório: `COLABORACAO.md`.
 Catálogo completo de fontes: `docs/fontes.md`. Histórico e decisões: `CHANGELOG.md`.
 Nenhum dado fictício é criado (os exemplos de demonstração só existem com `DEMO_SEED=true`).
 O acesso local sem senha é limitado ao próprio computador; para publicar use a configuração de produção.
