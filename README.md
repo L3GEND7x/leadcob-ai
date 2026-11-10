@@ -1,4 +1,4 @@
-# LeadCob AI — 0.5.2
+# LeadCob AI — 0.5.3
 
 Plataforma individual de inteligência comercial para captar **qualquer empresa que tenha inadimplentes** —
 de qualquer setor e porte, do pequeno varejista ao grande grupo — e **todos os tipos de inadimplência**
@@ -34,7 +34,7 @@ Rotina sugerida: `docs/manual-uso-diario.md`. Pontuação: `docs/lead-score.md`.
 - `POST /api/companies/{id}/interactions` · `POST /api/companies/{id}/tasks` · `GET /api/tasks` · `PATCH /api/tasks/{id}`
 - `GET /api/pipeline` · `GET|POST /api/suppression` · `DELETE /api/suppression/{id}` · `GET|PUT /api/settings`
 - `GET /api/companies/{id}/approach` · `GET|POST /api/portfolios` · `GET|DELETE /api/portfolios/{id}` · `POST /api/negotiation/simulate` · `GET /api/scripts`
-- `GET|POST /api/contacts` · `POST /api/contacts/sync` · `PATCH /api/contacts/{id}/verify`
+- `GET|POST /api/contacts` · `POST /api/contacts/sync` · `POST /api/contacts/discover/{id}` · `PATCH /api/contacts/{id}/verify`
 - `GET /api/export/companies.csv` — só dados de PJ, sem empresas suprimidas
 - `GET /api/dashboard/summary` · `GET|POST /api/opportunities` · `POST /api/agents/run/{id}`
 - `POST /api/capture/pncp` (`mode=busca|varredura`, `only_open`, `include_review`, `max_pages`, `days`) · `POST /api/capture/jobs` · `GET /api/capture/runs`

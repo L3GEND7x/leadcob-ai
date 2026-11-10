@@ -65,3 +65,22 @@ def test_crm_actions_can_come_from_page_database_export():
     events, manual = load_crm(str(tmp))
     assert [e["id"] for e in events] == ["zz9", "aa1"]   # ordem pela hora da ação
     assert manual[0]["_doc"] == "m7"
+
+
+def test_seed_db_brings_registry_companies():
+    import sqlite3
+    tmp = Path(tempfile.mkdtemp())
+    db = tmp / "am.db"
+    con = sqlite3.connect(db)
+    con.executescript("""CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT, cnpj TEXT, state TEXT, cnae_main TEXT,
+      target_profile TEXT, registration_status TEXT, registry_source TEXT, created_at TEXT);
+      INSERT INTO companies VALUES (1, 'DISTRIBUIDORA AM LTDA', '11222333000181', 'AM', '4639701', 'atacado', 'ATIVA',
+      'Receita Federal — teste', '2026-11-10T10:00:00+00:00');""")
+    con.close()
+    prev_html = tmp / "prev.html"; prev_html.write_text("<script>window.__DEMO = {};</script>", encoding="utf-8")
+    out = tmp / "page.html"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "build_dashboard_snapshot.py"), "--out", str(out), "--previous", str(prev_html),
+                    "--seed-db", str(db), "--offline"], check=True, cwd=ROOT, capture_output=True)
+    d = json.loads(re.search(r"window\.__DEMO = (\{.*?\});</script>", out.read_text(encoding="utf-8"), re.S).group(1))
+    assert [c["name"] for c in d["companies_all"]] == ["DISTRIBUIDORA AM LTDA"]
+    assert d["prospects_all"][0]["cnpj"] == "11222333000181"   # continua nas próximas rodadas

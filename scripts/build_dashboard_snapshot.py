@@ -28,7 +28,8 @@ ROOT = Path(__file__).resolve().parents[1]
 COMPANY_FIELDS = ["name", "trade_name", "cnpj", "segment", "city", "state", "website", "institutional_email", "cnae_main",
                   "cnae_desc", "cnae_secondary", "registration_status", "company_size", "legal_nature", "capital_social",
                   "opened_at", "target_profile", "registry_source"]
-FICHAS_MAX = 1500   # fichas completas embutidas (o restante abre pelo resumo)
+FICHAS_MAX = 600     # fichas completas embutidas (o restante abre pelo resumo)
+APPROACHES_MAX = 300
 
 
 def previous_data(path: str | None) -> dict:
@@ -64,10 +65,23 @@ def parse_iso(v):
         return None
 
 
-def seed_companies(prev: dict):
+def rows_from_db(path: str | None) -> list[dict]:
+    """Empresas de outro banco do LeadCob (ex.: importação da Receita feita à parte), só campos de PJ."""
+    if not path or not Path(path).exists():
+        return []
+    import sqlite3
+    con = sqlite3.connect(path); con.row_factory = sqlite3.Row
+    cols = {r[1] for r in con.execute("PRAGMA table_info(companies)")}
+    want = [c for c in COMPANY_FIELDS + ["registry_updated_at", "created_at"] if c in cols]
+    rows = [dict(r) for r in con.execute(f"SELECT {', '.join(want)} FROM companies WHERE cnpj IS NOT NULL ORDER BY id")]
+    con.close()
+    return rows
+
+
+def seed_companies(prev: dict, extra: list[dict] | None = None):
     from app.db.database import SessionLocal
     from app.db.models import Company
-    rows = prev.get("prospects_all", [])
+    rows = prev.get("prospects_all", []) + (extra or [])
     with SessionLocal() as db:
         seen = set()
         for p in rows:
@@ -176,8 +190,8 @@ def crm_views(c) -> dict:
             break
         page += 1
     fichas = {str(s["id"]): g(f"/companies/{s['id']}") for s in companies[:FICHAS_MAX]}
-    approaches = {}
-    for sid in fichas:
+    approaches = {}   # abordagens prontas para as mais bem pontuadas (as demais aparecem na versão instalada)
+    for sid in [str(s["id"]) for s in companies[:APPROACHES_MAX]]:
         r = c.get(f"/api/companies/{sid}/approach")
         if r.status_code == 200:
             approaches[sid] = r.json()
@@ -252,6 +266,7 @@ def main(argv=None):
     ap.add_argument("--crm", help="ações gravadas na página: pasta exportada do banco da página (crm_eventos/ e "
                                   "oportunidades_manuais/, um JSON por documento) ou um JSON único")
     ap.add_argument("--offline", action="store_true", help="não consulta fontes externas (teste local)")
+    ap.add_argument("--seed-db", help="banco SQLite com empresas importadas da Receita para incluir na página")
     a = ap.parse_args(argv)
 
     os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/snapshot.db"
@@ -263,7 +278,7 @@ def main(argv=None):
     events, manual = load_crm(a.crm)
     status = {}
     with TestClient(app) as c:
-        seeded = seed_companies(prev)
+        seeded = seed_companies(prev, rows_from_db(a.seed_db))
         if not a.offline:
             for name, path in [("PNCP", "/api/capture/pncp?mode=busca&max_pages=1"), ("Vagas", "/api/capture/jobs")]:
                 r = c.post(path)
