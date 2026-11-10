@@ -1,6 +1,8 @@
 # Changelog
 
 ## Não lançado
+- Backup externo opcional: serviço Restic envia dumps locais verificados para armazenamento S3 compatível
+  com criptografia, recusa dumps vencidos e verifica o repositório após cada envio.
 - **Banco em produção** (issue #19): Alembic cria e versiona o esquema PostgreSQL antes de iniciar o painel;
   inicialização recusa versão ausente ou divergente. SQLite local mantém atualização legada.
 - **Relatórios** (issue #18): tela e `GET /api/reports/summary` (`dias`, ou `inicio`/`fim`) com atividade, empresas

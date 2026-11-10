@@ -77,6 +77,18 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+  offsite:
+    profiles: ["offsite"]
+    image: restic/restic:0.19.1
+    env_file: .env
+    volumes:
+      - ./backups:/backups:ro
+      - ./infra/offsite-backup.sh:/offsite-backup.sh:ro
+    entrypoint: ["sh", "/offsite-backup.sh"]
+    depends_on:
+      backup:
+        condition: service_started
+    restart: unless-stopped
 volumes:
   leadcob_pg:
   caddy_data:
