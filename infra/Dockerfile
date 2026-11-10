@@ -3,6 +3,7 @@ WORKDIR /app
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend /app/backend
+COPY alembic.ini /app/alembic.ini
 COPY frontend /app/frontend
 COPY config /app/config
 ENV PYTHONUNBUFFERED=1

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
-from app.db.database import SessionLocal,ensure_schema
+from app.db.database import SessionLocal,ensure_schema,check_schema_revision
 from app.db.models import AuditLog,Company,Opportunity
 from app.api.routes import router
 from app.api.routes_crm import router as crm_router
@@ -51,7 +51,10 @@ def seed():
 @app.on_event("startup")
 def startup():
     validate_configuration()
-    ensure_schema()
+    if settings.app_env.lower() == 'production':
+        check_schema_revision()
+    else:
+        ensure_schema()
     seed()
 @app.get("/")
 def dashboard(): return FileResponse(frontend/"index.html")

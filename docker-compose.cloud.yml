@@ -32,9 +32,23 @@ services:
       interval: 30s
       retries: 3
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    env_file: .env
+    environment:
+      APP_ENV: production
+      DB_HOST: db
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+    depends_on:
       db:
         condition: service_healthy
-    restart: unless-stopped
+    restart: "no"
   db:
     image: postgres:16-alpine
     environment:
@@ -60,8 +74,8 @@ services:
       - ./infra/backup.sh:/backup.sh:ro
     entrypoint: ["sh", "/backup.sh"]
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 volumes:
   leadcob_pg:

@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from pathlib import Path
 from app.core.config import settings
 
 database_url = (URL.create('postgresql+psycopg', username='leadcob', password=settings.postgres_password,
@@ -59,3 +60,20 @@ def ensure_schema():
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_opportunities_source_key ON opportunities (source_key)"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_portfolios_import_key ON portfolios (import_key)"))
+
+
+def check_schema_revision():
+    """Refuse production traffic until the database has the expected migration."""
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(Path(__file__).resolve().parents[3] / 'alembic.ini'))
+    expected = ScriptDirectory.from_config(config).get_current_head()
+    with engine.connect() as connection:
+        actual = MigrationContext.configure(connection).get_current_revision()
+    if not expected or actual != expected:
+        raise RuntimeError(
+            f'Banco na revisão {actual or "sem versão"}; esperada {expected}. '
+            'Faça backup e execute alembic upgrade head antes de iniciar o painel.'
+        )
