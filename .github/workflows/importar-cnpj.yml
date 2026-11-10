@@ -31,11 +31,18 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
+      - name: Conferir configuração
+        run: |
+          if [ -z "${{ vars.RFB_SHARE_TOKEN }}" ]; then
+            echo "::error::Defina a variável de repositório RFB_SHARE_TOKEN (token do compartilhamento público da Receita)."; exit 1
+          fi
       - name: Importar
         working-directory: backend
         env:
           UF: ${{ inputs.uf || 'AM' }}
           MIN_SIZE: ${{ inputs.min_size || '05' }}
+          # endereço público dos arquivos da Receita: variável do repositório (Settings → Secrets and variables → Actions → Variables)
+          RFB_SHARE_TOKEN: ${{ vars.RFB_SHARE_TOKEN }}
         run: |
           DATABASE_URL=sqlite:///$RUNNER_TEMP/base.db python -m app.jobs.import_cnpj --uf "$UF" --parts 0-9 \
             --min-size "$MIN_SIZE" --max-records 600000 --checkpoint "$RUNNER_TEMP/ckpt.json"

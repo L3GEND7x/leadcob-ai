@@ -7,6 +7,12 @@
   está registrado; sem projeções. Página publicada com os últimos 7 e 30 dias.
 - Auditoria do CRM passa a registrar a hora original das ações reaplicadas na página publicada.
 
+## Operação online — 10/11/2026
+- Backup PostgreSQL agora só aparece com nome definitivo depois de `pg_dump` e `pg_restore --list` concluídos;
+  uma falha preserva dumps anteriores e gera nova tentativa em uma hora.
+- Teste em contêiner restaura um dump em banco separado e confere um registro criado pelo painel.
+- A cópia criptografada fora da VPS continua pendente de provedor e credenciais próprios.
+
 ## 0.5.3 — 10/11/2026
 - **Contatos institucionais na ficha**: lista com origem e status, confirmar/marcar inválido, cadastro manual com fonte
   obrigatória, link para pesquisar o site oficial (a confirmação é sua).
