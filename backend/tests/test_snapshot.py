@@ -84,3 +84,24 @@ def test_seed_db_brings_registry_companies():
     d = json.loads(re.search(r"window\.__DEMO = (\{.*?\});</script>", out.read_text(encoding="utf-8"), re.S).group(1))
     assert [c["name"] for c in d["companies_all"]] == ["DISTRIBUIDORA AM LTDA"]
     assert d["prospects_all"][0]["cnpj"] == "11222333000181"   # continua nas próximas rodadas
+
+
+def test_export_base_and_seed_json_roundtrip():
+    import sqlite3
+    tmp = Path(tempfile.mkdtemp())
+    db = tmp / "base.db"
+    con = sqlite3.connect(db)
+    con.executescript("""CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT, cnpj TEXT, state TEXT, capital_social REAL,
+      registry_source TEXT, institutional_email TEXT);
+      INSERT INTO companies VALUES (1, 'INDUSTRIA AM SA', '11222333000181', 'AM', 5e6, 'Receita Federal — teste', 'x@y.com');""")
+    con.close()
+    out = tmp / "AM.json"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "export_base.py"), str(db), str(out)], check=True, capture_output=True)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["empresas"][0]["cnpj"] == "11222333000181" and "institutional_email" not in data["empresas"][0]
+    prev_html = tmp / "prev.html"; prev_html.write_text("<script>window.__DEMO = {};</script>", encoding="utf-8")
+    page = tmp / "page.html"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "build_dashboard_snapshot.py"), "--out", str(page), "--previous", str(prev_html),
+                    "--seed-json", str(out), "--offline"], check=True, cwd=ROOT, capture_output=True)
+    d = json.loads(re.search(r"window\.__DEMO = (\{.*?\});</script>", page.read_text(encoding="utf-8"), re.S).group(1))
+    assert [c["name"] for c in d["companies_all"]] == ["INDUSTRIA AM SA"]
