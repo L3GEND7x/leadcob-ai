@@ -17,10 +17,12 @@ O resultado é CADASTRO, não sinal de demanda.
 from __future__ import annotations
 
 import argparse
+import json
 import io
 import re
 import sys
 import time
+from pathlib import Path
 from datetime import datetime, timezone
 
 from app.collectors import rfb_files as R
@@ -53,6 +55,11 @@ def apply_individual_policy(records: list[dict], include_individual: bool, stats
             r["individual"] = True
         kept.append(r)
     return kept
+
+
+def ckpt_args(a) -> dict:
+    """Só retoma um checkpoint feito com os mesmos filtros."""
+    return {k: getattr(a, k) for k in ("segments", "uf", "include_branches", "limit")}
 
 
 def parse_parts(spec: str) -> list[int]:
@@ -274,6 +281,7 @@ def main(argv=None):
                          "o CPF é removido, mas o nome continua sendo dado pessoal — exige base legal documentada (LGPD)")
     ap.add_argument("--max-records", type=int, default=300_000,
                     help="limite de segurança de memória; acima disso, divida por --uf ou --segments")
+    ap.add_argument("--checkpoint", help="arquivo para salvar o progresso a cada Estabelecimentos lido e retomar se interrompido")
     ap.add_argument("--local-dir", help="pasta com os ZIPs já baixados (ex.: data/cnpj/2026-10); exige --release")
     a = ap.parse_args(argv)
 
@@ -296,7 +304,17 @@ def main(argv=None):
         municipios = lookup_table(src, "Municipios.zip")
         naturezas = lookup_table(src, "Naturezas.zip")
         found: dict[str, dict] = {}
+        done_parts: set[int] = set()
+        ckpt = Path(a.checkpoint) if a.checkpoint else None
+        if ckpt and ckpt.exists():   # retoma uma importação interrompida
+            saved = json.loads(ckpt.read_text(encoding="utf-8"))
+            if saved.get("release") == release and saved.get("args") == ckpt_args(a):
+                found, done_parts = saved["found"], set(saved["parts_done"])
+                stats.update(saved.get("stats", {}))
+                print(f"  retomando: {len(done_parts)} arquivo(s) já lidos, {len(found)} empresas", flush=True)
         for part in parse_parts(a.parts):
+            if part in done_parts:
+                continue
             remaining = (a.limit - len(found)) if a.limit else None
             if remaining is not None and remaining <= 0:
                 break
@@ -311,6 +329,12 @@ def main(argv=None):
                                      f"ou --segments (ou aumente --max-records se houver memória).")
             print(f"  Estabelecimentos{part}: {stats.get('read', 0)} linhas lidas, {len(found)} empresas no perfil "
                   f"({time.time() - t0:.0f}s)", flush=True)
+            if ckpt:
+                done_parts.add(part)
+                tmp = ckpt.with_suffix(".tmp")
+                tmp.write_text(json.dumps({"release": release, "args": ckpt_args(a), "parts_done": sorted(done_parts),
+                                           "found": found, "stats": stats}), encoding="utf-8")
+                tmp.replace(ckpt)
         if found and not a.skip_companies:
             by_basico = {r["cnpj_basico"]: r for r in found.values()}
             # Empresas é particionado por faixa de CNPJ básico: lê só os arquivos

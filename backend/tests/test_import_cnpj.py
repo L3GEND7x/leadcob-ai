@@ -189,3 +189,14 @@ def test_skip_companies_requires_explicit_individual_decision():
 def test_max_records_guard(fake_rfb):
     with pytest.raises(SystemExit):
         J.main(["--uf", "AM", "--parts", "0-1", "--max-records", "1", "--dry-run"])
+
+
+def test_checkpoint_resumes_without_rereading_parts(tmp_path, fake_rfb):
+    ck = tmp_path / "am.ckpt.json"
+    args = ["--segments", "credito_fomento,educacao_privada", "--uf", "AM", "--parts", "0-1", "--dry-run", "--checkpoint", str(ck)]
+    first = J.main(args)
+    assert ck.exists() and len(first) == 2
+    reads_before = sum(1 for n, *_ in fake_rfb if n.startswith("Estabelecimentos"))
+    again = J.main(args)   # simula a retomada: os dois arquivos já constam do checkpoint
+    reads_after = sum(1 for n, *_ in fake_rfb if n.startswith("Estabelecimentos"))
+    assert reads_after == reads_before and {r["cnpj_basico"] for r in again} == {r["cnpj_basico"] for r in first}
