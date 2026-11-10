@@ -349,11 +349,17 @@ def main(argv=None):
 def render(data: dict) -> str:
     fe = ROOT / "frontend"
     html, css, js = (fe / "index.html").read_text(), (fe / "styles.css").read_text(), (fe / "app.js").read_text()
-    body = html[html.index("<body>") + 6:html.index("</body>")].replace('<script src="/static/app.js"></script>', "")
+    # STATIC_SCRIPTS: todos os <script src="/static/..."> do index.html são embutidos, na mesma ordem
+    scripts = re.findall(r'<script src="/static/([^"]+)"></script>', html)
+    body = html[html.index("<body>") + 6:html.index("</body>")]
+    body = re.sub(r'<script src="/static/[^"]+"></script>', "", body)
     fonts = re.search(r'<link href="https://fonts.googleapis.com[^>]+>', html).group(0)
     i = js.index("async function api("); j = js.index("}", js.index("return r.json();", i)) + 1
     js = js[:i] + "async function api(path, opt = {}) { return LC.api(path, opt); }" + js[j:]
-    js = RUNTIME_JS.read_text(encoding="utf-8") + "\n" + js
+    others = [(fe / name).read_text(encoding="utf-8") for name in scripts if name != "app.js"]
+    # na página publicada não há login de servidor: a sessão é a do claude.ai
+    overrides = "\nasync function sessionReady() { return true; }\nfunction logout() {}\n"
+    js = "\n".join([RUNTIME_JS.read_text(encoding="utf-8"), *others, js, overrides])
     ufs = data["__meta"]["ufs"] or ["AM"]
     js = js.replace("u === 'AM' ? 'selected' : ''", f"u === '{ufs[0]}' ? 'selected' : ''")
     meta = data["__meta"]
@@ -370,6 +376,7 @@ def render(data: dict) -> str:
 {css}
 .demo-banner{{background:#21152f;border-bottom:1px solid #52316f;color:#e6d9f7;font:13px 'DM Sans',sans-serif;padding:9px max(16px,env(safe-area-inset-right,0px)) 9px max(16px,env(safe-area-inset-left,0px));text-align:center}}
 .demo-banner b{{color:#fff}}
+aside > button[onclick="logout()"]{{display:none}}
 </style>
 <div class="demo-banner">{banner}</div>
 {body}
