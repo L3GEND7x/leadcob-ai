@@ -17,7 +17,8 @@ Sem `DATABASE_URL`, usa SQLite local. Bancos criados em versões anteriores são
 
 **Testes:** `cd backend && pip install pytest && python -m pytest`.
 
-**Online (VPS):** configuração para um proprietário, com login, HTTPS, PostgreSQL e backup local diário:
+**Online (VPS):** configuração para um proprietário, com login, HTTPS, PostgreSQL, migrações versionadas,
+backup local diário e opção de cópia criptografada para armazenamento externo:
 consulte [operação online](docs/operacao-online.md). Exige domínio, VPS, senha e configuração própria.
 O assistente OpenAI exige chave de API e teto mensal configurados no servidor.
 
@@ -62,9 +63,9 @@ O acesso local sem senha é limitado ao próprio computador; para publicar use a
 Esta versão ainda não foi implantada em nuvem nem testada com credenciais reais de OpenAI ou Brave.
 
 ## Segurança e operação
-Login individual e proteção CSRF, HTTPS na configuração de VPS, limite de tentativas de login e backup local estão implementados.
-Antes de usar dados reais continuamente, implante migrações versionadas, cópia de backup fora da VPS, teste de restauração,
-monitoramento e retenção documentada. Capturas externas ainda são síncronas; precisam de fila de trabalhos e agendamento para operação contínua.
+Login individual e proteção CSRF, HTTPS na configuração de VPS, limite de tentativas de login, migrações versionadas e backup local estão implementados.
+A cópia externa criptografada é opcional e depende de bucket, credenciais e ativação no servidor. Antes de usar dados reais continuamente,
+implante a VPS, ative a cópia externa, ensaie uma restauração real e configure monitoramento e retenção no provedor. Capturas externas ainda são síncronas; precisam de fila de trabalhos e agendamento para operação contínua.
 Respeitar termos de uso e controles técnicos das fontes. Priorizar dados de pessoa jurídica e canais
 institucionais; não coletar CPF, dados financeiros privados, dados sensíveis ou contatos pessoais sem necessidade e base
 legal documentada. Registrar fonte, URL, data e finalidade. Manter opt-out/lista de supressão. Campanhas externas em
