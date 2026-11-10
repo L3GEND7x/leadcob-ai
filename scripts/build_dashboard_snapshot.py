@@ -65,6 +65,17 @@ def parse_iso(v):
         return None
 
 
+def rows_from_json(paths: list[str] | None) -> list[dict]:
+    """Bases exportadas por scripts/export_base.py (ramo dados-cnpj): {"empresas": [...]}."""
+    out = []
+    for path in paths or []:
+        if Path(path).exists():
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            out += [{k: v for k, v in r.items() if k in COMPANY_FIELDS + ["registry_updated_at", "created_at"]}
+                    for r in data.get("empresas", [])]
+    return out
+
+
 def rows_from_db(path: str | None) -> list[dict]:
     """Empresas de outro banco do LeadCob (ex.: importação da Receita feita à parte), só campos de PJ."""
     if not path or not Path(path).exists():
@@ -267,6 +278,7 @@ def main(argv=None):
                                   "oportunidades_manuais/, um JSON por documento) ou um JSON único")
     ap.add_argument("--offline", action="store_true", help="não consulta fontes externas (teste local)")
     ap.add_argument("--seed-db", help="banco SQLite com empresas importadas da Receita para incluir na página")
+    ap.add_argument("--seed-json", nargs="*", help="bases exportadas (bases/<UF>.json do ramo dados-cnpj)")
     a = ap.parse_args(argv)
 
     os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/snapshot.db"
@@ -278,7 +290,7 @@ def main(argv=None):
     events, manual = load_crm(a.crm)
     status = {}
     with TestClient(app) as c:
-        seeded = seed_companies(prev, rows_from_db(a.seed_db))
+        seeded = seed_companies(prev, rows_from_db(a.seed_db) + rows_from_json(a.seed_json))
         if not a.offline:
             for name, path in [("PNCP", "/api/capture/pncp?mode=busca&max_pages=1"), ("Vagas", "/api/capture/jobs")]:
                 r = c.post(path)

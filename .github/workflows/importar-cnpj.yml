@@ -1,0 +1,54 @@
+name: Importar base CNPJ (Receita)
+
+# Lê os dados abertos do CNPJ (cerca de 2h30 por UF) e grava a base de empresas, só com dados de pessoa
+# jurídica, em bases/<UF>.json no ramo "dados-cnpj". A página publicada lê esse ramo a cada atualização.
+on:
+  workflow_dispatch:
+    inputs:
+      uf:
+        description: "UF (ex.: AM)"
+        required: true
+        default: "AM"
+      min_size:
+        description: "Porte mínimo: 01 ME, 03 EPP, 05 demais"
+        required: true
+        default: "05"
+  schedule:
+    - cron: "17 6 15 * *"   # mensal (dia 15), depois da publicação da Receita
+
+permissions:
+  contents: write
+
+jobs:
+  importar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: Importar
+        working-directory: backend
+        env:
+          UF: ${{ inputs.uf || 'AM' }}
+          MIN_SIZE: ${{ inputs.min_size || '05' }}
+        run: |
+          DATABASE_URL=sqlite:///$RUNNER_TEMP/base.db python -m app.jobs.import_cnpj --uf "$UF" --parts 0-9 \
+            --min-size "$MIN_SIZE" --max-records 600000 --checkpoint "$RUNNER_TEMP/ckpt.json"
+          python ../scripts/export_base.py "$RUNNER_TEMP/base.db" "$RUNNER_TEMP/$UF.json"
+      - name: Gravar no ramo dados-cnpj
+        env:
+          UF: ${{ inputs.uf || 'AM' }}
+        run: |
+          git config user.name "leadcob-bot"
+          git config user.email "leadcob-bot@users.noreply.github.com"
+          git fetch origin dados-cnpj || true
+          if git rev-parse --verify origin/dados-cnpj >/dev/null 2>&1; then git checkout -B dados-cnpj origin/dados-cnpj; else git checkout --orphan dados-cnpj && git rm -rqf .; fi
+          mkdir -p bases && cp "$RUNNER_TEMP/$UF.json" "bases/$UF.json"
+          git add "bases/$UF.json"
+          git commit -m "Base CNPJ $UF ($(date -u +%Y-%m-%d))" || echo "sem mudanças"
+          git push origin dados-cnpj
