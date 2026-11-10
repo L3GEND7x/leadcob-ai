@@ -24,7 +24,7 @@ BASE_URL = os.getenv("DATAJUD_API_URL", "https://api-publica.datajud.cnj.jus.br"
 # Chave PÚBLICA publicada pelo CNJ em https://datajud-wiki.cnj.jus.br/api-publica/acesso
 # (conferida em 09/11/2026). O CNJ avisa que ela pode mudar a qualquer momento: em caso de
 # HTTP 401/403, atualize DATAJUD_API_KEY com o valor atual daquela página.
-API_KEY = os.getenv("DATAJUD_API_KEY") or "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
+API_KEY = os.getenv("DATAJUD_API_KEY", "")
 
 COLLECTION_CLASSES = {
     12154: "Execução de Título Extrajudicial",
@@ -149,6 +149,8 @@ def market_map(uf: str, months: int = 12, today: date | None = None, client: htt
         },
     }
     own = client is None
+    if own and not API_KEY:
+        raise DataJudError("Configure DATAJUD_API_KEY com a chave pública atual do CNJ antes da consulta.")
     client = client or httpx.Client(timeout=120, headers={"Authorization": f"APIKey {API_KEY}", "Content-Type": "application/json",
                                                           "User-Agent": "LeadCobAI/0.4 (pesquisa de mercado)"})
     try:

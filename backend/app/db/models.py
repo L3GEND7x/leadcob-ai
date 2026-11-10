@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, Integer, Float, ForeignKey, Boolean, JSON, UniqueConstraint
+from sqlalchemy import String, Text, DateTime, Integer, Float, ForeignKey, Boolean, JSON, UniqueConstraint, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 def now(): return datetime.now(timezone.utc)
@@ -171,6 +171,9 @@ class Portfolio(Base):
     name: Mapped[str] = mapped_column(String(160))
     client_company_id: Mapped[int|None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
     reference_date: Mapped[str] = mapped_column(String(10))
+    archived_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    import_key: Mapped[str|None] = mapped_column(String(64), nullable=True, unique=True)
+    import_report: Mapped[dict|None] = mapped_column(JSON, nullable=True)
     source_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     items = relationship("PortfolioItem", back_populates="portfolio", cascade="all, delete-orphan")
@@ -181,8 +184,99 @@ class PortfolioItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), index=True)
     ref: Mapped[str|None] = mapped_column(String(80), nullable=True)
-    amount: Mapped[float] = mapped_column(Float)
+    amount: Mapped[float] = mapped_column(Numeric(16, 2))
     due_date: Mapped[str] = mapped_column(String(10))
     paid_date: Mapped[str|None] = mapped_column(String(10), nullable=True)
     debtor_type: Mapped[str|None] = mapped_column(String(2), nullable=True)  # PJ | PF (sem identificação)
     portfolio = relationship("Portfolio", back_populates="items")
+    events = relationship("PortfolioEvent", back_populates="item", order_by="PortfolioEvent.id")
+
+
+class LoginSession(Base):
+    __tablename__ = 'login_sessions'
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username: Mapped[str] = mapped_column(String(120))
+    csrf_token: Mapped[str] = mapped_column(String(80))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class LoginAttempt(Base):
+    __tablename__ = 'login_attempts'
+    key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AssistantConversation(Base):
+    __tablename__ = 'assistant_conversations'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AssistantMessage(Base):
+    __tablename__ = 'assistant_messages'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('assistant_conversations.id'), index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AssistantUsage(Base):
+    __tablename__ = 'assistant_usage'
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    charged_micro_usd: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AssistantRequest(Base):
+    __tablename__ = 'assistant_requests'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('assistant_conversations.id'), index=True)
+    status: Mapped[str] = mapped_column(String(20), default='running')
+    month: Mapped[str] = mapped_column(String(7))
+    reserved_micro_usd: Mapped[int] = mapped_column(Integer)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    model: Mapped[str] = mapped_column(String(120))
+    input_price: Mapped[float] = mapped_column(Float)
+    output_price: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AssistantAction(Base):
+    __tablename__ = 'assistant_actions'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('assistant_conversations.id'), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default='pending')
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    result_id: Mapped[int|None] = mapped_column(Integer, nullable=True)
+
+
+class PortfolioEvent(Base):
+    __tablename__ = 'portfolio_events'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey('portfolio_items.id'), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # payment | discount | reversal
+    amount: Mapped[float] = mapped_column(Numeric(16, 2))
+    effective_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120))
+    reversal_of: Mapped[int|None] = mapped_column(ForeignKey('portfolio_events.id'), nullable=True, unique=True)
+    request_id: Mapped[str] = mapped_column(String(36), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    item = relationship('PortfolioItem', back_populates='events')
+
+
+class DomainCandidate(Base):
+    __tablename__ = 'domain_candidates'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey('companies.id'), index=True)
+    website: Mapped[str] = mapped_column(String(500))
+    source_url: Mapped[str] = mapped_column(String(1000))
+    evidence: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default='a_verificar')
+    checked_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (UniqueConstraint('company_id', 'website', name='uq_domain_company_site'),)

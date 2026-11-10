@@ -8,3 +8,4 @@ venv/
 .env
 data/raw/
 data/cache/
+backups/
