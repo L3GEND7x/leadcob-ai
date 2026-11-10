@@ -124,6 +124,8 @@ def test_production_configuration_and_secure_session(monkeypatch):
     validate_configuration()
     # ASGI TestClient uses the test SQLite database; this exercises HTTPS cookie,
     # origin and CSRF middleware separately from the unavailable Docker stack.
+    import importlib
+    monkeypatch.setattr(importlib.import_module('app.main'), 'check_schema_revision', lambda: None)
     with TestClient(app, base_url='https://painel.example.com') as c:
         assert c.get('/api/health').status_code == 200
         assert c.get('/api/companies/search').status_code == 401

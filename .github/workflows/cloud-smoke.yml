@@ -33,6 +33,9 @@ jobs:
         run: |
           docker compose -f docker-compose.cloud.yml config --quiet
           docker compose -f docker-compose.cloud.yml up -d --build --wait
+          expected=$(sed -n "s/^revision: str = '\([^']*\)'/\1/p" backend/alembic/versions/*_initial_schema.py)
+          actual=$(docker compose -f docker-compose.cloud.yml exec -T db psql -U leadcob -d leadcob -tAc 'SELECT version_num FROM alembic_version')
+          test "$actual" = "$expected"
       - name: Verificar HTTPS, banco, login e proteção de gravações
         run: |
           python3 - <<'PY'
