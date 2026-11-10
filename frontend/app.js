@@ -51,7 +51,7 @@ const rows = (items, emptyMsg, extra) => items.length ? `<div class="rows">${ite
 
 // ------------------------------------------------------------------ rotas
 const ROUTES = { inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
-  empresa: viewEmpresa, radar: viewRadar, fontes: viewFontes, config: viewConfig };
+  empresa: viewEmpresa, contatos: viewContatos, cobranca: viewCobranca, negociacao: viewNegociacao, scripts: viewScripts, radar: viewRadar, fontes: viewFontes, config: viewConfig };
 let CUR = { v: 'inicio', arg: null };
 async function route() {
   const [v, arg] = location.hash.replace(/^#\/?/, '').split('/');
@@ -406,6 +406,7 @@ async function viewEmpresa(id) {
         <label class="f">E-mail institucional<input name="institutional_email" type="email" maxlength="255" value="${esc(c.institutional_email || '')}"></label>
         <label class="f full">Anotações<textarea name="notes" maxlength="5000">${esc(c.notes || '')}</textarea></label>
         <div class="end"><button class="primary">Salvar</button></div></form>`)}
+      ${panel('Abordagem sugerida', 'Gerada com os fatos desta ficha. Nada é enviado pelo sistema.', suppressed ? '<p class="note">Empresa na lista de supressão: nenhuma abordagem é gerada.</p>' : '<div id="approach"><button class="primary" onclick="loadApproach(' + JSON.stringify(c.id) + ')">✉ Gerar e-mail, WhatsApp, roteiro e follow-ups</button></div>')}
       ${panel('Registrar interação', c.last_outreach_at ? 'Último contato em ' + when(c.last_outreach_at) : 'Nenhum contato registrado', `<form id="f-int" class="form">
         <label class="f">Tipo<select name="kind">${opts(KINDS, 'contato')}</select></label>
         <label class="f">Canal<select name="channel">${opts(CHANNELS, 'email', '—')}</select></label>
@@ -535,6 +536,9 @@ async function viewConfig() {
         <div class="full"><p class="note" style="margin:0 0 6px">UFs de atuação (nenhuma marcada = Brasil inteiro). Empresas fora delas perdem os pontos de geografia.</p><div class="ufs">${UFS.map(u => `<label><input type="checkbox" name="uf" value="${u}" ${s.ufs_atuacao.includes(u) ? 'checked' : ''}>${u}</label>`).join('')}</div></div>
         <label class="f">Dias mínimos entre contatos<input name="dias" type="number" min="1" max="90" value="${s.dias_entre_contatos}"></label>
         <label class="f">Serviço oferecido<input name="servico" maxlength="200" value="${esc(s.servico || '')}"></label>
+        <label class="f">Seu nome (assinatura das abordagens)<input name="remetente_nome" maxlength="120" value="${esc(s.remetente_nome || '')}"></label>
+        <label class="f">Sua empresa<input name="remetente_empresa" maxlength="160" value="${esc(s.remetente_empresa || '')}"></label>
+        <label class="f full">Contato institucional para a assinatura<input name="remetente_contato" maxlength="200" value="${esc(s.remetente_contato || '')}"></label>
         <div class="end"><button class="primary">Salvar configurações</button></div></form>`)}
       ${panel('Lista de supressão (não contatar)', 'Empresas que pediram para não receber contato ou que você bloqueou', `${sup.length ? `<div>${sup.map(x => `<div class="task"><div class="main"><strong>${x.company_id ? `<a class="src" href="#/empresa/${x.company_id}">${esc(x.company_name || x.cnpj)}</a>` : esc(x.company_name || x.cnpj || '—')}</strong><small>${esc(x.cnpj || '')}${x.reason ? ' · ' + esc(x.reason) : ''} · desde ${day(x.created_at)}</small></div><button class="small" onclick="unsuppress(${x.id})">Retirar</button></div>`).join('')}</div>` : '<p class="empty">Lista vazia.</p>'}
         <form id="f-addsup" class="form" style="margin-top:10px"><label class="f">CNPJ<input name="cnpj" required placeholder="00.000.000/0000-00"></label><label class="f">Motivo<input name="reason" maxlength="1000"></label><div class="end"><button>⛔ Incluir</button></div></form>`)}
@@ -543,7 +547,7 @@ async function viewConfig() {
   $('f-set').addEventListener('submit', async e => {
     e.preventDefault();
     const f = e.target, ufs = [...f.querySelectorAll('input[name=uf]:checked')].map(i => i.value);
-    try { await send('/settings', 'PUT', { ufs_atuacao: ufs, dias_entre_contatos: Number(f.dias.value), servico: f.servico.value.trim() }); toast('Configurações salvas.'); viewConfig(); }
+    try { await send('/settings', 'PUT', { ufs_atuacao: ufs, dias_entre_contatos: Number(f.dias.value), servico: f.servico.value.trim(), remetente_nome: f.remetente_nome.value.trim(), remetente_empresa: f.remetente_empresa.value.trim(), remetente_contato: f.remetente_contato.value.trim() }); toast('Configurações salvas.'); viewConfig(); }
     catch (err) { toast(errMsg(err), 7000, true); }
   });
   $('f-addsup').addEventListener('submit', async e => {
@@ -557,4 +561,147 @@ async function unsuppress(id) {
   catch (e) { toast(errMsg(e), 7000, true); }
 }
 
+// ------------------------------------------------------------------ gerador de abordagens (ficha)
+async function loadApproach(id) {
+  const box = $('approach'); box.innerHTML = '<p class="note">Gerando…</p>';
+  try {
+    const a = await api(`/companies/${encodeURIComponent(id)}/approach`);
+    const copy = t => `<button class="small" data-t="${esc(t)}" onclick="copyText(this)">⧉ Copiar</button>`;
+    const base = `<details class="more"><summary>Base usada (fatos e hipóteses)</summary><ul class="note">${a.baseado_em.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
+    const care = `<div class="warnbox">⚠ ${a.cuidados.map(esc).join('<br>⚠ ')}</div>`;
+    if (a.modo === 'edital') {
+      box.innerHTML = `<div class="warnbox">${esc(a.aviso)}</div><ol class="note">${a.checklist.map(x => `<li>${esc(x)}</li>`).join('')}</ol>${base}`;
+      return;
+    }
+    const [email, wa, call] = a.mensagens;
+    box.innerHTML = `
+      <h3>E-mail</h3><p class="note"><b>Assunto:</b> ${esc(email.assunto)} ${copy(email.assunto)}</p><div class="quote" style="white-space:pre-wrap">${esc(email.texto)}</div><div class="actions" style="margin:6px 0 14px">${copy(email.texto)}<button class="small" onclick="prefillInteraction('contato','email')">Registrar como enviado</button></div>
+      <h3>${esc(wa.canal)}</h3><div class="quote" style="white-space:pre-wrap">${esc(wa.texto)}</div><div class="actions" style="margin:6px 0 14px">${copy(wa.texto)}<button class="small" onclick="prefillInteraction('contato','whatsapp')">Registrar como enviado</button></div>
+      <details class="more"><summary>Roteiro de ligação e objeções</summary>${call.etapas.map(e => `<p class="note"><b>${esc(e.etapa)}:</b> ${esc(e.texto)}</p>`).join('')}${call.objecoes.map(o => `<p class="note"><b>“${esc(o.objecao)}”</b> → ${esc(o.resposta)}</p>`).join('')}</details>
+      <details class="more"><summary>7 follow-ups</summary>${a.follow_ups.map(f => `<div class="signal"><strong>${esc(f.tipo)}</strong> <small class="muted">· cerca de ${f.dias_depois} dia(s) depois</small><p style="white-space:pre-wrap">${esc(f.texto)}</p>${copy(f.texto)}</div>`).join('')}</details>
+      ${base}${care}`;
+  } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Não foi possível gerar a abordagem.'))}</p>`; }
+}
+function prefillInteraction(kind, channel) {
+  const f = $('f-int'); if (!f) return;
+  f.kind.value = kind; f.channel.value = channel;
+  f.summary.value = channel === 'email' ? 'E-mail de apresentação enviado (texto do gerador de abordagens)' : 'Mensagem de apresentação enviada (texto do gerador de abordagens)';
+  f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.summary.focus();
+  toast('Confira e clique em "Registrar" depois de enviar de fato.');
+}
+
+// ------------------------------------------------------------------ inteligência de cobrança (carteiras)
+async function viewCobranca(arg) {
+  if (arg) return viewCarteira(arg);
+  const list = await api('/portfolios');
+  V().innerHTML = head('Etapa 2 · carteiras de clientes', 'Inteligência de cobrança',
+    'Carteira de títulos de um cliente que contratou você. Fica separada da prospecção. Só valor, vencimento e pagamento são importados: nome, CPF e contatos do devedor são descartados.')
+    + `<div class="grid2">${panel('Importar carteira (CSV)', 'Colunas aceitas: valor, vencimento; opcionais: pagamento, título/documento, tipo_devedor (PJ/PF)', `<form id="f-pf" class="form">
+        <label class="f full">Nome da carteira<input name="name" required minlength="2" maxlength="160" placeholder="Ex.: Cliente X — novembro"></label>
+        <label class="f">Data de referência<input name="reference_date" type="date"></label>
+        <label class="f">Arquivo CSV<input name="file" type="file" accept=".csv,text/csv,text/plain"></label>
+        <label class="f full">ou cole o conteúdo<textarea name="csv" placeholder="valor;vencimento;pagamento&#10;1.250,00;05/10/2026;"></textarea></label>
+        <label class="f full">Origem dos dados<input name="source_note" maxlength="500" placeholder="Ex.: planilha enviada pelo cliente em 10/11"></label>
+        <div class="end"><button class="primary">Importar e analisar</button></div></form>`)}
+      ${panel('Carteiras', '', list.length ? `<div class="rows">${list.map(p => `<a class="row" href="#/cobranca/${p.id}"><span class="pill">${fmt(p.titulos)}</span><div class="main"><strong>${esc(p.name)}</strong><small>Vencido: ${money(p.resumo.valor_vencido)} (${p.resumo.pct_vencido.toLocaleString('pt-BR')}%) · aberto ${money(p.resumo.valor_aberto)} · referência ${esc(p.data_referencia.split('-').reverse().join('/'))}</small></div></a>`).join('')}</div>` : '<p class="empty">Nenhuma carteira importada.</p>')}</div>`;
+  $('f-pf').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target, file = f.file.files[0];
+    const csv = file ? await file.text() : f.csv.value;
+    const body = { name: f.name.value.trim(), csv, source_note: f.source_note.value.trim() };
+    if (f.reference_date.value) body.reference_date = f.reference_date.value;
+    try {
+      const r = await send('/portfolios', 'POST', body);
+      const dropped = r.importacao.colunas_pessoais_descartadas;
+      toast(`${fmt(r.importacao.titulos_importados)} título(s) importado(s)` + (r.importacao.linhas_com_erro.length ? ` · ${r.importacao.linhas_com_erro.length} linha(s) com erro` : '') + (dropped.length ? ` · colunas descartadas: ${dropped.join(', ')}` : ''), 9000);
+      location.hash = '#/cobranca/' + r.id;
+    } catch (err) { toast(errMsg(err, 'Não foi possível importar.'), 9000, true); }
+  });
+}
+async function viewCarteira(id, ref) {
+  const d = await api(`/portfolios/${encodeURIComponent(id)}` + (ref ? `?reference_date=${ref}` : '')), r = d.resumo;
+  const max = Math.max(1, ...d.faixas.map(b => b.valor));
+  V().innerHTML = `<p style="margin:0 0 10px"><a class="src" href="#/cobranca">← Carteiras</a></p>`
+    + head('Carteira · ' + esc(d.source_note || 'origem não informada'), esc(d.name), `Análise na data de referência ${esc(d.data_referencia.split('-').reverse().join('/'))}.`,
+      `<input type="date" id="pf-ref" value="${esc(d.data_referencia)}" style="width:auto"><button onclick="viewCarteira(${JSON.stringify(d.id)}, $('pf-ref').value)">Recalcular</button><button onclick="delPortfolio(${JSON.stringify(d.id)})">Excluir</button>`)
+    + `<section class="kpis">
+        <article><small>Valor em aberto</small><strong>${money(r.valor_aberto)}</strong><span>${fmt(r.titulos_abertos)} título(s)</span></article>
+        <article class="accent"><small>Valor vencido</small><strong>${money(r.valor_vencido)}</strong><span>${r.pct_vencido.toLocaleString('pt-BR')}% do aberto</span></article>
+        <article><small>Títulos vencidos</small><strong>${fmt(r.titulos_vencidos)}</strong><span>ticket médio ${money(r.ticket_medio_vencido)}</span></article>
+        <article><small>Maior concentração</small><strong style="font-size:18px">${esc(r.maior_concentracao || '—')}</strong><span>faixa vencida com mais valor</span></article>
+        <article><small>Pagos</small><strong>${fmt(r.titulos_pagos)}</strong><span>${money(r.valor_pago)}</span></article></section>`
+    + panel('Faixas de atraso e estratégia sugerida', 'Sugestões de rotina operacional. Decisão e execução são humanas.', d.faixas.map(b => `<div class="bar"><span>${esc(b.label)} · ${fmt(b.titulos)} título(s)</span><b>${money(b.valor)} · ${b.pct_valor.toLocaleString('pt-BR')}%</b><i style="--w:${(100 * b.valor / max).toFixed(1)}%"></i><small>${esc(b.estrategia)}</small></div>`).join(''))
+    + `<div class="warnbox">${d.avisos.map(esc).join('<br>')}</div>`;
+}
+async function delPortfolio(id) {
+  try { await send('/portfolios/' + id, 'DELETE'); toast('Carteira excluída.'); location.hash = '#/cobranca'; }
+  catch (e) { toast(errMsg(e), 6000, true); }
+}
+
+// ------------------------------------------------------------------ laboratório de negociação
+async function viewNegociacao() {
+  const today = new Date().toISOString().slice(0, 10);
+  const num = (n, l, v = '', step = '0.01', extra = '') => `<label class="f">${l}<input name="${n}" type="number" step="${step}" min="0" value="${v}" ${extra}></label>`;
+  V().innerHTML = head('Etapa 2 · simulação', 'Laboratório de negociação',
+    'Calculadora de acordo com premissas que VOCÊ informa. O sistema não presume taxa de juros, multa nem índice de correção: o que ficar em branco vale zero.')
+    + `<div class="sheet"><div class="stack">${panel('Premissas', 'Confira o contrato e a legislação aplicável antes de usar os percentuais.', `<form id="f-neg" class="form">
+        ${num('valor_original', 'Valor original (R$)', '', '0.01', 'required')}
+        <label class="f">Vencimento<input name="vencimento" type="date" required></label>
+        <label class="f">Data-base do cálculo<input name="data_base" type="date" value="${today}" required></label>
+        ${num('correcao_pct', 'Correção acumulada no período (%)')}
+        ${num('multa_pct', 'Multa (%)')}
+        ${num('juros_mes_pct', 'Juros ao mês (%)')}
+        <label class="f">Tipo de juros<select name="juros_tipo"><option value="simples">Simples</option><option value="composto">Compostos</option></select></label>
+        ${num('desconto_pct', 'Desconto (%)')}
+        <label class="f">Desconto sobre<select name="desconto_sobre"><option value="encargos">Encargos (correção, multa e juros)</option><option value="total">Total atualizado</option></select></label>
+        ${num('entrada', 'Entrada (R$)')}
+        ${num('parcelas', 'Parcelas', '1', '1', 'max="120"')}
+        ${num('juros_parcelamento_mes_pct', 'Juros do parcelamento ao mês (%)')}
+        <div class="end"><button class="primary">Simular</button></div></form>`)}</div><div class="stack" id="neg-out">${panel('Resultado', '', '<p class="empty">Preencha as premissas e clique em Simular.</p>')}</div></div>`;
+  $('f-neg').addEventListener('submit', async e => {
+    e.preventDefault();
+    const body = Object.fromEntries([...new FormData(e.target).entries()].filter(([, v]) => v !== '').map(([k, v]) => [k, ['vencimento', 'data_base', 'juros_tipo', 'desconto_sobre'].includes(k) ? v : Number(v)]));
+    try {
+      const r = await send('/negotiation/simulate', 'POST', body);
+      const row = (l, v, strong) => `<div class="comp"><b>${l}</b><span class="pts" ${strong ? 'style="color:var(--ok)"' : ''}>${money2(v)}</span></div>`;
+      $('neg-out').innerHTML = panel('Resultado', `${r.dias_atraso} dia(s) de atraso`, row('Valor original', r.valor_original) + row('Correção', r.correcao) + row('Multa', r.multa) + row('Juros', r.juros)
+        + row('Total atualizado', r.total_atualizado) + row('Desconto', -r.desconto) + row('Valor acordado', r.valor_acordado, true) + row('Entrada', r.entrada)
+        + `<div class="comp"><b>${r.parcelas} parcela(s) de</b><span class="pts">${money2(r.valor_parcela)}</span></div>` + row('Total a receber', r.total_a_receber, true))
+        + panel('Memória de cálculo', '', `<ul class="note">${r.memoria.map(m => `<li>${esc(m)}</li>`).join('')}</ul><div class="warnbox">${r.avisos.map(esc).join('<br>')}</div>`);
+    } catch (err) { toast(errMsg(err, 'Revise as premissas.'), 7000, true); }
+  });
+}
+const money2 = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// ------------------------------------------------------------------ biblioteca de scripts
+let SCRIPTS = null;
+async function viewScripts() {
+  SCRIPTS = SCRIPTS || await api('/scripts');
+  V().innerHTML = head('Etapa 2 · modelos', 'Biblioteca de scripts', esc(SCRIPTS.nota))
+    + `<div class="filters inline"><input id="sc-q" placeholder="Buscar no texto…"><select id="sc-cat"><option value="">Todas as categorias</option>${SCRIPTS.categorias.map(c => `<option>${esc(c)}</option>`).join('')}</select></div><div id="sc-list" class="cards"></div>`;
+  const draw = () => {
+    const q = $('sc-q').value.toLowerCase(), cat = $('sc-cat').value;
+    const items = SCRIPTS.scripts.filter(s => (!cat || s.categoria === cat) && (!q || (s.titulo + ' ' + s.texto + ' ' + s.quando_usar).toLowerCase().includes(q)));
+    $('sc-list').innerHTML = items.length ? items.map(s => `<article class="card"><header><div><small class="eyebrow">${esc(s.categoria)} · ${esc(s.canal)}</small><h2 style="display:block;margin-top:4px">${esc(s.titulo)}</h2></div><button class="small" data-t="${esc(s.texto)}" onclick="copyText(this)">⧉ Copiar</button></header>
+      <p class="note">Quando usar: ${esc(s.quando_usar)}</p><div class="quote" style="white-space:pre-wrap">${esc(s.texto)}</div>${s.cuidados ? `<div class="warnbox">⚠ ${esc(s.cuidados)}</div>` : ''}</article>`).join('') : '<p class="empty">Nenhum script encontrado.</p>';
+  };
+  $('sc-q').oninput = draw; $('sc-cat').onchange = draw; draw();
+}
+
 route();
+
+
+// Contatos institucionais — dados reais da API, sem exemplos fictícios.
+async function viewContatos() {
+  V().innerHTML = head('DIRETÓRIO COMERCIAL', 'Contatos empresariais', 'Canais institucionais com origem registrada. A ausência de contato não significa que ele foi encontrado.', '<button id="sync-contacts" class="primary">Sincronizar fichas</button>');
+  V().insertAdjacentHTML('beforeend', `<article class="panel"><div class="actions"><input id="contact-search" placeholder="Empresa, CNPJ ou contato" aria-label="Pesquisar contatos"><select id="contact-kind" aria-label="Filtrar canal"><option value="">Todos os canais</option><option value="email">E-mails</option><option value="website">Sites</option><option value="phone">Telefones</option></select><button id="contact-filter">Pesquisar</button></div><p class="note">Sincronizar importa apenas sites e e-mails já cadastrados. Não busca contatos pessoais nem inventa informações.</p><div id="contact-results" aria-live="polite"></div></article>`);
+  async function refresh() {
+    const q = $('contact-search').value.trim(), kind = $('contact-kind').value;
+    const data = await api('/contacts?q=' + encodeURIComponent(q) + '&kind=' + encodeURIComponent(kind));
+    $('contact-results').innerHTML = `<p class="note">${fmt(data.total)} canal(is) cadastrado(s) · até 100 por página</p>` + (data.items.length ? `<div class="rows">${data.items.map(c => `<div class="row"><div class="main"><strong>${esc(c.company_name)}</strong><small>${esc(c.cnpj || 'Sem CNPJ')} · ${esc(c.kind)} · ${esc(c.value)}</small><small>Origem: ${esc(c.source_name)} · ${esc(c.status)}</small></div><a class="btn small" href="#/empresa/${c.company_id}">Empresa</a></div>`).join('')}</div>` : '<p class="empty">Nenhum contato institucional encontrado.</p>');
+  }
+  $('contact-filter').onclick = () => refresh().catch(e => toast(errMsg(e), 5000, true));
+  $('contact-search').onkeydown = e => { if (e.key === 'Enter') $('contact-filter').click(); };
+  $('sync-contacts').onclick = async () => { const b = $('sync-contacts'); b.disabled = true; try { const result = await send('/contacts/sync', 'POST'); toast(`${result.added} contato(s) incorporado(s) das fichas existentes.`); await refresh(); } catch(e) { toast(errMsg(e), 5000, true); } finally { b.disabled = false; } };
+  await refresh();
+}

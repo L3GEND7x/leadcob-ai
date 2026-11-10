@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.2 — 10/11/2026
+### Etapa 2 (início) e integração da 0.5.1
+- **Aba Contatos empresariais** (pacote 0.5.1, revisado e aprovado): canais institucionais por empresa, com origem, data,
+  verificação e deduplicação; sincroniza só site e e-mail já presentes nas fichas; respeita a lista de supressão.
+- **Identidade violeta** (decisão da usuária): preto profundo, violeta, branco e grafite em toda a interface; foco visível.
+- **Gerador de abordagens** (`GET /api/companies/{id}/approach`): e-mail, WhatsApp, roteiro de ligação com objeções e
+  7 follow-ups a partir dos fatos da ficha; hipóteses de setor marcadas; opt-out em todo texto; nunca afirma inadimplência;
+  bloqueado para empresas suprimidas e concorrentes; para editais, só checklist (comunicação pelo edital).
+- **Inteligência de cobrança** (`/api/portfolios`): importação de carteira (CSV) de cliente contratante, separada da
+  prospecção; faixas A vencer, 1–7, 8–30, 31–60, 61–90, 91–180 e >180 dias com estratégia sugerida por faixa.
+  Colunas com dados do devedor (nome, CPF, contatos, endereço) são descartadas na importação.
+- **Laboratório de negociação** (`POST /api/negotiation/simulate`): correção, multa, juros (simples ou compostos),
+  desconto, entrada e parcelamento (Price) só com premissas informadas pelo usuário; memória de cálculo.
+- **Biblioteca de scripts** (`GET /api/scripts`, `config/scripts.json`): 14 modelos por categoria, com cuidados.
+- Configurações: nome, empresa e contato para a assinatura das abordagens.
+- Correção: a evidência da Inteligência do dia e a do gerador usam o mesmo sinal (mais forte e mais recente).
+
 ## 0.5.0 — 09/11/2026
 ### Etapa 1 do plano de evolução: operação diária, prospecção, qualificação e CRM
 - **Central de comando** (`/api/command-center`): indicadores do dia, funil de 13 etapas, quem precisa de

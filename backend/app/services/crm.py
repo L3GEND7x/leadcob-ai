@@ -40,6 +40,9 @@ DEFAULT_SETTINGS = {
     "ufs_atuacao": [],            # vazio = Brasil inteiro
     "dias_entre_contatos": 7,     # trava contra abordagens repetidas
     "servico": "Cobrança e recuperação de crédito",
+    "remetente_nome": "",         # assinatura das abordagens (vazio = [PREENCHER])
+    "remetente_empresa": "",
+    "remetente_contato": "",
 }
 
 

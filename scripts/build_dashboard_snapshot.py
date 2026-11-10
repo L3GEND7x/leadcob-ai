@@ -176,11 +176,17 @@ def crm_views(c) -> dict:
             break
         page += 1
     fichas = {str(s["id"]): g(f"/companies/{s['id']}") for s in companies[:FICHAS_MAX]}
+    approaches = {}
+    for sid in fichas:
+        r = c.get(f"/api/companies/{sid}/approach")
+        if r.status_code == 200:
+            approaches[sid] = r.json()
     return {
         "/command-center": g("/command-center"), "/daily-intelligence?limit=5": g("/daily-intelligence?limit=5"),
         "/pipeline": g("/pipeline"), "/tasks?status=open": g("/tasks?status=open"), "/settings": g("/settings"),
         "/suppression": g("/suppression"), "/regions": g("/regions"), "/debt-types": g("/debt-types"),
-        "companies_all": companies, "fichas": fichas,
+        "companies_all": companies, "fichas": fichas, "approaches": approaches,
+        "/contacts": g("/contacts?limit=500"), "/scripts": g("/scripts"),
     }
 
 
@@ -287,6 +293,7 @@ def main(argv=None):
         carry_first_seen(prev)
         manual_done = replay_manual(c, manual)
         applied, failed = replay(c, events)
+        c.post("/api/contacts/sync")   # só canais institucionais já presentes nas fichas
         g = lambda p: c.get("/api" + p).json()
         data = {
             "/dashboard/summary": g("/dashboard/summary"),
@@ -334,7 +341,7 @@ def render(data: dict) -> str:
 <style>
 :root{{color-scheme:dark}}
 {css}
-.demo-banner{{background:#2a1218;border-bottom:1px solid #5b202c;color:#f3d6db;font:13px 'DM Sans',sans-serif;padding:9px max(16px,env(safe-area-inset-right,0px)) 9px max(16px,env(safe-area-inset-left,0px));text-align:center}}
+.demo-banner{{background:#21152f;border-bottom:1px solid #52316f;color:#e6d9f7;font:13px 'DM Sans',sans-serif;padding:9px max(16px,env(safe-area-inset-right,0px)) 9px max(16px,env(safe-area-inset-left,0px));text-align:center}}
 .demo-banner b{{color:#fff}}
 </style>
 <div class="demo-banner">{banner}</div>
