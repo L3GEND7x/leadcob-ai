@@ -1,5 +1,12 @@
 # Changelog
 
+## Não lançado
+- **Relatórios** (issue #18): tela e `GET /api/reports/summary` (`dias`, ou `inicio`/`fim`) com atividade, empresas
+  contatadas, conversão (contato → resposta → reunião → proposta → contrato), entradas no funil, motivos de perda,
+  sinais novos por fonte, empresas novas e tarefas. Exportação em `GET /api/reports/summary.csv`. Só contagens do que
+  está registrado; sem projeções. Página publicada com os últimos 7 e 30 dias.
+- Auditoria do CRM passa a registrar a hora original das ações reaplicadas na página publicada.
+
 ## 0.5.3 — 10/11/2026
 - **Contatos institucionais na ficha**: lista com origem e status, confirmar/marcar inválido, cadastro manual com fonte
   obrigatória, link para pesquisar o site oficial (a confirmação é sua).

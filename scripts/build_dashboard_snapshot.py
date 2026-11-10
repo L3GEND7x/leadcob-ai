@@ -212,6 +212,7 @@ def crm_views(c) -> dict:
         "/suppression": g("/suppression"), "/regions": g("/regions"), "/debt-types": g("/debt-types"),
         "companies_all": companies, "fichas": fichas, "approaches": approaches,
         "/contacts": g("/contacts?limit=500"), "/scripts": g("/scripts"),
+        "/reports/summary?dias=7": g("/reports/summary?dias=7"), "/reports/summary?dias=30": g("/reports/summary?dias=30"),
     }
 
 

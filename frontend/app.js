@@ -51,7 +51,7 @@ function coRow(s, extra = '') {
 const rows = (items, emptyMsg, extra) => items.length ? `<div class="rows">${items.map(s => coRow(s, extra ? esc(extra(s)) : '')).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`;
 
 // ------------------------------------------------------------------ rotas
-const ROUTES = { assistente: viewAssistente, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
+const ROUTES = { relatorios: viewRelatorios, assistente: viewAssistente, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
   empresa: viewEmpresa, contatos: viewContatos, cobranca: viewCobranca, negociacao: viewNegociacao, scripts: viewScripts, radar: viewRadar, fontes: viewFontes, config: viewConfig };
 let CUR = { v: 'inicio', arg: null };
 async function route() {
@@ -727,6 +727,28 @@ async function viewScripts() {
       <p class="note">Quando usar: ${esc(s.quando_usar)}</p><div class="quote" style="white-space:pre-wrap">${esc(s.texto)}</div>${s.cuidados ? `<div class="warnbox">⚠ ${esc(s.cuidados)}</div>` : ''}</article>`).join('') : '<p class="empty">Nenhum script encontrado.</p>';
   };
   $('sc-q').oninput = draw; $('sc-cat').onchange = draw; draw();
+}
+
+// ------------------------------------------------------------------ relatórios do período (issue #18)
+async function viewRelatorios(arg) {
+  const dias = ['7', '30'].includes(arg) ? arg : '7';
+  const r = await api('/reports/summary?dias=' + dias);
+  const tbl = (head, rows) => rows.length ? `<div class="tablebox"><table style="min-width:0"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(c => `<tr>${c.map(x => `<td>${x}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nada registrado no período.</p>';
+  const per = r.periodo;
+  V().innerHTML = head('Etapa 3 · acompanhamento', 'Relatórios', `De ${esc(per.inicio.split('-').reverse().join('/'))} a ${esc(per.fim.split('-').reverse().join('/'))} (${per.dias} dias). Contagens do que está registrado no sistema, sem projeções.`,
+    `<a class="btn ${dias === '7' ? 'primary' : ''}" href="#/relatorios/7">Últimos 7 dias</a><a class="btn ${dias === '30' ? 'primary' : ''}" href="#/relatorios/30">Últimos 30 dias</a>${PUBLISHED ? '' : `<a class="btn" href="/api/reports/summary.csv?dias=${dias}">⇩ CSV</a>`}`)
+    + `<section class="kpis">
+        <article><small>Empresas contatadas</small><strong>${fmt(r.empresas_contatadas)}</strong><span>no período</span></article>
+        ${r.atividade.map(a => `<article><small>${esc(a.tipo)}</small><strong>${fmt(a.registros)}</strong><span>${fmt(a.empresas)} empresa(s)</span></article>`).join('')}
+        <article><small>Empresas novas na base</small><strong>${fmt(r.empresas_novas)}</strong><span>no período</span></article>
+        <article><small>Sinais novos</small><strong>${fmt(r.sinais_novos.total)}</strong><span>editais, vagas e cadastros</span></article></section>`
+    + `<div class="grid2">
+      ${panel('Conversão das empresas contatadas', esc(r.notas[1]), tbl(['Etapa', 'Empresas', '% das contatadas'], r.conversao.map(x => [esc(x.etapa), fmt(x.empresas), x.pct_contatadas == null ? '—' : x.pct_contatadas.toLocaleString('pt-BR') + '%'])))}
+      ${panel('Movimento no funil', 'Entradas em cada etapa no período', tbl(['Etapa', 'Empresas'], r.funil_entradas.map(x => [esc(x.etapa), fmt(x.empresas)])))}
+      ${panel('Perdas', `${fmt(r.perdas.total)} empresa(s) marcadas como perdidas`, tbl(['Motivo informado', 'Empresas'], r.perdas.motivos.map(x => [esc(x.motivo), fmt(x.empresas)])))}
+      ${panel('Sinais novos por fonte', '', tbl(['Fonte', 'Sinais'], r.sinais_novos.por_fonte.map(x => [esc(x.fonte), fmt(x.sinais)])))}
+      ${panel('Tarefas', '', tbl(['Situação', 'Quantidade'], [['Criadas no período', fmt(r.tarefas.criadas)], ['Concluídas no período', fmt(r.tarefas.concluidas)], ['Em aberto agora', fmt(r.tarefas.em_aberto)], ['Atrasadas agora', fmt(r.tarefas.atrasadas_agora)]]))}
+    </div><p class="note">${esc(r.notas[0])}</p>`;
 }
 
 route();
