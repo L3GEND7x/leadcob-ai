@@ -15,8 +15,10 @@ Esta configuração é para **um único proprietário**. O login e o banco estã
 
 ## Backup e restauração
 
-O serviço `backup` faz dump customizado diário no diretório `./backups`, verifica o índice via `pg_restore --list` e mantém 14 dias. Envie cópias criptografadas para **outro servidor ou serviço de armazenamento**, com política de retenção. Backups no mesmo host não protegem contra perda do host.
+O serviço `backup` faz dump customizado diário no diretório `./backups`, verifica o índice via `pg_restore --list`, publica o arquivo de forma atômica e mantém 14 dias. Em caso de falha, tenta novamente em uma hora. Um arquivo temporário `.leadcob-*` não é um backup válido. Para gerar um dump pontual, use `docker compose -f docker-compose.cloud.yml run --rm --no-deps backup --once`.
 
-Para ensaiar a restauração, crie um banco **separado**, sem dados de produção, e execute `pg_restore --clean --if-exists --no-owner -d leadcob_restore <arquivo.dump>` com as credenciais desse banco. Inicie uma instância de teste apontando para esse banco e confira empresas, tarefas, contatos, carteiras, valores e histórico antes de considerar a restauração validada. Em produção, interrompa gravações, guarde um backup adicional e só então restaure no banco de destino.
+Envie cópias **criptografadas** para outro servidor ou serviço de armazenamento, com política de retenção e teste periódico da recuperação. **Essa cópia externa ainda não está automatizada.** Backups no mesmo host não protegem contra perda da VPS; não trate a implantação como pronta para dados financeiros reais sem essa proteção.
+
+Para ensaiar a restauração, crie um banco **separado**, sem dados de produção, e execute `pg_restore --no-owner --no-acl --exit-on-error -d leadcob_restore <arquivo.dump>` com as credenciais desse banco. Inicie uma instância de teste apontando para esse banco e confira empresas, tarefas, contatos, carteiras, valores e histórico antes de considerar a restauração validada. O workflow `cloud-smoke.yml` faz essa restauração em um PostgreSQL temporário a cada PR. Em produção, interrompa gravações, guarde um backup adicional e só então restaure no banco de destino.
 
 A migração de SQLite antigo para PostgreSQL demanda rotina própria e conferência de contagens e valores. Preserve o banco antigo até concluir essa verificação. A geração de tabelas novas e colunas legadas continua ocorrendo no startup, e migrações versionadas ainda precisam ser implantadas antes de evolução estrutural contínua em produção.

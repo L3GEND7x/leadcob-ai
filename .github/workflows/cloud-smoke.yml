@@ -67,9 +67,23 @@ jobs:
           csrf = login['csrf_token']
           assert request('/api/contacts/sync', 'POST', headers={
               'X-CSRF-Token': csrf, 'Origin': base})[0] == 200
+          status, company = request('/api/companies', 'POST', {'name': 'Empresa de teste da restauração'},
+              headers={'X-CSRF-Token': csrf, 'Origin': base})
+          assert status == 201 and company['name'] == 'Empresa de teste da restauração'
           assert request('/api/auth/logout', 'POST', headers={'X-CSRF-Token': csrf})[0] == 200
           assert request('/api/companies/search')[0] == 401
           PY
+      - name: Gerar dump e restaurar em banco isolado
+        run: |
+          backup=$(docker compose -f docker-compose.cloud.yml run --rm --no-deps backup --once | tail -n 1)
+          case "$backup" in /backups/leadcob-*.dump) ;; *) echo 'Dump inválido' >&2; exit 1;; esac
+          docker compose -f docker-compose.cloud.yml exec -T db createdb -U leadcob leadcob_restore
+          docker compose -f docker-compose.cloud.yml exec -T backup cat "$backup" | \
+            docker compose -f docker-compose.cloud.yml exec -T db pg_restore \
+              -U leadcob -d leadcob_restore --no-owner --no-acl --exit-on-error
+          count=$(docker compose -f docker-compose.cloud.yml exec -T db psql -U leadcob -d leadcob_restore \
+            -tAc "SELECT count(*) FROM companies WHERE name = 'Empresa de teste da restauração'")
+          test "$count" = 1
       - name: Encerrar serviços
         if: always()
         run: docker compose -f docker-compose.cloud.yml down -v --remove-orphans
