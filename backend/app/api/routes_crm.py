@@ -476,6 +476,9 @@ class SettingsIn(BaseModel):
     ufs_atuacao: list[str] | None = None
     dias_entre_contatos: int | None = Field(default=None, ge=1, le=90)
     servico: str | None = Field(default=None, max_length=200)
+    remetente_nome: str | None = Field(default=None, max_length=120)
+    remetente_empresa: str | None = Field(default=None, max_length=160)
+    remetente_contato: str | None = Field(default=None, max_length=200)
 
 
 @router.get("/settings")
@@ -646,7 +649,7 @@ def daily_intelligence(limit: int = Query(default=5, ge=1, le=20), db: Session =
     for score, c, s in picks[:limit]:
         sc = score_company(c, settings, False)
         signals = [o for o in c.opportunities if o.status != "discarded"]
-        best = max(signals, key=lambda o: signal_strength(o)[0]) if signals else None
+        best = max(signals, key=lambda o: (signal_strength(o)[0], as_utc(o.collected_at) or datetime.min.replace(tzinfo=timezone.utc))) if signals else None
         reasons = sorted([p for p in sc["components"] if p["points"] > 0], key=lambda p: -p["points"])[:3]
         fatos = [f"{p['label']}: {p['reason']}" for p in sc["components"] if p["nature"] == "fato" and p["points"] > 0]
         indicios = [f"{p['label']}: {p['reason']}" for p in sc["components"] if p["nature"] == "indício" and p["points"] > 0]

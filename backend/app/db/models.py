@@ -145,3 +145,44 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(60), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BusinessContact(Base):
+    """Canal institucional verificável; não armazena dados pessoais de sócios/funcionários."""
+    __tablename__ = "business_contacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # email | website | phone
+    value: Mapped[str] = mapped_column(String(500))
+    department: Mapped[str] = mapped_column(String(40), default="geral")
+    source_name: Mapped[str] = mapped_column(String(120))
+    source_url: Mapped[str|None] = mapped_column(String(1000), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="a_verificar")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    checked_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (UniqueConstraint("company_id", "kind", "value", name="uq_business_contact"),)
+
+
+class Portfolio(Base):
+    """Carteira de títulos de um CLIENTE CONTRATANTE (inteligência de cobrança). Separada da prospecção.
+    Guarda só o mínimo para análise: valor, vencimento, pagamento e referência do título — nada do devedor."""
+    __tablename__ = "portfolios"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    client_company_id: Mapped[int|None] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
+    reference_date: Mapped[str] = mapped_column(String(10))
+    source_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    items = relationship("PortfolioItem", back_populates="portfolio", cascade="all, delete-orphan")
+
+
+class PortfolioItem(Base):
+    __tablename__ = "portfolio_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), index=True)
+    ref: Mapped[str|None] = mapped_column(String(80), nullable=True)
+    amount: Mapped[float] = mapped_column(Float)
+    due_date: Mapped[str] = mapped_column(String(10))
+    paid_date: Mapped[str|None] = mapped_column(String(10), nullable=True)
+    debtor_type: Mapped[str|None] = mapped_column(String(2), nullable=True)  # PJ | PF (sem identificação)
+    portfolio = relationship("Portfolio", back_populates="items")

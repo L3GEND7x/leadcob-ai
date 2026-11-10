@@ -1,4 +1,4 @@
-# LeadCob AI — 0.5.0
+# LeadCob AI — 0.5.2
 
 Plataforma individual de inteligência comercial para captar **qualquer empresa que tenha inadimplentes** —
 de qualquer setor e porte, do pequeno varejista ao grande grupo — e **todos os tipos de inadimplência**
@@ -17,9 +17,10 @@ Sem `DATABASE_URL`, usa SQLite local. Bancos criados em versões anteriores são
 
 **Testes:** `cd backend && pip install pytest && python -m pytest`.
 
-## Módulos (0.5.0)
+## Módulos (0.5.2)
 Central de comando · Inteligência do dia · Encontrar empresas · Sinais e oportunidades · CRM comercial (ficha,
-histórico, tarefas, supressão) · Radar de mercado · Fontes de dados · Configurações.
+histórico, tarefas, supressão, abordagem sugerida) · Contatos empresariais · Inteligência de cobrança · Laboratório de
+negociação · Biblioteca de scripts · Radar de mercado · Fontes de dados · Configurações.
 Rotina sugerida: `docs/manual-uso-diario.md`. Pontuação: `docs/lead-score.md`. O que está pronto e o que falta:
 `docs/status-v0.5.md`.
 
@@ -32,6 +33,8 @@ Rotina sugerida: `docs/manual-uso-diario.md`. Pontuação: `docs/lead-score.md`.
 - `POST /api/companies` · `GET|PATCH /api/companies/{id}` (ficha: etapa, próxima atividade, valor potencial, notas)
 - `POST /api/companies/{id}/interactions` · `POST /api/companies/{id}/tasks` · `GET /api/tasks` · `PATCH /api/tasks/{id}`
 - `GET /api/pipeline` · `GET|POST /api/suppression` · `DELETE /api/suppression/{id}` · `GET|PUT /api/settings`
+- `GET /api/companies/{id}/approach` · `GET|POST /api/portfolios` · `GET|DELETE /api/portfolios/{id}` · `POST /api/negotiation/simulate` · `GET /api/scripts`
+- `GET|POST /api/contacts` · `POST /api/contacts/sync` · `PATCH /api/contacts/{id}/verify`
 - `GET /api/export/companies.csv` — só dados de PJ, sem empresas suprimidas
 - `GET /api/dashboard/summary` · `GET|POST /api/opportunities` · `POST /api/agents/run/{id}`
 - `POST /api/capture/pncp` (`mode=busca|varredura`, `only_open`, `include_review`, `max_pages`, `days`) · `POST /api/capture/jobs` · `GET /api/capture/runs`
@@ -58,3 +61,6 @@ retenção. Respeitar termos de uso e controles técnicos das fontes. Priorizar 
 institucionais; não coletar CPF, dados financeiros privados, dados sensíveis ou contatos pessoais sem necessidade e base
 legal documentada. Registrar fonte, URL, data e finalidade. Manter opt-out/lista de supressão. Campanhas externas em
 escala exigem aprovação humana.
+
+## Contatos empresariais (v0.5.1, complemento)
+A nova aba Contatos sincroniza canais institucionais existentes nas fichas, permite cadastro via API com fonte e revisão de status. Não coleta dados pessoais nem promete localizar contatos inexistentes. Consulte `docs/contatos.md`.

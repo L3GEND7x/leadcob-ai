@@ -1,4 +1,4 @@
-# Manual de uso diário — LeadCob AI 0.5
+# Manual de uso diário — LeadCob AI 0.5.2
 
 Rotina sugerida de 30 a 60 minutos por dia. Tudo o que aparece nas telas vem do banco do sistema
 (fontes públicas captadas e o que você registra). Nada é enviado a empresas pelo sistema: contato,
@@ -64,3 +64,23 @@ supressão (incluir por CNPJ, retirar) e exportação.
 - Limitações da página: sem consulta de CNPJ e sem exportação CSV (a página não acessa sites externos);
   os sinais refletem a janela de captação atual (PNCP dos últimos 7 dias e vagas abertas). Para histórico
   completo e volumes maiores, use a versão instalada com servidor próprio.
+
+## 8. Abordagem sugerida (na ficha)
+"Gerar e-mail, WhatsApp, roteiro e follow-ups" monta os textos com os fatos da ficha (vaga ou setor) e sua assinatura
+(Configurações). Copie, ajuste e envie você mesma; depois clique em "Registrar como enviado" e confirme o registro.
+Para órgãos públicos com edital, o sistema mostra só o checklist: a comunicação segue o edital.
+
+## 9. Inteligência de cobrança (clientes que contrataram você)
+Importe a carteira do cliente em CSV (colunas `valor` e `vencimento`; opcionais `pagamento`, `titulo`, `tipo_devedor`).
+Nome, CPF e contatos de devedores são descartados. Veja as faixas de atraso e a estratégia sugerida para cada uma;
+mude a data de referência para simular outro dia. Na página publicada este módulo não recebe carteiras (dados de terceiros).
+
+## 10. Laboratório de negociação
+Informe valor, vencimento, data-base e as premissas (correção, multa, juros, desconto, entrada, parcelas). Campos em branco
+valem zero. Confira limites contratuais e legais antes de propor. A memória de cálculo mostra cada passo.
+
+## 11. Biblioteca de scripts
+Modelos de abertura, descoberta, objeções, follow-up e cobrança da carteira, com busca e botão de copiar.
+
+## 12. Contatos empresariais
+Lista de canais institucionais com origem e status. "Sincronizar fichas" importa só site e e-mail já cadastrados.

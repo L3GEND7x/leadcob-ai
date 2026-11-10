@@ -45,3 +45,12 @@ criados (só com `DEMO_SEED=true`) e são removidos dos bancos existentes.
 - Autenticação, HTTPS e hospedagem própria: necessários antes de uso por equipe ou exposição na internet.
 - Sinais de terceirização: nenhuma fonte pública comprova essa demanda; continuam como hipótese.
 - Calibração dos pesos da pontuação com resultados reais do CRM.
+
+## Atualização 0.5.2 (10/11/2026) — início da Etapa 2
+Integrado e testado: aba Contatos (pacote 0.5.1 revisado), identidade violeta, gerador de abordagens, inteligência de
+cobrança por faixas de atraso com estratégia sugerida, laboratório de negociação e biblioteca de scripts.
+Testes: **127 aprovados** (121 do pacote 0.5.1 + 6 novos da Etapa 2). Interface testada no Chromium em 1366×900 e
+iPhone 13 (9 telas, sem erros de JavaScript e sem rolagem horizontal).
+Pendente: agentes especializados, pesquisa contínua, relatórios; base de conhecimento jurídico só com fontes conferidas
+([NECESSÁRIO CONFERIR]); pesquisa institucional de contatos por CNPJ em sites oficiais (com fonte e revisão humana);
+carteiras de cobrança na página publicada (fora por segurança: dados de devedores de terceiros).

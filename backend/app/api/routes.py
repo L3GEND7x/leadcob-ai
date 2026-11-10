@@ -58,7 +58,7 @@ def serialize_company(c, opportunities: int = 0):
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "LeadCob AI", "version": "0.5.0"}
+    return {"status": "ok", "service": "LeadCob AI", "version": "0.5.2"}
 
 
 @router.get("/dashboard/summary")

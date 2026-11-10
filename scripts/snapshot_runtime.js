@@ -351,6 +351,38 @@ const LC = (() => {
     el.innerHTML = n ? `<b>${n} registro(s) do CRM</b> já salvos entram no recálculo da pontuação e dos painéis na próxima atualização.` : '';
   }
 
+  // --- laboratório de negociação (mesma regra de backend/app/services/negotiation.py) ---
+  function simulate(p) {
+    const valor = Number(p.valor_original); if (!(valor > 0)) fail('Valor original deve ser positivo.', 400);
+    const d = (s) => { const t = Date.parse(s + 'T00:00:00Z'); if (isNaN(t)) fail('Data inválida.', 400); return t; };
+    const venc = d(p.vencimento), base = d(p.data_base), dias = Math.max(0, Math.round((base - venc) / 864e5)), meses = dias / 30;
+    const pc = (k) => Number(p[k] || 0) / 100;
+    const [mp, jp, cp, dp, jparc] = [pc('multa_pct'), pc('juros_mes_pct'), pc('correcao_pct'), pc('desconto_pct'), pc('juros_parcelamento_mes_pct')];
+    if (Math.min(mp, jp, dp, jparc) < 0 || dp > 1) fail('Percentuais inválidos.', 400);
+    const comp = p.juros_tipo === 'composto';
+    const correcao = dias ? valor * cp : 0, corr = valor + correcao, multa = dias ? corr * mp : 0;
+    const juros = comp ? corr * (Math.pow(1 + jp, meses) - 1) : corr * jp * meses;
+    const total = corr + multa + juros, enc = correcao + multa + juros, sobre = p.desconto_sobre || 'encargos';
+    const desconto = (sobre === 'encargos' ? enc : total) * dp, acordado = total - desconto, entrada = Number(p.entrada || 0);
+    if (entrada < 0 || entrada > acordado) fail('Entrada deve estar entre zero e o valor acordado.', 400);
+    const n = Math.round(Number(p.parcelas || 1)); if (!(n >= 1 && n <= 120)) fail('Parcelas: de 1 a 120.', 400);
+    const saldo = acordado - entrada, parcela = jparc > 0 ? saldo * jparc / (1 - Math.pow(1 + jparc, -n)) : saldo / n;
+    const r = (x) => Math.round(x * 100) / 100, f2 = (x) => x.toFixed(2), br = (t) => new Date(t).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+    const avisos = ['Todas as taxas e índices foram informados por você; o sistema não presume nenhum.',
+      'Confira no contrato e na legislação aplicável os limites de multa, juros e correção. [NECESSÁRIO CONFERIR]'];
+    if (!(mp || jp || cp)) avisos.unshift('Nenhum encargo informado: o total considera só o valor original.');
+    return { dias_atraso: dias, meses_considerados: r(meses), valor_original: r(valor), correcao: r(correcao), valor_corrigido: r(corr),
+      multa: r(multa), juros: r(juros), total_atualizado: r(total), desconto: r(desconto), valor_acordado: r(acordado), entrada: r(entrada),
+      parcelas: n, valor_parcela: r(parcela), total_a_receber: r(entrada + parcela * n),
+      memoria: [`Atraso: ${dias} dia(s) entre ${br(venc)} e ${br(base)} (${meses.toFixed(2)} meses de 30 dias).`,
+        `Correção informada: ${(cp * 100).toFixed(2)}% sobre o original = ${f2(correcao)}.`,
+        `Multa informada: ${(mp * 100).toFixed(2)}% sobre o valor corrigido = ${f2(multa)}.`,
+        `Juros informados: ${(jp * 100).toFixed(2)}% ao mês, ${comp ? 'compostos' : 'simples'} = ${f2(juros)}.`,
+        `Desconto: ${(dp * 100).toFixed(2)}% sobre ${sobre === 'encargos' ? 'os encargos' : 'o total'} = ${f2(desconto)}.`,
+        `Parcelamento: entrada ${f2(entrada)} + ${n} parcela(s) de ${f2(parcela)}` + (jparc ? ` (juros de ${(jparc * 100).toFixed(2)}% a.m., tabela Price).` : ' (sem juros).')],
+      avisos };
+  }
+
   // --- busca ao vivo: dispara a tarefa agendada na nuvem ---
   async function requestRefresh(what) {
     if (!META.trigger_id) fail('Esta página não tem a tarefa de atualização configurada.');
@@ -403,6 +435,21 @@ const LC = (() => {
         return d;
       }
       let m;
+      if ((m = route.match(/^\/companies\/([^/]+)\/approach$/))) {
+        const s = findCo(V, m[1]);
+        if (s.suppressed || s.stage === 'nao_contatar') fail('Empresa na lista de supressão: nenhuma abordagem é gerada.', 409);
+        const a = (D.approaches || {})[String(s.id)];
+        if (!a) fail('A abordagem desta empresa é gerada na próxima atualização (aos 10 minutos de cada hora).', 404);
+        return a;
+      }
+      if (route === '/contacts') {
+        const all = (D['/contacts'] || { items: [] }).items, q = (p.get('q') || '').toLowerCase(), kind = p.get('kind');
+        const items = all.filter(x => { const s = V.byId[String(x.company_id)];
+          return !(s && s.suppressed) && (!kind || x.kind === kind) && (!q || (x.company_name + ' ' + (x.cnpj || '') + ' ' + x.value).toLowerCase().includes(q)); });
+        return { total: items.length, items: items.slice(0, 100) };
+      }
+      if (route === '/portfolios') return [];
+      if (route.startsWith('/portfolios/')) fail('Carteiras de clientes ficam só na versão instalada.', 404);
       if ((m = route.match(/^\/companies\/([^/]+)$/))) return fichaOut(V, m[1]);
       if (route === '/market/datajud') {
         const k = `/market/datajud?uf=${(p.get('uf') || '').toUpperCase()}`;
@@ -450,6 +497,10 @@ const LC = (() => {
       }
       return requestRefresh(`mapa do DataJud${uf ? ' de ' + uf : ''}`);
     }
+    if (route === '/negotiation/simulate') return simulate(body);
+    if (route === '/portfolios') fail('Por segurança, carteiras de títulos (dados de devedores de terceiros) não são enviadas para a página publicada. Use a versão instalada para a inteligência de cobrança.');
+    if (route === '/contacts/sync') fail('Nesta página a sincronização de contatos roda sozinha a cada atualização (aos 10 minutos de cada hora).');
+    if (route === '/contacts') fail('Cadastro de contato funciona na versão instalada.');
     if (route.endsWith('/enrich')) fail('A consulta de CNPJ funciona na versão instalada: esta página não pode acessar sites externos.');
     fail('Ação indisponível nesta página.');
   }
