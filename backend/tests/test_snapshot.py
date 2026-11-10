@@ -18,6 +18,8 @@ def build(tmp: Path, prev: dict, crm: dict) -> dict:
                     "--crm", str(tmp / "crm.json"), "--offline"], check=True, cwd=ROOT, capture_output=True)
     html = out.read_text(encoding="utf-8")
     assert "LC.api(path, opt)" in html and "window.claude" in html
+    # todos os scripts do frontend embutidos: a página publicada não tem servidor para /static
+    assert 'src="/static/' not in html and "async function sessionReady() { return true; }" in html
     return json.loads(re.search(r"window\.__DEMO = (\{.*?\});</script>", html, re.S).group(1))
 
 

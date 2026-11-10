@@ -457,6 +457,7 @@ const LC = (() => {
         if (k in D) return D[k];
         fail(S.ufs.includes(p.get('uf')) ? 'Mapa desta UF pedido: aparece na próxima atualização.' : 'Sem mapa desta UF ainda. Clique em "Atualizar pelo DataJud" para incluí-la.', 404);
       }
+      if (route.startsWith('/assistant')) fail('O assistente com IA funciona na versão instalada (servidor próprio com chave de API configurada).', 404);
       if (route.startsWith('/cnpj/')) fail('A consulta de CNPJ funciona na versão instalada: esta página não pode acessar sites externos.');
       if (path in D) return D[path];
       if (route in D) return D[route];
@@ -503,6 +504,7 @@ const LC = (() => {
     if (route === '/contacts/sync') fail('Nesta página a sincronização de contatos roda sozinha a cada atualização (aos 10 minutos de cada hora).');
     if (route === '/contacts') fail('Cadastro de contato funciona na versão instalada.');
     if (route.startsWith('/contacts/')) fail('Busca e verificação de contatos funcionam na versão instalada (esta página não acessa sites externos).');
+    if (route.startsWith('/assistant')) fail('O assistente com IA funciona na versão instalada (servidor próprio com chave de API configurada).');
     if (route.endsWith('/enrich')) fail('A consulta de CNPJ funciona na versão instalada: esta página não pode acessar sites externos.');
     fail('Ação indisponível nesta página.');
   }
