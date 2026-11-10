@@ -57,12 +57,13 @@ def insert(db, company, kind, value, source, url=None):
     return True
 
 @router.get("")
-def list_contacts(q: str = "", kind: str = "", company_id: int | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+def list_contacts(q: str = "", kind: str = "", company_id: int | None = None, status: str = "", limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
     query = db.query(BusinessContact, Company).join(Company, BusinessContact.company_id == Company.id)
     blocked_ids = [x.company_id for x in db.query(Suppression).filter(Suppression.company_id.isnot(None)).all()]
     blocked_cnpjs = [x.cnpj for x in db.query(Suppression).filter(Suppression.cnpj.isnot(None)).all()]
     if blocked_ids: query = query.filter(~Company.id.in_(blocked_ids))
     if blocked_cnpjs: query = query.filter(or_(Company.cnpj.is_(None), ~Company.cnpj.in_(blocked_cnpjs)))
+    if status in STATUSES: query = query.filter(BusinessContact.status == status)
     if kind in KINDS: query = query.filter(BusinessContact.kind == kind)
     if company_id: query = query.filter(BusinessContact.company_id == company_id)
     if q: query = query.filter(or_(Company.name.ilike(f"%{q}%"), Company.cnpj.ilike(f"%{q}%"), BusinessContact.value.ilike(f"%{q}%")))
@@ -86,24 +87,31 @@ def add_contact(payload: ContactIn, db: Session = Depends(get_db)):
     return serialize(item, c)
 
 @router.post("/sync")
-def sync_contacts(limit: int = Query(500, ge=1, le=2000), db: Session = Depends(get_db)):
+def sync_contacts(limit: int = Query(500, ge=1, le=2000), after_id: int = Query(0, ge=0), db: Session = Depends(get_db)):
     """Importa apenas canais institucionais JÁ presentes na ficha, sem inferir contatos."""
     count = 0; scanned = 0
-    for c in db.query(Company).filter(or_(Company.website.isnot(None), Company.institutional_email.isnot(None))).order_by(Company.id).limit(limit):
+    last_id = after_id
+    for c in db.query(Company).filter(Company.id > after_id).filter(or_(Company.website.isnot(None), Company.institutional_email.isnot(None))).order_by(Company.id).limit(limit):
         scanned += 1
+        last_id = c.id
         for kind, value in (("website", c.website), ("email", c.institutional_email)):
             try:
                 if insert(db, c, kind, value, "Ficha empresarial existente"): count += 1
             except HTTPException: pass
     db.add(AuditLog(event="contacts_sync", entity_type="business_contact", entity_id=None, details={"scanned": scanned, "added": count}))
     db.commit()
-    return {"scanned": scanned, "added": count, "note": "Sincronização de canais existentes; não houve pesquisa externa"}
+    return {"scanned": scanned, "added": count, "next_cursor": last_id if scanned == limit else None, "note": "Sincronização de canais existentes; não houve pesquisa externa"}
 
 @router.patch("/{contact_id}/verify")
 def verify(contact_id: int, status: str = Query(pattern="^(verificado|invalido|a_verificar)$"), db: Session = Depends(get_db)):
     item = db.get(BusinessContact, contact_id)
     if not item: raise HTTPException(404, "Contato não encontrado")
     if is_blocked(db, db.get(Company, item.company_id)): raise HTTPException(403, "Empresa em lista de supressão")
+    company = db.get(Company, item.company_id)
+    if status == "invalido":
+        field = {"email": "institutional_email", "website": "website"}.get(item.kind)
+        if field and (getattr(company, field) or "").strip().lower() == item.value.lower():
+            setattr(company, field, None)
     item.status = status
     item.checked_at = datetime.now(timezone.utc)
     db.add(AuditLog(event="contact_reviewed", entity_type="business_contact", entity_id=item.id, details={"status": status}))
@@ -136,3 +144,56 @@ def discover_from_site(company_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {**result, "added": added,
             "note": "Só e-mails institucionais do próprio domínio do site cadastrado. Confira antes de usar (status: a verificar)."}
+
+
+@router.post('/domain-search/{company_id}')
+def search_domain(company_id: int, db: Session = Depends(get_db)):
+    from app.core.config import settings
+    from app.db.models import DomainCandidate
+    from app.services.domain_search import search
+    c = db.get(Company, company_id)
+    if not c or is_blocked(db, c):
+        raise HTTPException(404, 'Empresa indisponível.')
+    if not settings.brave_search_api_key:
+        raise HTTPException(503, 'Configure BRAVE_SEARCH_API_KEY para pesquisar domínios.')
+    try:
+        results = search(c, settings.brave_search_api_key)
+    except Exception as exc:
+        # Details from the search service may contain the key or internal URLs.
+        raise HTTPException(502, 'Pesquisa de domínios indisponível. Tente novamente depois.') from exc
+    items = []
+    for result in results:
+        current = db.query(DomainCandidate).filter_by(company_id=c.id, website=result['website']).first()
+        if not current:
+            current = DomainCandidate(company_id=c.id, **result)
+            db.add(current)
+            db.flush()
+        else:
+            current.source_url, current.evidence, current.status = result['source_url'], result['evidence'], result['status']
+        items.append({'id': current.id, 'website': current.website, 'source_url': current.source_url,
+                      'evidence': current.evidence, 'status': current.status})
+    db.add(AuditLog(event='domain_search', entity_type='company', entity_id=c.id, details={'candidates': len(items)}))
+    db.commit()
+    return {'items': items, 'note': 'Confira a fonte e o site antes de selecionar o domínio.'}
+
+
+@router.post('/domain-candidates/{candidate_id}/confirm')
+def confirm_domain(candidate_id: int, db: Session = Depends(get_db)):
+    from app.db.models import DomainCandidate
+    candidate = db.get(DomainCandidate, candidate_id)
+    if not candidate:
+        raise HTTPException(404, 'Candidato não encontrado.')
+    company = db.get(Company, candidate.company_id)
+    if not company or is_blocked(db, company):
+        raise HTTPException(403, 'Empresa indisponível.')
+    if candidate.status == 'verificado':
+        return {'website': candidate.website, 'reused': True}
+    previous = company.website
+    company.website = candidate.website
+    candidate.status = 'verificado'
+    candidate.checked_at = datetime.now(timezone.utc)
+    db.add(AuditLog(event='domain_confirmed', entity_type='company', entity_id=company.id,
+                    details={'from': previous, 'to': candidate.website, 'source': candidate.source_url,
+                             'evidence': candidate.evidence}))
+    db.commit()
+    return {'website': candidate.website}

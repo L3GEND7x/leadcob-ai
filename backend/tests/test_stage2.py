@@ -82,7 +82,7 @@ def test_csv_import_drops_personal_columns_and_bands_are_right():
 
 def test_portfolio_api_roundtrip():
     with TestClient(app) as c:
-        r = c.post("/api/portfolios", json={"name": "Carteira teste", "csv": CSV, "reference_date": "2026-11-10"})
+        r = c.post("/api/portfolios", json={"name": "Carteira teste", "csv": CSV, "reference_date": "2026-11-10", "accept_partial": True})
         assert r.status_code == 201
         body = r.json()
         assert body["resumo"]["valor_vencido"] == pytest.approx(500.5 + 2000 + 300 + 400 + 700 + 900)

@@ -10,6 +10,8 @@ Regras (LGPD e termos de uso):
 from __future__ import annotations
 
 import re
+import time
+from app.services.safe_http import public_client, bounded_get, validate_url
 from html import unescape
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
@@ -35,7 +37,7 @@ def _root(host: str) -> str:
 
 def _role_box(local: str) -> bool:
     norm = re.sub(r"[^a-z]", "", local.lower())
-    return norm in ROLE or any(norm.startswith(r) for r in ROLE)
+    return norm in ROLE
 
 
 def discover(website: str, client: httpx.Client | None = None, max_pages: int = 4) -> dict:
@@ -45,18 +47,22 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
     u = urlparse(website if "://" in website else "https://" + website)
     if u.scheme not in ("http", "https") or not u.hostname:
         raise ValueError("Site institucional inválido.")
+    validate_url(u.geturl())
     base = f"{u.scheme}://{u.hostname}"
+    deadline = time.monotonic() + 40
     domain = _root(u.hostname)
     own = client is None
-    client = client or httpx.Client(timeout=12.0, follow_redirects=True, headers={"User-Agent": UA})
+    client = client or public_client()
     found, pages, notes = {}, [], []
     try:
         robots = RobotFileParser()
         try:
-            r = client.get(base + "/robots.txt")
+            r = bounded_get(client, base + "/robots.txt", u.hostname, deadline)
+            if r.status_code not in (200, 404):
+                raise ValueError("Não foi possível verificar robots.txt.")
             robots.parse(r.text.splitlines() if r.status_code == 200 else [])
-        except httpx.HTTPError:
-            robots.parse([])
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ValueError("Não foi possível verificar robots.txt.") from exc
         queue, seen = [website if "://" in website else "https://" + website], set()
         while queue and len(pages) < max_pages:
             url = queue.pop(0)
@@ -67,8 +73,8 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
                 notes.append(f"robots.txt não permite ler {url}")
                 continue
             try:
-                resp = client.get(url)
-            except httpx.HTTPError as exc:
+                resp = bounded_get(client, url, u.hostname, deadline)
+            except (httpx.HTTPError, ValueError) as exc:
                 notes.append(f"{url}: {type(exc).__name__}")
                 continue
             if resp.status_code != 200 or "html" not in resp.headers.get("content-type", "html"):
@@ -89,7 +95,7 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
                 for href in HREF.findall(html):
                     link = urljoin(str(resp.url), href)
                     lh = urlparse(link).hostname or ""
-                    if _root(lh) == domain and CONTACT_HINT.search(urlparse(link).path or "") and link not in seen:
+                    if _root(lh) == domain and CONTACT_HINT.search(urlparse(link).path or "") and link not in seen and len(queue) < 12:
                         queue.append(link)
     finally:
         if own:

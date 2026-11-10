@@ -40,6 +40,7 @@ AGG = {"hits": {"total": {"value": 29566}}, "aggregations": {
 
 
 def test_market_map_with_retry_on_429(monkeypatch):
+    monkeypatch.setattr(datajud, "API_KEY", "test-public-key")
     monkeypatch.setattr(datajud.time, "sleep", lambda *_: None)
     calls = {"n": 0}
     def handler(req):
@@ -65,6 +66,7 @@ def test_market_map_with_retry_on_429(monkeypatch):
 
 
 def test_auth_error_is_explicit(monkeypatch):
+    monkeypatch.setattr(datajud, "API_KEY", "invalid")
     real = httpx.Client
     monkeypatch.setattr(datajud.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(lambda r: httpx.Response(401))))
     with pytest.raises(datajud.DataJudError, match="DATAJUD_API_KEY"):

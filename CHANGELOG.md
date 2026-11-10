@@ -91,7 +91,7 @@
 | Conector Greenhouse/Lever | **Aproveitado e revisado** | Ideia correta (APIs públicas documentadas). Corrigidos com dados reais: filtro por descrição (80% ruído), "analista de crédito" como falso positivo, HTML escapado, falta de paginação no Lever, empresa duplicada por vaga sem CNPJ |
 | `JOB_BOARD_SOURCES_JSON` | **Aproveitado** | Mantido compatível, somado ao arquivo `config/job_boards.json` |
 | Importação de ZIPs locais | **Aproveitado** (`--local-dir`) | Útil sem internet ou para reprocessar uma competência |
-| Catálogo de fontes | **Aproveitado e verificado** | Cada link testado; separado em integradas/consultadas/planejadas; link do compartilhamento `YggdBLfdninEJX9` confirmado como espelho (mesmos ETags) |
+| Catálogo de fontes | **Aproveitado e verificado** | Cada link testado; separado em integradas/consultadas/planejadas; compartilhamento público da Receita confirmado como espelho (mesmos ETags) |
 | Exclusão de sócios/QSA | **Já adotado** | Ampliado: também sem e-mail/telefone (dados pessoais na amostra real) |
 | `cnpj_import.py` (importar todos os ativos) | Não aproveitado | Gravaria dezenas de milhões de estabelecimentos (inclui filiais e MEIs) sem filtro de perfil; staging SQLite de todas as empresas; natureza e porte como códigos |
 | Campos `cnae`, `porte`, `registry_status`, `legal_nature` | Não aproveitados | Já cobertos com mais informação (`cnae_main` + descrição, `company_size` por extenso, natureza por extenso) |

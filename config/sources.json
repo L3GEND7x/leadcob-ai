@@ -27,11 +27,11 @@
     {
       "category": "integrada",
       "name": "Receita Federal — arquivos de dados abertos do CNPJ",
-      "url": "https://arquivos.receitafederal.gov.br/index.php/s/gn672Ad4CF8N6TK",
+      "url": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/dados-abertos/cadastros",
       "official": true,
       "documented": true,
       "use": "Base de empresas-alvo por CNAE/UF/porte (job mensal, leitura em fluxo por HTTP Range ou ZIPs locais)",
-      "status": "Validada em 09/11/2026 (publicação 2026-10); espelho com os mesmos arquivos: https://arquivos.receitafederal.gov.br/index.php/s/YggdBLfdninEJX9"
+      "status": "Validada em 09/11/2026 (publicação 2026-10); configure RFB_SHARE_TOKEN com o compartilhamento público atual para executar o importador"
     },
     {
       "category": "integrada",

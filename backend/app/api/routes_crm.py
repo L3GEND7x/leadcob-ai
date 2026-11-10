@@ -547,10 +547,10 @@ def command_center(db: Session = Depends(get_db)):
         "reunioes": max(companies_with(["reuniao"]), stage_counts.get("reuniao_agendada", 0)),
         "propostas": max(companies_with(["proposta"]), stage_counts.get("proposta_enviada", 0)),
         "contratos": contracts,
-        "taxa_conversao": round(100 * contracts / contacted, 1) if contacted else None,
+        "taxa_conversao": round(100 * db.query(Company).filter(Company.pipeline_stage == "cliente_conquistado", Company.id.in_(db.query(Interaction.company_id).filter(Interaction.kind.in_(OUTREACH_KINDS)))).count() / contacted, 1) if contacted else None,
         "valor_potencial": potential,
         "notas": {"valor_potencial": "Soma dos valores informados por você nas fichas (não é estimativa do sistema).",
-                  "taxa_conversao": "Contratos ÷ empresas contatadas."},
+                  "taxa_conversao": "Clientes conquistados dentre as empresas com contato registrado ÷ empresas com contato registrado; histórico completo."},
     }
     cands = _pipeline_candidates(db)
     scored = [(c, summarize(c, settings, sup)) for c in cands]
@@ -597,7 +597,8 @@ def pipeline(db: Session = Depends(get_db)):
         s["stage_updated_at"] = iso(as_utc(c.stage_updated_at))
         groups[s["stage"]].append(s)
     identified = db.query(Company).filter(or_(Company.pipeline_stage.is_(None), Company.pipeline_stage == "identificada")).count()
-    return {"stages": [{"key": k, "label": v, "count": identified if k == "identificada" else len(groups[k]),
+    return {"stages": [{"key": k, "label": v, "count": identified if k == "identificada" else db.query(Company).filter(Company.pipeline_stage == k).count(),
+                        "partial": len(rows) == CANDIDATE_LIMIT,
                         "items": [] if k == "identificada" else groups[k]} for k, v in STAGES]}
 
 

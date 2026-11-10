@@ -1,11 +1,15 @@
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.core.config import settings
 
-IS_SQLITE = settings.database_url.startswith("sqlite")
+database_url = (URL.create('postgresql+psycopg', username='leadcob', password=settings.postgres_password,
+                           host=settings.db_host, port=5432, database='leadcob')
+                if settings.db_host and settings.postgres_password else settings.database_url)
+IS_SQLITE = str(database_url).startswith("sqlite")
 # timeout: espera até 30 s por um banco ocupado (ex.: captação gravando enquanto os agentes rodam)
 connect_args = {"check_same_thread": False, "timeout": 30} if IS_SQLITE else {}
-engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
+engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
 
 if IS_SQLITE:
     from sqlalchemy import event
@@ -28,6 +32,7 @@ def get_db():
 # Colunas acrescentadas depois da v0.1. `create_all` não altera tabelas
 # existentes, então bancos antigos recebem as colunas aqui (SQLite e PostgreSQL).
 LATE_COLUMNS = {
+    "portfolios": {"archived_at": "TIMESTAMP", "import_key": "VARCHAR(64)", "import_report": "JSON"},
     "companies": {
         "trade_name": "VARCHAR(220)", "cnae_main": "VARCHAR(7)", "cnae_desc": "VARCHAR(255)", "cnae_secondary": "TEXT",
         "registration_status": "VARCHAR(30)", "company_size": "VARCHAR(40)", "legal_nature": "VARCHAR(160)",
@@ -53,3 +58,4 @@ def ensure_schema():
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_opportunities_source_key ON opportunities (source_key)"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_portfolios_import_key ON portfolios (import_key)"))

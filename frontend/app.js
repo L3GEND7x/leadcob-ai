@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const V = () => $('view');
 
 async function api(path, opt = {}) {
-  const r = await fetch('/api' + path, { headers: { 'Content-Type': 'application/json' }, ...opt });
+  const r = await fetch('/api' + path, { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': typeof csrfToken === 'undefined' ? '' : csrfToken }, ...opt });
   if (!r.ok) { const e = Error(await r.text()); e.status = r.status; throw e; }
   return r.json();
 }
@@ -21,8 +21,9 @@ function errMsg(e, fallback = 'Não foi possível concluir.') {
   } catch (_) {}
   return fallback;
 }
+const safeHttpUrl = u => { try { const p = new URL(u); return ['https:', 'http:'].includes(p.protocol) ? p.href : ''; } catch (_) { return ''; } };
 const fmt = n => (n ?? 0).toLocaleString('pt-BR');
-const money = v => (v || v === 0) && v !== '' ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }) : '';
+const money = v => (v || v === 0) && v !== '' ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
 const when = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }); };
 const day = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR'); };
 const today = () => new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -50,10 +51,11 @@ function coRow(s, extra = '') {
 const rows = (items, emptyMsg, extra) => items.length ? `<div class="rows">${items.map(s => coRow(s, extra ? esc(extra(s)) : '')).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`;
 
 // ------------------------------------------------------------------ rotas
-const ROUTES = { inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
+const ROUTES = { assistente: viewAssistente, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
   empresa: viewEmpresa, contatos: viewContatos, cobranca: viewCobranca, negociacao: viewNegociacao, scripts: viewScripts, radar: viewRadar, fontes: viewFontes, config: viewConfig };
 let CUR = { v: 'inicio', arg: null };
 async function route() {
+  if (typeof sessionReady === 'function' && !await sessionReady()) return;
   const [v, arg] = location.hash.replace(/^#\/?/, '').split('/');
   CUR = { v: ROUTES[v] ? v : 'inicio', arg: arg ? decodeURIComponent(arg) : null };
   const navKey = CUR.v === 'empresa' ? 'crm' : CUR.v;
@@ -276,7 +278,7 @@ function render() {
     const proc = x.kind === 'public_procurement' || !!x.evidence_level;
     const badges = proc ? `<div class="badges">${x.commercial_signal === 'oportunidade_comprovada' ? '<span class="badge ok">✓ COMPROVADA</span>' : '<span class="badge warn">SINAL A CONFIRMAR</span>'}${badge(CLASS, x.opportunity_class)}${badge(REL, x.relevance)}${badge(EVID, x.evidence_level)}</div>` : '';
     const why = proc && x.relevance_reason ? `<span class="why">${esc(x.relevance_reason)}</span>` : '';
-    const src = x.source_url ? `<a class="src" href="${esc(x.source_url)}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name);
+    const src = x.source_url ? `<a class="src" href="${esc(safeHttpUrl(x.source_url))}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name);
     const extra = [x.modality_name, money(x.estimated_value)].filter(Boolean).map(esc).join(' · ');
     const dl = x.deadline ? `<span class="deadline">Propostas até ${when(x.deadline)}</span>` : '';
     const name = x.company_id ? `<a class="name" href="#/empresa/${x.company_id}"><strong>${esc(x.company_name)}</strong></a>` : `<strong>${esc(x.company_name)}</strong>`;
@@ -407,9 +409,9 @@ async function viewEmpresa(id) {
         <label class="f full">Anotações<textarea name="notes" maxlength="5000">${esc(c.notes || '')}</textarea></label>
         <div class="end"><button class="primary">Salvar</button></div></form>`)}
       ${panel('Contatos institucionais', 'Só canais da empresa (nunca pessoais), com a origem registrada', suppressed ? '<p class="note">Empresa na lista de supressão.</p>' : `<div id="co-contacts"><p class="note">Carregando…</p></div>
-        <div class="actions" style="margin:8px 0">${c.website ? `<button class="small" onclick="discoverContacts(${JSON.stringify(c.id)})">⌕ Buscar e-mails no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
+        <div class="actions" style="margin:8px 0"><button class="small" onclick="searchDomain(${JSON.stringify(c.id)})">⌕ Sugerir sites pelo CNPJ</button>${c.website ? `<button class="small" onclick="discoverContacts(${JSON.stringify(c.id)})">⌕ Buscar e-mails no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
         ${c.website ? '' : '<p class="note">Sem site cadastrado: pesquise, confira que é o site oficial da empresa e salve-o no campo "Site institucional" acima.</p>'}
-        <form id="f-contact" class="form"><label class="f">Canal<select name="kind"><option value="email">E-mail</option><option value="website">Site</option><option value="phone">Telefone</option></select></label><label class="f">Valor<input name="value" required minlength="3" maxlength="500"></label><label class="f full">Onde você encontrou (fonte)<input name="source_name" required minlength="2" maxlength="120" placeholder="Ex.: página Fale Conosco do site oficial"></label><label class="f full">URL da fonte (opcional)<input name="source_url" maxlength="1000"></label><div class="end"><button>＋ Adicionar contato</button></div></form>`)}
+        <div id="domain-candidates" aria-live="polite"></div><form id="f-contact" class="form"><label class="f">Canal<select name="kind"><option value="email">E-mail</option><option value="website">Site</option><option value="phone">Telefone</option></select></label><label class="f">Valor<input name="value" required minlength="3" maxlength="500"></label><label class="f full">Onde você encontrou (fonte)<input name="source_name" required minlength="2" maxlength="120" placeholder="Ex.: página Fale Conosco do site oficial"></label><label class="f full">URL da fonte (opcional)<input name="source_url" maxlength="1000"></label><div class="end"><button>＋ Adicionar contato</button></div></form>`)}
       ${panel('Abordagem sugerida', 'Gerada com os fatos desta ficha. Nada é enviado pelo sistema.', suppressed ? '<p class="note">Empresa na lista de supressão: nenhuma abordagem é gerada.</p>' : '<div id="approach"><button class="primary" onclick="loadApproach(' + JSON.stringify(c.id) + ')">✉ Gerar e-mail, WhatsApp, roteiro e follow-ups</button></div>')}
       ${panel('Registrar interação', c.last_outreach_at ? 'Último contato em ' + when(c.last_outreach_at) : 'Nenhum contato registrado', `<form id="f-int" class="form">
         <label class="f">Tipo<select name="kind">${opts(KINDS, 'contato')}</select></label>
@@ -436,7 +438,7 @@ async function loadCompanyContacts(id) {
   try {
     const d = await api('/contacts?company_id=' + encodeURIComponent(id));
     const ST = { a_verificar: ['A VERIFICAR', 'warn'], verificado: ['VERIFICADO', 'ok'], invalido: ['INVÁLIDO', 'bad'] };
-    box.innerHTML = d.items.length ? d.items.map(x => `<div class="task"><div class="main"><strong>${esc(x.value)}</strong><small>${esc(x.kind)} · ${x.source_url ? `<a class="src" href="${esc(x.source_url)}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name)} <span class="badge ${ST[x.status][1]}">${ST[x.status][0]}</span></small></div>${x.status !== 'verificado' ? `<button class="small" onclick="verifyContact(${x.id},'verificado')">✓ Confirmar</button>` : ''}${x.status !== 'invalido' ? `<button class="small" onclick="verifyContact(${x.id},'invalido')">✕ Inválido</button>` : ''}</div>`).join('') : '<p class="empty">Nenhum contato institucional cadastrado.</p>';
+    box.innerHTML = d.items.length ? d.items.map(x => `<div class="task"><div class="main"><strong>${esc(x.value)}</strong><small>${esc(x.kind)} · ${x.source_url ? `<a class="src" href="${esc(safeHttpUrl(x.source_url))}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name)} <span class="badge ${ST[x.status][1]}">${ST[x.status][0]}</span></small></div>${x.status !== 'verificado' ? `<button class="small" onclick="verifyContact(${x.id},'verificado')">✓ Confirmar</button>` : ''}${x.status !== 'invalido' ? `<button class="small" onclick="verifyContact(${x.id},'invalido')">✕ Inválido</button>` : ''}</div>`).join('') : '<p class="empty">Nenhum contato institucional cadastrado.</p>';
   } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Contatos indisponíveis.'))}</p>`; }
 }
 async function discoverContacts(id) {
@@ -627,28 +629,31 @@ function prefillInteraction(kind, channel) {
 // ------------------------------------------------------------------ inteligência de cobrança (carteiras)
 async function viewCobranca(arg) {
   if (arg) return viewCarteira(arg);
-  const list = await api('/portfolios');
+  const [list, archived] = await Promise.all([api('/portfolios'), api('/portfolios?archived=true')]);
   V().innerHTML = head('Etapa 2 · carteiras de clientes', 'Inteligência de cobrança',
     'Carteira de títulos de um cliente que contratou você. Fica separada da prospecção. Só valor, vencimento e pagamento são importados: nome, CPF e contatos do devedor são descartados.')
     + `<div class="grid2">${panel('Importar carteira (CSV)', 'Colunas aceitas: valor, vencimento; opcionais: pagamento, título/documento, tipo_devedor (PJ/PF)', `<form id="f-pf" class="form">
         <label class="f full">Nome da carteira<input name="name" required minlength="2" maxlength="160" placeholder="Ex.: Cliente X — novembro"></label>
         <label class="f">Data de referência<input name="reference_date" type="date"></label>
+        <label class="f">Formato do valor<select name="number_format"><option value="auto">Detectar, avisando ambiguidades</option><option value="br">Brasil (1.250,00)</option><option value="us">Internacional (1,250.00)</option></select></label>
         <label class="f">Arquivo CSV<input name="file" type="file" accept=".csv,text/csv,text/plain"></label>
         <label class="f full">ou cole o conteúdo<textarea name="csv" placeholder="valor;vencimento;pagamento&#10;1.250,00;05/10/2026;"></textarea></label>
         <label class="f full">Origem dos dados<input name="source_note" maxlength="500" placeholder="Ex.: planilha enviada pelo cliente em 10/11"></label>
-        <div class="end"><button class="primary">Importar e analisar</button></div></form>`)}
-      ${panel('Carteiras', '', list.length ? `<div class="rows">${list.map(p => `<a class="row" href="#/cobranca/${p.id}"><span class="pill">${fmt(p.titulos)}</span><div class="main"><strong>${esc(p.name)}</strong><small>Vencido: ${money(p.resumo.valor_vencido)} (${p.resumo.pct_vencido.toLocaleString('pt-BR')}%) · aberto ${money(p.resumo.valor_aberto)} · referência ${esc(p.data_referencia.split('-').reverse().join('/'))}</small></div></a>`).join('')}</div>` : '<p class="empty">Nenhuma carteira importada.</p>')}</div>`;
+        <div class="end"><button class="primary">Conferir importação</button></div></form><div id="portfolio-preview"></div>`)}
+      ${panel('Carteiras', '', list.length ? `<div class="rows">${list.map(p => `<a class="row" href="#/cobranca/${p.id}"><span class="pill">${fmt(p.titulos)}</span><div class="main"><strong>${esc(p.name)}</strong><small>Vencido: ${money(p.resumo.valor_vencido)} (${p.resumo.pct_vencido.toLocaleString('pt-BR')}%) · aberto ${money(p.resumo.valor_aberto)} · referência ${esc(p.data_referencia.split('-').reverse().join('/'))}</small></div></a>`).join('')}</div>` : '<p class="empty">Nenhuma carteira importada.</p>')}
+      ${panel('Arquivadas', 'Dados preservados para auditoria', archived.length ? archived.map(p => `<div class="task"><strong>${esc(p.name)}</strong><button data-restore="${p.id}">Restaurar</button></div>`).join('') : '<p class="empty">Nenhuma carteira arquivada.</p>')}</div>`;
+  document.querySelectorAll('[data-restore]').forEach(button => button.onclick = async () => {
+    try { await send('/portfolios/' + button.dataset.restore + '/restore', 'POST'); viewCobranca(); }
+    catch (error) { toast(errMsg(error), 7000, true); }
+  });
   $('f-pf').addEventListener('submit', async e => {
     e.preventDefault();
     const f = e.target, file = f.file.files[0];
     const csv = file ? await file.text() : f.csv.value;
-    const body = { name: f.name.value.trim(), csv, source_note: f.source_note.value.trim() };
+    const body = { name: f.name.value.trim(), csv, source_note: f.source_note.value.trim(), number_format: f.number_format.value };
     if (f.reference_date.value) body.reference_date = f.reference_date.value;
     try {
-      const r = await send('/portfolios', 'POST', body);
-      const dropped = r.importacao.colunas_pessoais_descartadas;
-      toast(`${fmt(r.importacao.titulos_importados)} título(s) importado(s)` + (r.importacao.linhas_com_erro.length ? ` · ${r.importacao.linhas_com_erro.length} linha(s) com erro` : '') + (dropped.length ? ` · colunas descartadas: ${dropped.join(', ')}` : ''), 9000);
-      location.hash = '#/cobranca/' + r.id;
+      await showPortfolioPreview(body);
     } catch (err) { toast(errMsg(err, 'Não foi possível importar.'), 9000, true); }
   });
 }
@@ -665,16 +670,18 @@ async function viewCarteira(id, ref) {
         <article><small>Maior concentração</small><strong style="font-size:18px">${esc(r.maior_concentracao || '—')}</strong><span>faixa vencida com mais valor</span></article>
         <article><small>Pagos</small><strong>${fmt(r.titulos_pagos)}</strong><span>${money(r.valor_pago)}</span></article></section>`
     + panel('Faixas de atraso e estratégia sugerida', 'Sugestões de rotina operacional. Decisão e execução são humanas.', d.faixas.map(b => `<div class="bar"><span>${esc(b.label)} · ${fmt(b.titulos)} título(s)</span><b>${money(b.valor)} · ${b.pct_valor.toLocaleString('pt-BR')}%</b><i style="--w:${(100 * b.valor / max).toFixed(1)}%"></i><small>${esc(b.estrategia)}</small></div>`).join(''))
-    + `<div class="warnbox">${d.avisos.map(esc).join('<br>')}</div>`;
+    + `<div class="warnbox">${d.avisos.map(esc).join('<br>')}</div><div id="portfolio-items"></div>`;
+  renderPortfolioItems(d);
 }
 async function delPortfolio(id) {
-  try { await send('/portfolios/' + id, 'DELETE'); toast('Carteira excluída.'); location.hash = '#/cobranca'; }
+  if (!confirm("Arquivar esta carteira? Você poderá restaurá-la na lista de arquivadas.")) return;
+  try { await send('/portfolios/' + id, 'DELETE'); toast('Carteira arquivada.'); location.hash = '#/cobranca'; }
   catch (e) { toast(errMsg(e), 6000, true); }
 }
 
 // ------------------------------------------------------------------ laboratório de negociação
 async function viewNegociacao() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat("en-CA", {timeZone: "America/Manaus", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date());
   const num = (n, l, v = '', step = '0.01', extra = '') => `<label class="f">${l}<input name="${n}" type="number" step="${step}" min="0" value="${v}" ${extra}></label>`;
   V().innerHTML = head('Etapa 2 · simulação', 'Laboratório de negociação',
     'Calculadora de acordo com premissas que VOCÊ informa. O sistema não presume taxa de juros, multa nem índice de correção: o que ficar em branco vale zero.')
@@ -728,14 +735,20 @@ route();
 // Contatos institucionais — dados reais da API, sem exemplos fictícios.
 async function viewContatos() {
   V().innerHTML = head('DIRETÓRIO COMERCIAL', 'Contatos empresariais', 'Canais institucionais com origem registrada. A ausência de contato não significa que ele foi encontrado.', '<button id="sync-contacts" class="primary">Sincronizar fichas</button>');
-  V().insertAdjacentHTML('beforeend', `<article class="panel"><div class="actions"><input id="contact-search" placeholder="Empresa, CNPJ ou contato" aria-label="Pesquisar contatos"><select id="contact-kind" aria-label="Filtrar canal"><option value="">Todos os canais</option><option value="email">E-mails</option><option value="website">Sites</option><option value="phone">Telefones</option></select><button id="contact-filter">Pesquisar</button></div><p class="note">Sincronizar importa apenas sites e e-mails já cadastrados. Não busca contatos pessoais nem inventa informações.</p><div id="contact-results" aria-live="polite"></div></article>`);
+  V().insertAdjacentHTML('beforeend', `<article class="panel"><div class="actions"><input id="contact-search" placeholder="Empresa, CNPJ ou contato" aria-label="Pesquisar contatos"><select id="contact-kind" aria-label="Filtrar canal"><option value="">Todos os canais</option><option value="email">E-mails</option><option value="website">Sites</option><option value="phone">Telefones</option></select><button id="contact-filter">Pesquisar</button></div><p class="note">Sincronizar importa apenas sites e e-mails já cadastrados. Não busca contatos pessoais nem inventa informações.</p><div id="contact-results" aria-live="polite"></div><div class="actions"><button id="contact-prev">Anterior</button><span id="contact-page" aria-live="polite"></span><button id="contact-next">Próxima</button></div></article>`);
+  let offset = 0;
   async function refresh() {
     const q = $('contact-search').value.trim(), kind = $('contact-kind').value;
-    const data = await api('/contacts?q=' + encodeURIComponent(q) + '&kind=' + encodeURIComponent(kind));
+    const data = await api('/contacts?q=' + encodeURIComponent(q) + '&kind=' + encodeURIComponent(kind) + '&offset=' + offset);
     $('contact-results').innerHTML = `<p class="note">${fmt(data.total)} canal(is) cadastrado(s) · até 100 por página</p>` + (data.items.length ? `<div class="rows">${data.items.map(c => `<div class="row"><div class="main"><strong>${esc(c.company_name)}</strong><small>${esc(c.cnpj || 'Sem CNPJ')} · ${esc(c.kind)} · ${esc(c.value)}</small><small>Origem: ${esc(c.source_name)} · ${esc(c.status)}</small></div><a class="btn small" href="#/empresa/${c.company_id}">Empresa</a></div>`).join('')}</div>` : '<p class="empty">Nenhum contato institucional encontrado.</p>');
+    $('contact-page').textContent = data.total ? `${fmt(offset + 1)}–${fmt(offset + data.items.length)} de ${fmt(data.total)}` : 'Nenhum resultado';
+    $('contact-prev').disabled = offset === 0;
+    $('contact-next').disabled = offset + data.items.length >= data.total;
   }
-  $('contact-filter').onclick = () => refresh().catch(e => toast(errMsg(e), 5000, true));
+  $('contact-filter').onclick = () => { offset = 0; refresh().catch(e => toast(errMsg(e), 5000, true)); };
+  $('contact-prev').onclick = () => { offset = Math.max(0, offset - 100); refresh().catch(e => toast(errMsg(e), 5000, true)); };
+  $('contact-next').onclick = () => { offset += 100; refresh().catch(e => toast(errMsg(e), 5000, true)); };
   $('contact-search').onkeydown = e => { if (e.key === 'Enter') $('contact-filter').click(); };
-  $('sync-contacts').onclick = async () => { const b = $('sync-contacts'); b.disabled = true; try { const result = await send('/contacts/sync', 'POST'); toast(`${result.added} contato(s) incorporado(s) das fichas existentes.`); await refresh(); } catch(e) { toast(errMsg(e), 5000, true); } finally { b.disabled = false; } };
+  $('sync-contacts').onclick = async () => { const b = $('sync-contacts'); b.disabled = true; try { let cursor = 0, added = 0, batches = 0; do { const result = await send('/contacts/sync?after_id=' + cursor, 'POST'); added += result.added; cursor = result.next_cursor || 0; batches++; b.textContent = `Sincronizando… ${batches}`; } while (cursor); toast(`${added} contato(s) incorporado(s) das fichas existentes.`); offset = 0; await refresh(); } catch(e) { toast(errMsg(e), 5000, true); } finally { b.disabled = false; b.textContent = 'Sincronizar fichas'; } };
   await refresh();
 }

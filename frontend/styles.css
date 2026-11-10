@@ -269,3 +269,8 @@ footer{border-top:1px solid var(--line);margin-top:26px;padding-top:14px;color:v
 /* foco visível (acessibilidade) */
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #c89aff;outline-offset:2px}
 aside{background:#0d0a12}
+.assistant-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px}
+.ai-message{border-bottom:1px solid var(--line,#34303e);padding:16px 0}
+.ai-message p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}
+[hidden]{display:none!important}
+@media(max-width:760px){.assistant-layout{grid-template-columns:1fr}}

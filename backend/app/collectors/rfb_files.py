@@ -1,7 +1,7 @@
 """Acesso aos arquivos de dados abertos do CNPJ (Receita Federal).
 
-Fonte (verificada em 09/11/2026): compartilhamento público Nextcloud
-https://arquivos.receitafederal.gov.br/index.php/s/gn672Ad4CF8N6TK
+Fonte: compartilhamento público Nextcloud da Receita Federal; configure
+RFB_SHARE_TOKEN no ambiente a partir do endereço oficial atualizado.
 (o endereço antigo /dados/cnpj/dados_abertos_cnpj/ responde 404).
 WebDAV público: /public.php/webdav/Dados/Cadastros/CNPJ/AAAA-MM/
 com usuário = token do compartilhamento e senha vazia.
@@ -21,13 +21,15 @@ from urllib.parse import unquote
 import httpx
 
 HOST = os.getenv("RFB_FILES_HOST", "https://arquivos.receitafederal.gov.br").rstrip("/")
-SHARE_TOKEN = os.getenv("RFB_SHARE_TOKEN", "gn672Ad4CF8N6TK")
+SHARE_TOKEN = os.getenv("RFB_SHARE_TOKEN", "")
 DAV_ROOT = f"{HOST}/public.php/webdav"
 CNPJ_DIR = os.getenv("RFB_CNPJ_DIR", "Dados/Cadastros/CNPJ").strip("/")
 USER_AGENT = "LeadCobAI/0.3 (dados abertos CNPJ)"
 
 
 def client(timeout: float = 60.0) -> httpx.Client:
+    if not SHARE_TOKEN:
+        raise RuntimeError("Configure RFB_SHARE_TOKEN para acessar os arquivos públicos da Receita.")
     return httpx.Client(timeout=httpx.Timeout(timeout, connect=20.0), auth=(SHARE_TOKEN, ""), headers={"User-Agent": USER_AGENT},
                         follow_redirects=True)
 

@@ -17,6 +17,10 @@ Sem `DATABASE_URL`, usa SQLite local. Bancos criados em versões anteriores são
 
 **Testes:** `cd backend && pip install pytest && python -m pytest`.
 
+**Online (VPS):** configuração para um proprietário, com login, HTTPS, PostgreSQL e backup local diário:
+consulte [operação online](docs/operacao-online.md). Exige domínio, VPS, senha e configuração própria.
+O assistente OpenAI exige chave de API e teto mensal configurados no servidor.
+
 ## Módulos (0.5.2)
 Central de comando · Inteligência do dia · Encontrar empresas · Sinais e oportunidades · CRM comercial (ficha,
 histórico, tarefas, supressão, abordagem sugerida) · Contatos empresariais · Inteligência de cobrança · Laboratório de
@@ -53,11 +57,14 @@ Rotina sugerida: `docs/manual-uso-diario.md`. Pontuação: `docs/lead-score.md`.
 
 Catálogo completo de fontes: `docs/fontes.md`. Histórico e decisões: `CHANGELOG.md`.
 Nenhum dado fictício é criado (os exemplos de demonstração só existem com `DEMO_SEED=true`).
-Sem autenticação, HTTPS ou publicação em servidor: **não expor na internet**.
+O acesso local sem senha é limitado ao próprio computador; para publicar use a configuração de produção.
+Esta versão ainda não foi implantada em nuvem nem testada com credenciais reais de OpenAI ou Brave.
 
-## Segurança antes de publicar na internet
-Adicionar autenticação, HTTPS, gestão de segredos, backups, migrações, rate limiting, logs/monitoramento e política de
-retenção. Respeitar termos de uso e controles técnicos das fontes. Priorizar dados de pessoa jurídica e canais
+## Segurança e operação
+Login individual e proteção CSRF, HTTPS na configuração de VPS, limite de tentativas de login e backup local estão implementados.
+Antes de usar dados reais continuamente, implante migrações versionadas, cópia de backup fora da VPS, teste de restauração,
+monitoramento e retenção documentada. Capturas externas ainda são síncronas; precisam de fila de trabalhos e agendamento para operação contínua.
+Respeitar termos de uso e controles técnicos das fontes. Priorizar dados de pessoa jurídica e canais
 institucionais; não coletar CPF, dados financeiros privados, dados sensíveis ou contatos pessoais sem necessidade e base
 legal documentada. Registrar fonte, URL, data e finalidade. Manter opt-out/lista de supressão. Campanhas externas em
 escala exigem aprovação humana.
