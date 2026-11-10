@@ -8,6 +8,7 @@ from app.db.models import AuditLog,Company,Opportunity
 from app.api.routes import router
 from app.api.routes_crm import router as crm_router
 from app.api.routes_stage2 import router as stage2_router
+from app.api.routes_reports import router as reports_router
 from app.services.scoring import score_opportunity
 from app.core.security import router as auth_router, access_middleware, validate_configuration
 app=FastAPI(title=settings.app_name,version="0.5.3",description="Inteligência comercial B2B para oportunidades de cobrança.")
@@ -19,6 +20,7 @@ app.include_router(assistant_router)
 app.include_router(contacts_router)
 app.include_router(crm_router)
 app.include_router(stage2_router)
+app.include_router(reports_router)
 app.include_router(router)
 frontend=Path(__file__).resolve().parents[2]/"frontend"
 app.mount("/static",StaticFiles(directory=str(frontend)),name="static")

@@ -84,3 +84,8 @@ Modelos de abertura, descoberta, objeções, follow-up e cobrança da carteira, 
 
 ## 12. Contatos empresariais
 Lista de canais institucionais com origem e status. "Sincronizar fichas" importa só site e e-mail já cadastrados.
+
+## 13. Relatórios
+Resumo dos últimos 7 ou 30 dias: contatos, respostas, reuniões, propostas e contratos registrados; conversão das
+empresas contatadas; movimento no funil; motivos de perda; sinais novos por fonte; tarefas. Na versão instalada,
+"CSV" baixa o mesmo relatório. São contagens do que você registrou: sem estimativas.

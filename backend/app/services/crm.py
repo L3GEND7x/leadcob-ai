@@ -104,7 +104,7 @@ def last_outreach(c: Company) -> datetime | None:
 
 
 def audit(db, event: str, entity_type: str, entity_id: int | None, details: dict):
-    db.add(AuditLog(event=event, entity_type=entity_type, entity_id=entity_id, details=details))
+    db.add(AuditLog(event=event, entity_type=entity_type, entity_id=entity_id, details=details, created_at=now()))
 
 
 def log_interaction(db, c: Company, kind: str, summary: str, channel: str | None = None,
