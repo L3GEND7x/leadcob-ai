@@ -129,3 +129,63 @@ def test_railway_backup_reports_each_stage_and_latest_snapshot(tmp_path):
 def _has_busybox():
     from shutil import which
     return which('busybox') is not None
+
+
+def _drill_env(tmp_path, tables='0'):
+    env, log = _fake_tools(tmp_path)
+    fake = tmp_path / 'bin'
+    # psql falso: responde a contagem de tabelas e registra o banco usado em cada chamada.
+    (fake / 'psql').write_text('#!/bin/sh\nprintf "psql %s@%s\\n" "$PGDATABASE" "$PGHOST" >> "$CALLS"\n'
+                               f'case "$*" in *count*pg_tables*) echo {tables};; *) cat >/dev/null; echo "companies 3";; esac\n')
+    (fake / 'pg_restore').write_text('#!/bin/sh\nprintf "pg_restore %s %s@%s\\n" "$*" "$PGDATABASE" "$PGHOST" >> "$CALLS"\n')
+    (fake / 'restic').write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
+                                 'if [ "$1" = restore ]; then while [ $# -gt 0 ]; do [ "$1" = --target ] && t=$2; shift; done; '
+                                 'mkdir -p "$t/tmp/x" && printf dump > "$t/tmp/x/leadcob-20261111T000000Z.dump"; fi\n')
+    for name in ('psql', 'pg_restore', 'restic'):
+        (fake / name).chmod(0o755)
+    env.update({'RESTORE_PGHOST': 'postgres-ensaio.internal', 'RESTORE_PGUSER': 'ensaio', 'RESTORE_PGPASSWORD': 'x',
+                'RESTORE_PGDATABASE': 'ensaio', 'RESTORE_CONFIRM_ISOLATED': 'sim'})
+    return env, log
+
+
+def _drill(env):
+    return subprocess.run(['sh', str(ROOT / 'infra' / 'railway-restore-drill.sh')], env=env, capture_output=True, text=True)
+
+
+def test_restore_drill_writes_only_to_isolated_database(tmp_path):
+    env, log = _drill_env(tmp_path)
+    result = _drill(env)
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text()
+    assert 'restore latest --tag leadcob' in calls
+    assert '--no-owner --no-acl --exit-on-error --dbname=ensaio' in calls
+    assert 'postgres.internal' not in calls          # nenhuma chamada ao banco de produção
+    assert 'ENSAIO DE RESTAURAÇÃO CONCLUÍDO' in result.stdout and 'companies 3' in result.stdout
+
+
+@pytest.mark.parametrize('change,expected', [
+    ({'RESTORE_CONFIRM_ISOLATED': ''}, 'RESTORE_CONFIRM_ISOLATED=sim'),
+    ({'RESTORE_PGHOST': 'postgres.internal', 'RESTORE_PGDATABASE': 'leadcob'}, 'mesmo servidor e banco de produção'),
+    ({'RESTORE_PGDATABASE': ''}, 'RESTORE_PGDATABASE'),
+    ({'AWS_ACCESS_KEY_ID': '005fake\n'}, 'quebra de linha'),
+])
+def test_restore_drill_refuses_unsafe_target(tmp_path, change, expected):
+    env, log = _drill_env(tmp_path)
+    env.update(change)
+    result = _drill(env)
+    assert result.returncode != 0 and expected in result.stderr
+    assert not log.exists() or 'pg_restore' not in log.read_text()
+
+
+def test_restore_drill_refuses_non_empty_target(tmp_path):
+    env, log = _drill_env(tmp_path, tables='4')
+    result = _drill(env)
+    assert result.returncode != 0 and 'já tem 4 tabela(s)' in result.stderr
+    assert 'restore' not in log.read_text() and 'pg_restore' not in log.read_text()
+
+
+def test_backup_image_dispatches_only_known_modes():
+    dockerfile = (ROOT / 'infra' / 'Dockerfile.railway-backup').read_text()
+    for name in ('railway-backup-lib.sh', 'railway-backup.sh', 'railway-restore-drill.sh'):
+        assert name in dockerfile
+    assert 'backup) exec sh /railway-backup.sh' in dockerfile and 'restore-drill) exec sh /railway-restore-drill.sh' in dockerfile

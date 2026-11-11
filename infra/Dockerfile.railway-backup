@@ -1,4 +1,5 @@
 FROM postgres:18-alpine
 RUN apk add --no-cache restic
-COPY infra/railway-backup.sh /railway-backup.sh
-ENTRYPOINT ["sh", "/railway-backup.sh"]
+COPY infra/railway-backup-lib.sh infra/railway-backup.sh infra/railway-restore-drill.sh /
+# BACKUP_MODE=backup (padrão, serviço agendado) ou restore-drill (ensaio em banco isolado).
+ENTRYPOINT ["sh", "-c", "case \"${BACKUP_MODE:-backup}\" in backup) exec sh /railway-backup.sh ;; restore-drill) exec sh /railway-restore-drill.sh ;; *) echo 'BACKUP_MODE inválido: use backup ou restore-drill' >&2; exit 1 ;; esac"]
