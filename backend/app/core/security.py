@@ -61,9 +61,16 @@ def stamp(value):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
+def session_key(raw):
+    """Chave da sessão no banco. Inclui o usuário e o hash da senha configurados: trocar ADMIN_PASSWORD_HASH
+    (ou ADMIN_USERNAME) encerra todas as sessões abertas antes da troca, sem migração de banco."""
+    material = '\0'.join([raw, settings.admin_username, settings.admin_password_hash])
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
 def current_session(request, db):
     raw = request.cookies.get(COOKIE, '')
-    session = db.get(LoginSession, hashlib.sha256(raw.encode()).hexdigest()) if raw else None
+    session = db.get(LoginSession, session_key(raw)) if raw else None
     if session and stamp(session.expires_at) > datetime.now(timezone.utc):
         return session
     return None
@@ -134,7 +141,7 @@ def login(payload: Credentials, request: Request):
             raise HTTPException(401, 'Credenciais inválidas.')
         attempt.count = 0
         raw, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
-        db.add(LoginSession(token_hash=hashlib.sha256(raw.encode()).hexdigest(), csrf_token=csrf,
+        db.add(LoginSession(token_hash=session_key(raw), csrf_token=csrf,
                             username=settings.admin_username, expires_at=now + timedelta(hours=8)))
         db.query(LoginSession).filter(LoginSession.expires_at < now).delete()
         db.commit()

@@ -1,6 +1,9 @@
 # Changelog
 
 ## Não lançado
+- **Segurança do login**: trocar `ADMIN_PASSWORD_HASH` (ou `ADMIN_USERNAME`) encerra as sessões abertas antes da troca
+  (antes elas continuavam válidas por até 8 horas). `scripts/gerar_hash_senha.py` gera o hash só com Python 3, sem exibir
+  a senha. Procedimento de troca em `docs/operacao-railway.md`.
 - Implantação Railway opcional: conexão PostgreSQL gerenciada, porta dinâmica e serviço diário de backup
   verificado e criptografado na Backblaze; mantém o Compose da VPS.
 - Backup externo opcional: serviço Restic envia dumps locais verificados para armazenamento S3 compatível
