@@ -17,14 +17,19 @@ esac
 temporary=$(mktemp -d)
 trap 'rm -rf "$temporary"' EXIT
 dump="$temporary/leadcob-$(date -u +%Y%m%dT%H%M%SZ).dump"
+echo 'Gerando dump PostgreSQL.'
 pg_dump --format=custom --file="$dump"
 pg_restore --list "$dump" >/dev/null
+echo 'Dump local verificado; consultando o repositório Restic.'
 
 # Existing repositories are not overwritten. An invalid key or network failure
 # will make init fail safely, and the scheduled job reports a failed run.
-if ! restic cat config >/dev/null 2>&1; then
-  restic init
+if ! timeout 60 restic cat config >/dev/null; then
+  echo 'Repositório não encontrado ou inacessível; tentando inicialização.'
+  timeout 60 restic init
 fi
+echo 'Enviando dump criptografado.'
 restic backup "$dump" --tag leadcob
+echo 'Conferindo o repositório remoto.'
 restic check
 echo 'Dump verificado e backup criptografado enviado ao armazenamento externo.'
