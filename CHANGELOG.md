@@ -1,6 +1,9 @@
 # Changelog
 
 ## Não lançado
+- **Segurança do login**: trocar `ADMIN_PASSWORD_HASH` (ou `ADMIN_USERNAME`) encerra as sessões abertas antes da troca
+  (antes elas continuavam válidas por até 8 horas). `scripts/gerar_hash_senha.py` gera o hash só com Python 3, sem exibir
+  a senha. Procedimento de troca em `docs/operacao-railway.md`.
 - **Ensaio de restauração** (issue #31): modo `BACKUP_MODE=restore-drill` da imagem de backup restaura o snapshot mais
   recente em um banco PostgreSQL isolado e lista as linhas por tabela. Recusa destino igual à produção, banco não vazio
   e ausência de confirmação. Procedimento em `docs/operacao-railway.md`; registro em `docs/ensaio-restauracao.md`.

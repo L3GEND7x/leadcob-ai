@@ -10,6 +10,24 @@ Alternativa gerenciada à VPS para **um único proprietário**. A Railway fornec
 4. Em **Variables**, defina `APP_ENV=production`, `DATABASE_URL=${{Postgres.DATABASE_URL}}` (troque `Postgres` se o serviço tiver outro nome), `PUBLIC_URL=https://<domínio-gerado>`, `ADMIN_USERNAME` e `ADMIN_PASSWORD_HASH`. Gere o hash com `PYTHONPATH=backend python -m app.core.security` em um ambiente local com as dependências instaladas; a senha original nunca entra nas variáveis do serviço. Defina `DEMO_SEED=false`. O backend aceita a URL PostgreSQL fornecida pela Railway e escolhe o driver psycopg instalado no projeto.
 5. Revise e aplique as variáveis. Verifique o log do pre-deploy, o status saudável e o acesso HTTPS. O login deve rejeitar senha incorreta e liberar somente a conta configurada. Não importe dados financeiros reais antes do primeiro backup externo testado.
 
+### Trocar a senha do administrador
+
+Troque a senha se ela já apareceu em uma conversa, e-mail, print ou documento. O painel guarda **só o hash** (`ADMIN_PASSWORD_HASH`). A senha em si fica com você, de preferência num gerenciador de senhas.
+
+1. **Faça primeiro o merge e o deploy da versão que encerra sessões na troca.** A partir dela, ao mudar `ADMIN_PASSWORD_HASH` (ou `ADMIN_USERNAME`), todas as sessões abertas com a senha anterior deixam de valer, mesmo depois de reiniciar. Sem isso, uma sessão aberta antes da troca continuaria válida por até 8 horas.
+2. No **seu computador**, crie a nova senha no gerenciador de senhas: no mínimo 14 caracteres, nunca usada antes. Depois rode `python3 scripts/gerar_hash_senha.py`.
+   - O script só precisa do Python 3. Você pode baixar só esse arquivo do GitHub.
+   - Digite a senha duas vezes. Ela não aparece na tela e não é gravada.
+   - Copie só a linha que começa com `pbkdf2_sha256.`.
+3. Na Railway, abra o serviço do painel → **Variables** → `ADMIN_PASSWORD_HASH`. Substitua o valor pela nova linha, sem espaços nem quebra de linha, e aplique as mudanças.
+4. Depois do deploy, confira três coisas:
+   - a sessão antiga caiu;
+   - a senha antiga é recusada;
+   - a nova senha entra.
+
+   Cinco tentativas erradas bloqueiam o login por 15 minutos.
+5. Nunca envie a senha nem o hash por chat, issue ou PR. O hash não permite entrar, mas facilita tentar adivinhar a senha.
+
 O serviço escuta a variável `PORT` da Railway. A assinatura ChatGPT não inclui a API: para usar o assistente, configure depois `OPENAI_API_KEY`, `OPENAI_MODEL`, orçamento e preços por token em variáveis seladas, seguindo `.env.example`.
 
 ## Backup externo diário
