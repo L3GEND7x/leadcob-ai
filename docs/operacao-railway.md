@@ -18,7 +18,33 @@ O serviço escuta a variável `PORT` da Railway. A assinatura ChatGPT não inclu
 2. Adicione um segundo serviço no mesmo projeto Railway, a partir do mesmo repositório, com `RAILWAY_DOCKERFILE_PATH=infra/Dockerfile.railway-backup`. Não gere domínio público para ele. Em **Settings → Cron Schedule**, configure `0 4 * * *` (04:00 UTC, 00:00 em Manaus). O processo termina após cada execução.
 3. Nas variáveis desse serviço, referencie `PGHOST=${{Postgres.PGHOST}}`, `PGPORT=${{Postgres.PGPORT}}`, `PGUSER=${{Postgres.PGUSER}}`, `PGPASSWORD=${{Postgres.PGPASSWORD}}`, `PGDATABASE=${{Postgres.PGDATABASE}}`. Defina `RESTIC_REPOSITORY=s3:https://<endpoint-S3>/<nome-do-bucket>`, `RESTIC_PASSWORD` (senha nova e forte), `AWS_ACCESS_KEY_ID` (ID da chave B2 restrita) e `AWS_SECRET_ACCESS_KEY` (segredo dessa chave). Configure os valores sensíveis diretamente na Railway; não os copie para o chat ou repositório.
 4. Dispare a primeira execução manualmente e verifique os logs: `pg_dump` e `pg_restore --list` devem passar antes do envio, seguido de `restic check`. Confirme que o snapshot existe. Configure alertas de falha do serviço agendado. O repositório Restic é inicializado uma única vez pelo script quando ainda não existe; falhas de autenticação não sobrescrevem um repositório existente.
-5. Faça um ensaio de restauração em ambiente separado: recupere um dump com `restic restore` e execute `pg_restore --no-owner --no-acl --exit-on-error` em um banco isolado. Confira contagens, carteiras e histórico. Sem isso, a cópia não está validada para produção.
+5. Faça um ensaio de restauração em um banco isolado, como em **Ensaio de restauração** abaixo. Sem isso, a cópia não está validada para produção.
+
+### Ensaio de restauração (banco isolado)
+
+O ensaio usa a mesma imagem do backup no modo `BACKUP_MODE=restore-drill`. Ele:
+- baixa o snapshot mais recente com a etiqueta `leadcob`;
+- confere o dump;
+- restaura com `pg_restore --no-owner --no-acl --exit-on-error` em um banco **vazio e separado**;
+- lista as linhas de cada tabela e a versão do esquema.
+
+O script **recusa** quando:
+- falta `RESTORE_CONFIRM_ISOLATED=sim`;
+- o destino é o mesmo servidor e banco de produção;
+- o banco de destino já tem tabelas.
+
+O ensaio nunca apaga nada.
+
+1. No projeto Railway, adicione um **segundo PostgreSQL** e chame-o, por exemplo, de `Postgres-ensaio`. Mantenha-o sem acesso público. Ele começa vazio.
+2. Adicione um serviço a partir do mesmo repositório, com `RAILWAY_DOCKERFILE_PATH=infra/Dockerfile.railway-backup`. Não gere domínio e não configure cron.
+3. Variáveis desse serviço:
+   - `BACKUP_MODE=restore-drill` e `RESTORE_CONFIRM_ISOLATED=sim`;
+   - o banco de ensaio: `RESTORE_PGHOST=${{Postgres-ensaio.PGHOST}}`, `RESTORE_PGPORT=${{Postgres-ensaio.PGPORT}}`, `RESTORE_PGUSER=${{Postgres-ensaio.PGUSER}}`, `RESTORE_PGPASSWORD=${{Postgres-ensaio.PGPASSWORD}}` e `RESTORE_PGDATABASE=${{Postgres-ensaio.PGDATABASE}}`;
+   - para a trava contra produção, **sem senha**: `PGHOST=${{Postgres.PGHOST}}`, `PGPORT=${{Postgres.PGPORT}}` e `PGDATABASE=${{Postgres.PGDATABASE}}`. O script compara e depois descarta essas três;
+   - as mesmas `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` do serviço `leadcob-backup`. Use referência, por exemplo `${{leadcob-backup.RESTIC_PASSWORD}}`, para não copiar valores.
+4. Faça o deploy uma vez. O log deve terminar com `ENSAIO DE RESTAURAÇÃO CONCLUÍDO`.
+5. Compare as contagens do log com o painel. Por exemplo, empresas em "Encontrar empresas" com `companies`, e interações e carteiras com `interactions` e `portfolios`. Considere as mudanças feitas depois do horário do snapshot.
+6. Apague o serviço de ensaio e o `Postgres-ensaio`: eles têm cópia dos dados de produção. Registre data, ID do snapshot e contagens em `docs/ensaio-restauracao.md`.
 
 ### Se o backup falhar na autenticação
 
