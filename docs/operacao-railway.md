@@ -20,4 +20,19 @@ O serviço escuta a variável `PORT` da Railway. A assinatura ChatGPT não inclu
 4. Dispare a primeira execução manualmente e verifique os logs: `pg_dump` e `pg_restore --list` devem passar antes do envio, seguido de `restic check`. Confirme que o snapshot existe. Configure alertas de falha do serviço agendado. O repositório Restic é inicializado uma única vez pelo script quando ainda não existe; falhas de autenticação não sobrescrevem um repositório existente.
 5. Faça um ensaio de restauração em ambiente separado: recupere um dump com `restic restore` e execute `pg_restore --no-owner --no-acl --exit-on-error` em um banco isolado. Confira contagens, carteiras e histórico. Sem isso, a cópia não está validada para produção.
 
+### Se o backup falhar na autenticação
+
+O script confere a configuração antes do dump e para com `ERRO de configuração: ...`. A mensagem traz o nome da variável, o tamanho e o tipo de problema. **Nunca traz o valor.**
+
+| Mensagem no log | Causa | Como corrigir na Railway |
+|---|---|---|
+| `... contém quebra de linha` | O valor foi colado com Enter no fim (`\n` ou `\r`) ou com duas linhas | Apague o valor e cole de novo, em uma linha só |
+| `AWS_ACCESS_KEY_ID deve ter só letras e números` | Rótulo (`keyID:`), aspas ou espaço junto do ID | Deixe só o **keyID** da chave de aplicativo |
+| `... têm o mesmo valor` | ID e segredo trocados ou repetidos | `AWS_ACCESS_KEY_ID` = keyID; `AWS_SECRET_ACCESS_KEY` = applicationKey |
+| `AWS_SESSION_TOKEN está definida` | Variável de outro provedor | Remova a variável |
+| `invalid header field value for "Authorization"` (do Restic) | Quebra de linha no `AWS_ACCESS_KEY_ID` ou no `AWS_DEFAULT_REGION` (reproduzido em teste local) | Igual à primeira linha. A versão atual do script barra isso antes |
+| `The Credential is malformed` (do servidor B2) | O servidor recusou o formato do ID ou do escopo. Pode ser texto extra, um ID de outra chave ou o nome da chave no lugar do keyID | Confira na Backblaze o keyID da chave restrita ao bucket |
+
+`RESTIC_PASSWORD` é independente da chave B2. Não troque essa senha depois do primeiro backup: sem ela os snapshots não podem ser restaurados.
+
 O backup remoto não apaga snapshots automaticamente. Planeje retenção e proteção contra exclusão com o provedor, depois de ensaiar a compatibilidade com Restic. Não ative retenção padrão/Object Lock às cegas: o Restic precisa gerenciar arquivos de bloqueio. Os backups nativos de volumes da Railway não substituem essa cópia externa, pois a restauração deles é limitada ao mesmo projeto e ambiente.
