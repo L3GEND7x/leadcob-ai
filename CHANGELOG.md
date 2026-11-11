@@ -1,6 +1,9 @@
 # Changelog
 
 ## Não lançado
+- **Backup Railway** (issue #31): o serviço de backup confere as credenciais antes do dump e para com mensagem
+  clara (nome da variável, tamanho e tipo de problema, nunca o valor) se houver quebra de linha, caractere de
+  controle, espaço, rótulo, token de sessão ou destino sem bucket. Registra as 4 etapas e o snapshot mais recente.
 - Implantação Railway opcional: conexão PostgreSQL gerenciada, porta dinâmica e serviço diário de backup
   verificado e criptografado na Backblaze; mantém o Compose da VPS.
 - Backup externo opcional: serviço Restic envia dumps locais verificados para armazenamento S3 compatível
