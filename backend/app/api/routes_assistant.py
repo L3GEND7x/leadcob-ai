@@ -205,12 +205,16 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
         instructions += f'\nTela atual: empresa ID {payload.company_id}. Consulte a ficha antes de usar seus dados.'
     input_tokens = output_tokens = 0
     success = False
+    provider_started = False
     try:
         from openai import OpenAI
         with OpenAI(api_key=settings.openai_api_key, timeout=45, max_retries=0) as client:
             for turn in range(4):
                 if len(json.dumps(inputs, default=str).encode()) > 64000:
                     raise ValueError('Contexto muito extenso. Inicie uma nova conversa ou refine a consulta.')
+                # Once the call starts, a timeout or transport error may still have
+                # consumed tokens. Refund only failures known to precede this point.
+                provider_started = True
                 response = client.responses.create(model=run.model, instructions=instructions,
                     tools=TOOLS, input=inputs, max_output_tokens=2000, store=False)
                 input_tokens += response.usage.input_tokens
@@ -246,9 +250,9 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
     finally:
         run = db.get(AssistantRequest, payload.request_id)
         actual = math.ceil(input_tokens * run.input_price + output_tokens * run.output_price)
-        if success:
+        if success or not provider_started:
             db.execute(update(AssistantUsage).where(AssistantUsage.month == run.month).values(
-                charged_micro_usd=AssistantUsage.charged_micro_usd - run.reserved_micro_usd + actual))
+                charged_micro_usd=AssistantUsage.charged_micro_usd - run.reserved_micro_usd + (actual if success else 0)))
         run.status = 'completed' if success else 'failed'
         run.input_tokens, run.output_tokens = input_tokens, output_tokens
         db.commit()
