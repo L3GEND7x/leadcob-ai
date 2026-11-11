@@ -4,6 +4,12 @@
 - **Segurança do login**: trocar `ADMIN_PASSWORD_HASH` (ou `ADMIN_USERNAME`) encerra as sessões abertas antes da troca
   (antes elas continuavam válidas por até 8 horas). `scripts/gerar_hash_senha.py` gera o hash só com Python 3, sem exibir
   a senha. Procedimento de troca em `docs/operacao-railway.md`.
+- **Ensaio de restauração** (issue #31): modo `BACKUP_MODE=restore-drill` da imagem de backup restaura o snapshot mais
+  recente em um banco PostgreSQL isolado e lista as linhas por tabela. Recusa destino igual à produção, banco não vazio
+  e ausência de confirmação. Procedimento em `docs/operacao-railway.md`; registro em `docs/ensaio-restauracao.md`.
+- **Backup Railway** (issue #31): o serviço de backup confere as credenciais antes do dump e para com mensagem
+  clara (nome da variável, tamanho e tipo de problema, nunca o valor) se houver quebra de linha, caractere de
+  controle, espaço, rótulo, token de sessão ou destino sem bucket. Registra as 4 etapas e o snapshot mais recente.
 - Implantação Railway opcional: conexão PostgreSQL gerenciada, porta dinâmica e serviço diário de backup
   verificado e criptografado na Backblaze; mantém o Compose da VPS.
 - Backup externo opcional: serviço Restic envia dumps locais verificados para armazenamento S3 compatível
