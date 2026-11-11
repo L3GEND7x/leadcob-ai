@@ -216,15 +216,18 @@ def crm_views(c) -> dict:
     }
 
 
-def keep_companies() -> list[dict]:
-    """Empresas que a próxima rodada recarrega (base da Receita e empresas captadas antes), com a data em
-    que entraram na base. As cadastradas à mão e as de oportunidades manuais voltam pela reaplicação."""
+def keep_companies(from_bases: set[str] | None = None) -> list[dict]:
+    """Empresas que a próxima rodada recarrega (empresas captadas antes), com a data em que entraram na base.
+    As cadastradas à mão e as de oportunidades manuais voltam pela reaplicação; as das bases exportadas
+    (--seed-json, ramo dados-cnpj) voltam pelas próprias bases e não são repetidas aqui (a página ficaria grande demais)."""
+    from_bases = from_bases or set()
     from app.db.database import SessionLocal
     from app.db.models import Company
     with SessionLocal() as db:
         out = []
         for c in db.query(Company).order_by(Company.id):
-            if c.registry_source == "Cadastro manual" or (not c.cnpj and not c.opportunities and not c.pipeline_stage and not c.interactions):
+            if (c.cnpj and c.cnpj in from_bases and not c.pipeline_stage and not c.interactions) or \
+                    c.registry_source == "Cadastro manual" or (not c.cnpj and not c.opportunities and not c.pipeline_stage and not c.interactions):
                 continue
             if c.opportunities and all(o.source_key and o.source_key.startswith("manual:") for o in c.opportunities) and not c.registry_source:
                 continue
@@ -291,7 +294,9 @@ def main(argv=None):
     events, manual = load_crm(a.crm)
     status = {}
     with TestClient(app) as c:
-        seeded = seed_companies(prev, rows_from_db(a.seed_db) + rows_from_json(a.seed_json))
+        json_rows = rows_from_json(a.seed_json)
+        from_bases = {r["cnpj"] for r in json_rows if r.get("cnpj")}   # recarregadas do ramo dados-cnpj a cada rodada
+        seeded = seed_companies(prev, rows_from_db(a.seed_db) + json_rows)
         if not a.offline:
             for name, path in [("PNCP", "/api/capture/pncp?mode=busca&max_pages=1"), ("Vagas", "/api/capture/jobs")]:
                 r = c.post(path)
@@ -331,7 +336,7 @@ def main(argv=None):
         }
         for uf, m in market.items():
             data[f"/market/datajud?uf={uf}"] = m
-        data["prospects_all"] = keep_companies()
+        data["prospects_all"] = keep_companies(from_bases)
     s, ops = data["/dashboard/summary"], data["/opportunities"]
     s.update(total=len(ops), hiring=sum(o["kind"] == "hiring" for o in ops), outsourcing=sum(o["kind"] == "outsourcing" for o in ops),
              public_procurement=sum(o["kind"] == "public_procurement" for o in ops),
@@ -365,6 +370,7 @@ def render(data: dict) -> str:
     js = js.replace("u === 'AM' ? 'selected' : ''", f"u === '{ufs[0]}' ? 'selected' : ''")
     meta = data["__meta"]
     falhas = "; ".join(f"{k}: {v}" for k, v in meta["status"].items() if v != "ok")
+    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")   # fora da f-string: Python 3.11
     banner = (f"<b>Atualizado em {meta['atualizado']}</b> com dados reais (PNCP, vagas Greenhouse/Lever, DataJud; "
               f"empresas da última importação da Receita). Atualiza sozinha de hora em hora (aos 10 minutos)."
               + (f" <b>Falhas nesta rodada:</b> {falhas}." if falhas else "")
@@ -381,7 +387,7 @@ aside > button[onclick="logout()"]{{display:none}}
 </style>
 <div class="demo-banner">{banner}</div>
 {body}
-<script>window.__DEMO = {json.dumps(data, ensure_ascii=False).replace("</", "<\\/")};</script>
+<script>window.__DEMO = {payload};</script>
 <script>
 {js}
 </script>

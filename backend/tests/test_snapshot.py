@@ -107,3 +107,4 @@ def test_export_base_and_seed_json_roundtrip():
                     "--seed-json", str(out), "--offline"], check=True, cwd=ROOT, capture_output=True)
     d = json.loads(re.search(r"window\.__DEMO = (\{.*?\});</script>", page.read_text(encoding="utf-8"), re.S).group(1))
     assert [c["name"] for c in d["companies_all"]] == ["INDUSTRIA AM SA"]
+    assert d["prospects_all"] == []   # volta pela própria base na rodada seguinte (não duplica na página)
