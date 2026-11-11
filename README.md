@@ -22,6 +22,10 @@ backup local diário e opção de cópia criptografada para armazenamento extern
 consulte [operação online](docs/operacao-online.md). Exige domínio, VPS, senha e configuração própria.
 O assistente OpenAI exige chave de API e teto mensal configurados no servidor.
 
+**Online (Railway):** [instalação gerenciada](docs/operacao-railway.md) com domínio HTTPS fornecido pela plataforma,
+PostgreSQL privado e backup diário criptografado na Backblaze. Exige conta Railway, cobrança configurada e variáveis
+de ambiente próprias; este projeto ainda não foi implantado nessa plataforma.
+
 ## Módulos (0.5.2)
 Central de comando · Inteligência do dia · Encontrar empresas · Sinais e oportunidades · CRM comercial (ficha,
 histórico, tarefas, supressão, abordagem sugerida) · Contatos empresariais · Inteligência de cobrança · Laboratório de

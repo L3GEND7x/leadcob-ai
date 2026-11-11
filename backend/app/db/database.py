@@ -4,9 +4,20 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from pathlib import Path
 from app.core.config import settings
 
-database_url = (URL.create('postgresql+psycopg', username='leadcob', password=settings.postgres_password,
-                           host=settings.db_host, port=5432, database='leadcob')
-                if settings.db_host and settings.postgres_password else settings.database_url)
+def normalized_database_url():
+    if settings.db_host and settings.postgres_password:
+        return URL.create('postgresql+psycopg', username='leadcob', password=settings.postgres_password,
+                          host=settings.db_host, port=5432, database='leadcob')
+    # Managed Postgres providers commonly expose the default psycopg2 URL scheme.
+    # This project installs psycopg 3, so select that driver without changing credentials.
+    raw = settings.database_url
+    for prefix in ('postgresql://', 'postgres://'):
+        if raw.startswith(prefix):
+            return 'postgresql+psycopg://' + raw[len(prefix):]
+    return raw
+
+
+database_url = normalized_database_url()
 IS_SQLITE = str(database_url).startswith("sqlite")
 # timeout: espera até 30 s por um banco ocupado (ex.: captação gravando enquanto os agentes rodam)
 connect_args = {"check_same_thread": False, "timeout": 30} if IS_SQLITE else {}

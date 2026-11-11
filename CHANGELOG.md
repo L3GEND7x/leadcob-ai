@@ -1,6 +1,8 @@
 # Changelog
 
 ## Não lançado
+- Implantação Railway opcional: conexão PostgreSQL gerenciada, porta dinâmica e serviço diário de backup
+  verificado e criptografado na Backblaze; mantém o Compose da VPS.
 - Backup externo opcional: serviço Restic envia dumps locais verificados para armazenamento S3 compatível
   com criptografia, recusa dumps vencidos e verifica o repositório após cada envio.
 - **Banco em produção** (issue #19): Alembic cria e versiona o esquema PostgreSQL antes de iniciar o painel;

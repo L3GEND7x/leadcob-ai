@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import event
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -47,8 +48,11 @@ def validate_configuration():
         parsed = urlparse(settings.public_url)
         if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ('', '/'):
             raise RuntimeError('Produção exige PUBLIC_URL HTTPS.')
-        if not settings.db_host or not settings.postgres_password:
-            raise RuntimeError('Produção exige DB_HOST e POSTGRES_PASSWORD para PostgreSQL.')
+        from app.db.database import normalized_database_url
+        db_url = make_url(normalized_database_url())
+        if (db_url.get_backend_name() != 'postgresql' or not db_url.host or
+                not db_url.username or not db_url.password):
+            raise RuntimeError('Produção exige conexão PostgreSQL autenticada.')
         if settings.demo_seed:
             raise RuntimeError('DEMO_SEED deve estar desativado em produção.')
 
