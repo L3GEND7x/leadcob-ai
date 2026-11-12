@@ -1,6 +1,6 @@
 """Diretório institucional vinculado a CNPJs, com coleta rastreável e opt-out."""
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 import re
 from html import escape
 
@@ -175,7 +175,12 @@ def search_domain(company_id: int, db: Session = Depends(get_db)):
     if not c or is_blocked(db, c):
         raise HTTPException(404, 'Empresa indisponível.')
     if not settings.brave_search_api_key:
-        raise HTTPException(503, 'Configure BRAVE_SEARCH_API_KEY para pesquisar domínios.')
+        query = f'"{c.name}" "{c.cnpj or ""}" site oficial contato'
+        return {
+            'items': [], 'automatic_available': False,
+            'search_url': 'https://duckduckgo.com/?' + urlencode({'q': query}),
+            'note': 'A pesquisa automática de sites está indisponível. Abra a pesquisa pública, confira o site da empresa e salve-o na ficha para buscar os canais publicados.',
+        }
     try:
         results = search(c, settings.brave_search_api_key)
     except Exception as exc:

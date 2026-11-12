@@ -82,3 +82,35 @@ def test_social_and_whatsapp_validation():
     for url in ("https://linkedin.com/in/pessoa", "https://linkedin.com.evil.test/company/empresa"):
         with pytest.raises(HTTPException):
             clean("linkedin", url)
+
+
+def test_domain_search_without_provider_offers_public_search(monkeypatch):
+    from app.core.config import settings
+    from urllib.parse import urlparse, parse_qs
+    monkeypatch.setattr(settings, "brave_search_api_key", "")
+    ensure_schema()
+    with SessionLocal() as db:
+        company = Company(name="BUSCA & CONTATO TESTE")
+        db.add(company)
+        db.commit()
+        cid = company.id
+    client = TestClient(app)
+    try:
+        response = client.post(f"/api/contacts/domain-search/{cid}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["automatic_available"] is False
+        assert data["items"] == []
+        url = urlparse(data["search_url"])
+        assert url.netloc == "duckduckgo.com"
+        assert "BUSCA & CONTATO TESTE" in parse_qs(url.query)["q"][0]
+        assert "API_KEY" not in data["note"]
+        with SessionLocal() as db:
+            db.add(Suppression(company_id=cid, reason="Não contatar"))
+            db.commit()
+        assert client.post(f"/api/contacts/domain-search/{cid}").status_code == 404
+    finally:
+        with SessionLocal() as db:
+            db.query(Suppression).filter_by(company_id=cid).delete()
+            db.query(Company).filter_by(id=cid).delete()
+            db.commit()
