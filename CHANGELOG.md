@@ -1,6 +1,9 @@
 # Changelog
 
 ## Não lançado
+- **Segurança (dependências)**: FastAPI 0.115.12 → 0.162.5, que traz Starlette 1.10.0. A versão anterior do Starlette
+  (0.46.2) tinha avisos de segurança públicos, entre eles negação de serviço por cabeçalho `Range` em arquivos estáticos e
+  falta de validação do cabeçalho `Host`. `pip-audit`: nenhuma vulnerabilidade conhecida no conjunto novo.
 - Pesquisa de domínio oferece busca pública quando o provedor automático não está configurado, com instrução para confirmar o site e coletar seus canais.
 - Contatos: coleta de links de telefone, WhatsApp e redes corporativas no site cadastrado, filtros por UF/cidade, contagem de empresas por canal e botões de contato.
 - **Diagnóstico do assistente**: registra o tipo seguro da falha da API junto com o código, quando disponível,
