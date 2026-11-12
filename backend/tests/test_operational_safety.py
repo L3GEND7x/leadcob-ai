@@ -182,9 +182,21 @@ def test_assistant_approval_uses_real_task(monkeypatch):
     with TestClient(app) as c:
         response = c.post('/api/assistant/messages', json={'request_id': str(uuid4()),
                           'message': 'Crie tarefa para retornar a ligação'}).json()
+        assert response['request_status'] == 'completed'
         assert response['actions'] and response['actions'][0]['status'] == 'pending'
         action_id = response['actions'][0]['id']
         assert c.post(f'/api/assistant/actions/{action_id}/confirm').status_code == 200
         assert c.post(f'/api/assistant/actions/{action_id}/confirm').json()['reused']
         with SessionLocal() as db:
             assert db.query(Task).filter_by(company_id=cid, title='Retornar ligação').count() == 1
+        class FailingClient(FakeClient):
+            class responses:
+                @staticmethod
+                def create(**kw):
+                    raise RuntimeError('private provider detail')
+        monkeypatch.setattr(openai, 'OpenAI', FailingClient)
+        failed = c.post('/api/assistant/messages', json={'request_id': str(uuid4()),
+                        'message': 'Como cobrar?'}).json()
+        assert failed['request_status'] == 'failed'
+        assert 'Não foi possível concluir' in failed['messages'][-1]['text']
+        assert 'private provider detail' not in str(failed)

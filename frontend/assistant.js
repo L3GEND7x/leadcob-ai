@@ -21,7 +21,9 @@ async function viewAssistente() {
     try {
       const data = await send('/assistant/messages', 'POST', {conversation_id: assistantConversation, request_id: requestId, message: text});
       assistantConversation = data.id; form.message.value = ''; renderAssistantConversation(data);
-      $('ai-state').textContent = 'Resposta salva.';
+      $('ai-state').textContent = data.request_status === 'failed'
+        ? 'A resposta falhou. O pedido foi registrado; confira o histórico antes de tentar novamente.'
+        : 'Resposta salva.';
     } catch (error) { $('ai-state').textContent = errMsg(error, 'Falha de conexão. Confira o histórico antes de reenviar.'); }
     finally { assistantBusy = false; form.querySelector('button').disabled = false; }
   };

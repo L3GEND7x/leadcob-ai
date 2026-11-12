@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 SAFE_PROVIDER_CODES = frozenset({
     'invalid_api_key', 'insufficient_quota', 'rate_limit_exceeded',
     'model_not_found', 'permission_denied', 'billing_hard_limit_reached',
+    'project_spend_limit_exceeded', 'organization_spend_limit_exceeded',
+    'organization_usage_limit_exceeded', 'slow_down', 'server_is_overloaded',
 })
 INSTRUCTIONS = '''Você é o Assistente LeadCob, parceiro de João na prospecção e cobrança B2B.
 Responda em português brasileiro, com clareza. Consulte as ferramentas para fatos do painel.
@@ -278,7 +280,9 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
         run.status = 'completed' if success else 'failed'
         run.input_tokens, run.output_tokens = input_tokens, output_tokens
         db.commit()
-    return conversation(cid, request, db)
+    result = conversation(cid, request, db)
+    result['request_status'] = run.status
+    return result
 
 
 @router.post('/actions/{action_id}/confirm')
