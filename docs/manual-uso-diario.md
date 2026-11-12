@@ -1,4 +1,4 @@
-# Manual de uso diário — LeadCob AI 0.5.2
+# Manual de uso diário — LeadCob AI 0.5.3
 
 Rotina sugerida de 30 a 60 minutos por dia. Tudo o que aparece nas telas vem do banco do sistema
 (fontes públicas captadas e o que você registra). Nada é enviado a empresas pelo sistema: contato,
@@ -83,9 +83,21 @@ valem zero. Confira limites contratuais e legais antes de propor. A memória de 
 Modelos de abertura, descoberta, objeções, follow-up e cobrança da carteira, com busca e botão de copiar.
 
 ## 12. Contatos empresariais
-Lista de canais institucionais com origem e status. "Sincronizar fichas" importa só site e e-mail já cadastrados.
+Lista de canais institucionais com origem e status, com filtros por UF e município. "Sincronizar fichas" importa só site e
+e-mail já cadastrados. Na ficha, a leitura do **site oficial cadastrado** (versão instalada) registra e-mails de setor, telefone,
+WhatsApp e páginas da empresa no LinkedIn, Instagram e Facebook que o próprio site publica, sempre com a página de origem e o
+status **a verificar**. Confira cada canal antes de usar e marque como verificado ou inválido. Um número publicado pode ser de
+uma pessoa: trate como dado pessoal e use só para o contato comercial com a empresa.
 
 ## 13. Relatórios
 Resumo dos últimos 7 ou 30 dias: contatos, respostas, reuniões, propostas e contratos registrados; conversão das
 empresas contatadas; movimento no funil; motivos de perda; sinais novos por fonte; tarefas. Na versão instalada,
 "CSV" baixa o mesmo relatório. São contagens do que você registrou: sem estimativas.
+
+## 14. Agenda
+Tarefas abertas, atrasadas e concluídas, com a empresa de cada uma. Reagende pela data e hora ou marque como concluída.
+
+## 15. Assistente LeadCob
+Consulta dados do sistema e prepara abordagens. **Só funciona** com chave da API da OpenAI, modelo, preços por token e orçamento
+mensal configurados no servidor; sem isso, a tela avisa e nenhuma chamada paga é feita. Ações sugeridas pelo assistente (ex.:
+criar tarefa) só valem depois da sua confirmação. Se a chamada falhar antes de chegar à OpenAI, a reserva do orçamento volta.

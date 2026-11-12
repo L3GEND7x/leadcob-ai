@@ -1,6 +1,8 @@
 # Changelog
 
 ## Não lançado
+- Radar: a mensagem "sem dados do DataJud" não mostra mais o endereço técnico da API. Manual atualizado para a 0.5.3
+  (Agenda, Assistente e canais de contato do site oficial). Revisão de produção atualizada com a auditoria de 12/11.
 - **Segurança (cabeçalhos)**: `Content-Security-Policy` bloqueia scripts e envio de dados para outros domínios, `<object>`,
   `<base>`, formulários externos e o painel dentro de outro site. `Permissions-Policy` desliga câmera, microfone,
   localização e pagamento. `Strict-Transport-Security` (HSTS) é enviado em produção.
