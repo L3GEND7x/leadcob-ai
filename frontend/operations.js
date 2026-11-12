@@ -15,6 +15,10 @@ async function searchDomain(id) {
   box.textContent = 'Pesquisando candidatos…';
   try {
     const data = await send('/contacts/domain-search/' + id, 'POST');
+    if (data.automatic_available === false) {
+      box.innerHTML = `<p class="note">${esc(data.note)}</p><a class="btn" href="${esc(safeHttpUrl(data.search_url))}" target="_blank" rel="noopener noreferrer">Pesquisar site e contatos</a>`;
+      return;
+    }
     box.innerHTML = data.items.length ? data.items.map(item => `<div class="task"><div class="main"><strong>${esc(item.website)}</strong><small>${esc(item.evidence)} · ${esc(item.status)}</small><a href="${esc(safeHttpUrl(item.source_url))}" target="_blank" rel="noopener">Conferir fonte</a></div><button data-domain="${item.id}">Confirmar este site</button></div>`).join('') : '<p>Nenhum domínio candidato encontrado.</p>';
     box.querySelectorAll('[data-domain]').forEach(button => button.onclick = async () => {
       if (!confirm('Você conferiu que este domínio pertence à empresa?')) return;
