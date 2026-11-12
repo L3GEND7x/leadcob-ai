@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Pesquisa de domínio oferece busca pública quando o provedor automático não está configurado, com instrução para confirmar o site e coletar seus canais.
 - Contatos: coleta de links de telefone, WhatsApp e redes corporativas no site cadastrado, filtros por UF/cidade, contagem de empresas por canal e botões de contato.
 - **Diagnóstico do assistente**: registra o tipo seguro da falha da API junto com o código, quando disponível,
   e reconhece saldo de créditos esgotado. Não grava mensagem bruta nem chave.
