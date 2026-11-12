@@ -1,6 +1,8 @@
 # Changelog
 
 ## Não lançado
+- **Assistente**: após uma falha da API, a tela informa que a resposta falhou e pede conferência do histórico;
+  deixa de mostrar “Resposta salva” para solicitações sem resposta da IA.
 - **Segurança do login**: trocar `ADMIN_PASSWORD_HASH` (ou `ADMIN_USERNAME`) encerra as sessões abertas antes da troca
   (antes elas continuavam válidas por até 8 horas). `scripts/gerar_hash_senha.py` gera o hash só com Python 3, sem exibir
   a senha. Procedimento de troca em `docs/operacao-railway.md`.
