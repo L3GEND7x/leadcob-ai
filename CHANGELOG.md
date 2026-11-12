@@ -1,6 +1,9 @@
 # Changelog
 
 ## Não lançado
+- **Segurança (cabeçalhos)**: `Content-Security-Policy` bloqueia scripts e envio de dados para outros domínios, `<object>`,
+  `<base>`, formulários externos e o painel dentro de outro site. `Permissions-Policy` desliga câmera, microfone,
+  localização e pagamento. `Strict-Transport-Security` (HSTS) é enviado em produção.
 - Pesquisa de domínio oferece busca pública quando o provedor automático não está configurado, com instrução para confirmar o site e coletar seus canais.
 - Contatos: coleta de links de telefone, WhatsApp e redes corporativas no site cadastrado, filtros por UF/cidade, contagem de empresas por canal e botões de contato.
 - **Diagnóstico do assistente**: registra o tipo seguro da falha da API junto com o código, quando disponível,
