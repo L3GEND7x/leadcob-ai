@@ -12,6 +12,8 @@ def test_known_provider_code_is_safe_to_log():
     assert failure_metadata(error) == {
         'type': 'ProviderError', 'status': 429, 'code': 'insufficient_quota',
     }
+    error.body = {'code': 'project_spend_limit_exceeded'}
+    assert failure_metadata(error)['code'] == 'project_spend_limit_exceeded'
 
 
 def test_arbitrary_provider_data_is_not_logged():
