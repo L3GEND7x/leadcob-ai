@@ -26,7 +26,8 @@ SAFE_PROVIDER_CODES = frozenset({
     'invalid_api_key', 'insufficient_quota', 'rate_limit_exceeded',
     'model_not_found', 'permission_denied', 'billing_hard_limit_reached',
     'project_spend_limit_exceeded', 'organization_spend_limit_exceeded',
-    'organization_usage_limit_exceeded', 'slow_down', 'server_is_overloaded',
+    'organization_usage_limit_exceeded', 'credit_balance_exhausted',
+    'slow_down', 'server_is_overloaded',
 })
 INSTRUCTIONS = '''Você é o Assistente LeadCob, parceiro de João na prospecção e cobrança B2B.
 Responda em português brasileiro, com clareza. Consulte as ferramentas para fatos do painel.
@@ -86,11 +87,14 @@ def failure_metadata(exc):
     status = getattr(exc, 'status_code', None)
     body = getattr(exc, 'body', None)
     code = body.get('code') if isinstance(body, dict) else None
+    provider_type = body.get('type') if isinstance(body, dict) else None
     if not isinstance(code, str) or code not in SAFE_PROVIDER_CODES:
         code = None
+    if not isinstance(provider_type, str) or provider_type not in SAFE_PROVIDER_CODES:
+        provider_type = None
     return {'type': type(exc).__name__,
             'status': status if type(status) is int and 400 <= status <= 599 else None,
-            'code': code}
+            'code': code, 'provider_type': provider_type}
 
 
 @router.get('/status')
@@ -265,8 +269,8 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
         db.rollback()
         # Do not return provider details or secrets. On uncertain failures retain reservation.
         failure = failure_metadata(exc)
-        logger.warning('assistant_failed type=%s status=%s code=%s',
-                       failure['type'], failure['status'], failure['code'])
+        logger.warning('assistant_failed type=%s status=%s code=%s provider_type=%s',
+                       failure['type'], failure['status'], failure['code'], failure['provider_type'])
         db.add(AssistantMessage(conversation_id=cid, role='assistant', text='Não foi possível concluir. O pedido está registrado; consulte as ações pendentes antes de tentar novamente.'))
         db.add(AuditLog(event='assistant_failed', entity_type='assistant', entity_id=None,
                         details={**failure, 'conversation_id': cid}))
