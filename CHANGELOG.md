@@ -1,6 +1,8 @@
 # Changelog
 
 ## Não lançado
+- **Diagnóstico do assistente**: registra o tipo seguro da falha da API junto com o código, quando disponível,
+  e reconhece saldo de créditos esgotado. Não grava mensagem bruta nem chave.
 - **Assistente**: após uma falha da API, a tela informa que a resposta falhou e pede conferência do histórico;
   deixa de mostrar “Resposta salva” para solicitações sem resposta da IA.
 - **Segurança do login**: trocar `ADMIN_PASSWORD_HASH` (ou `ADMIN_USERNAME`) encerra as sessões abertas antes da troca
