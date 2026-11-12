@@ -30,6 +30,19 @@ Troque a senha se ela já apareceu em uma conversa, e-mail, print ou documento. 
 
 O serviço escuta a variável `PORT` da Railway. A assinatura ChatGPT não inclui a API: para usar o assistente, configure depois `OPENAI_API_KEY`, `OPENAI_MODEL`, orçamento e preços por token em variáveis seladas, seguindo `.env.example`.
 
+### Carregar a base inicial de empresas na Railway
+
+O job GitHub `importar-cnpj.yml` grava a base em `dados-cnpj` para a página publicada; ele **não** preenche o PostgreSQL do painel Railway. O importador `python -m app.jobs.import_railway_snapshot` carrega uma cópia fixa da base AM gerada em 10/11/2026 (23.348 registros), depois de conferir a revisão do banco. Ele insere somente empresas ausentes, preserva fichas e etapas do CRM existentes e ignora CNPJs na lista de supressão. Não importa e-mails, telefones, sócios nem dados de cobrança.
+
+Após revisar e incorporar o PR que adiciona o importador:
+
+1. Crie um serviço **temporário** no projeto Railway a partir da branch `main` do mesmo repositório, com `RAILWAY_DOCKERFILE_PATH=infra/Dockerfile`. Não adicione domínio público.
+2. Defina somente `DATABASE_URL=${{Postgres.DATABASE_URL}}` e o comando de início `python -m app.jobs.import_railway_snapshot`. Não configure cron nem use o serviço web existente para esse job.
+3. Inicie uma única execução e confira o log: deve mostrar a data do snapshot, a quantidade validada e os totais inseridos, existentes e suprimidos. O comando deve terminar sem erro. Em uma segunda execução, o total inserido deve ser zero.
+4. Confira a quantidade de empresas no painel e remova o serviço temporário. O banco e o serviço web permanecem. Para outras UFs ou atualização periódica, prepare uma fonte e uma rotina próprias; este importador é deliberadamente limitado ao snapshot AM revisado.
+
+O banco de produção deve ter o backup externo e o ensaio de restauração já validados antes da primeira importação. O arquivo é baixado de uma revisão fixa do ramo `dados-cnpj`; se o download falhar ou a estrutura divergir, o processo para antes de gravar qualquer linha.
+
 ## Backup externo diário
 
 1. Use um bucket **privado** Backblaze B2 e uma chave de aplicativo padrão limitada a esse bucket, com leitura e gravação. Não use chave mestra nem chaves compartilhadas em conversas. Guarde também a senha Restic fora da Railway em um gerenciador de senhas.
