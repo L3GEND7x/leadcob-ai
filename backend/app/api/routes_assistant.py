@@ -1,5 +1,6 @@
 """Owner-scoped Responses API assistant with server-enforced tools and approvals."""
 import json
+import logging
 import math
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -20,6 +21,11 @@ from app.api.routes_stage2 import Simulation, simulate, get_portfolio
 from app.services.crm import blocked_reason
 
 router = APIRouter(prefix='/api/assistant', tags=['Assistente'])
+logger = logging.getLogger(__name__)
+SAFE_PROVIDER_CODES = frozenset({
+    'invalid_api_key', 'insufficient_quota', 'rate_limit_exceeded',
+    'model_not_found', 'permission_denied', 'billing_hard_limit_reached',
+})
 INSTRUCTIONS = '''Você é o Assistente LeadCob, parceiro de João na prospecção e cobrança B2B.
 Responda em português brasileiro, com clareza. Consulte as ferramentas para fatos do painel.
 Cite registros usando links locais como #/empresa/ID e #/cobranca/ID, e informe data e cobertura.
@@ -71,6 +77,18 @@ def owned_conversation(db, cid, username):
 def configured():
     return bool(settings.openai_api_key and settings.openai_model and settings.assistant_monthly_budget_usd > 0
                 and settings.openai_input_usd_per_million > 0 and settings.openai_output_usd_per_million > 0)
+
+
+def failure_metadata(exc):
+    """Record only bounded error identifiers, never provider bodies or user content."""
+    status = getattr(exc, 'status_code', None)
+    body = getattr(exc, 'body', None)
+    code = body.get('code') if isinstance(body, dict) else None
+    if not isinstance(code, str) or code not in SAFE_PROVIDER_CODES:
+        code = None
+    return {'type': type(exc).__name__,
+            'status': status if type(status) is int and 400 <= status <= 599 else None,
+            'code': code}
 
 
 @router.get('/status')
@@ -244,8 +262,12 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
     except Exception as exc:
         db.rollback()
         # Do not return provider details or secrets. On uncertain failures retain reservation.
+        failure = failure_metadata(exc)
+        logger.warning('assistant_failed type=%s status=%s code=%s',
+                       failure['type'], failure['status'], failure['code'])
         db.add(AssistantMessage(conversation_id=cid, role='assistant', text='Não foi possível concluir. O pedido está registrado; consulte as ações pendentes antes de tentar novamente.'))
-        db.add(AuditLog(event='assistant_failed', entity_type='assistant', entity_id=None, details={'type': type(exc).__name__, 'conversation_id': cid}))
+        db.add(AuditLog(event='assistant_failed', entity_type='assistant', entity_id=None,
+                        details={**failure, 'conversation_id': cid}))
         db.commit()
     finally:
         run = db.get(AssistantRequest, payload.request_id)
