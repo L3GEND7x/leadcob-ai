@@ -278,7 +278,9 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
         run.status = 'completed' if success else 'failed'
         run.input_tokens, run.output_tokens = input_tokens, output_tokens
         db.commit()
-    return conversation(cid, request, db)
+    result = conversation(cid, request, db)
+    result['request_status'] = run.status
+    return result
 
 
 @router.post('/actions/{action_id}/confirm')
