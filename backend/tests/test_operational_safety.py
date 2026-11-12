@@ -216,3 +216,12 @@ def test_security_headers_restrict_scripts_and_framing(monkeypatch):
         monkeypatch.setattr(settings, 'app_env', 'production')
         monkeypatch.setattr(settings, 'public_url', 'https://painel.example.com')
         assert c.get('/api/health').headers['strict-transport-security'] == 'max-age=31536000'
+
+
+def test_favicon_is_public_and_startup_runs_via_lifespan(monkeypatch):
+    monkeypatch.setattr(settings, 'admin_password_hash', password_hash('senha-de-teste-muito-forte'))
+    with TestClient(app) as c:   # o lifespan roda aqui; se falhasse, o TestClient levantaria erro
+        r = c.get('/favicon.ico')
+        assert r.status_code == 200 and r.headers['content-type'].startswith('image/svg+xml')
+        assert c.get('/static/favicon.svg').status_code == 200
+        assert c.get('/api/companies/search').status_code == 401   # o resto continua protegido
