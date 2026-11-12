@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 SAFE_PROVIDER_CODES = frozenset({
     'invalid_api_key', 'insufficient_quota', 'rate_limit_exceeded',
     'model_not_found', 'permission_denied', 'billing_hard_limit_reached',
+    'project_spend_limit_exceeded', 'organization_spend_limit_exceeded',
+    'organization_usage_limit_exceeded', 'slow_down', 'server_is_overloaded',
 })
 INSTRUCTIONS = '''Você é o Assistente LeadCob, parceiro de João na prospecção e cobrança B2B.
 Responda em português brasileiro, com clareza. Consulte as ferramentas para fatos do painel.
