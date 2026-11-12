@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Contatos: coleta de links de telefone, WhatsApp e redes corporativas no site cadastrado, filtros por UF/cidade, contagem de empresas por canal e botões de contato.
 - **Diagnóstico do assistente**: registra o tipo seguro da falha da API junto com o código, quando disponível,
   e reconhece saldo de créditos esgotado. Não grava mensagem bruta nem chave.
 - **Assistente**: após uma falha da API, a tela informa que a resposta falhou e pede conferência do histórico;
