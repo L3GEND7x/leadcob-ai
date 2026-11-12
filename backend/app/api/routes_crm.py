@@ -507,6 +507,17 @@ def write_settings(payload: SettingsIn, db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------- central de comando
+def _pipeline_stage_counts(db):
+    # PostgreSQL treats separately bound COALESCE defaults in SELECT and GROUP BY
+    # as different expressions. Group by the column, then merge NULL with the
+    # explicit default stage so counts stay correct on both PostgreSQL and SQLite.
+    counts = {}
+    for stage, count in db.query(Company.pipeline_stage, func.count()).group_by(Company.pipeline_stage).all():
+        stage = stage or "identificada"
+        counts[stage] = counts.get(stage, 0) + count
+    return counts
+
+
 def _pipeline_candidates(db):
     """Empresas que importam para o trabalho do dia: com sinal, no funil ou com mais capital."""
     with_signal = db.query(Opportunity.company_id).filter(Opportunity.status != "discarded")
@@ -525,8 +536,7 @@ def _pipeline_candidates(db):
 def command_center(db: Session = Depends(get_db)):
     settings, sup = get_settings(db), _suppressed_ids(db)
     now, today = datetime.now(timezone.utc), today_start_utc()
-    stage_counts = dict(db.query(func.coalesce(Company.pipeline_stage, "identificada"), func.count()).group_by(
-        func.coalesce(Company.pipeline_stage, "identificada")).all())
+    stage_counts = _pipeline_stage_counts(db)
 
     def companies_with(kinds):
         return db.query(func.count(func.distinct(Interaction.company_id))).filter(Interaction.kind.in_(kinds)).scalar() or 0
