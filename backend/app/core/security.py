@@ -20,6 +20,15 @@ from app.db.models import LoginSession, LoginAttempt, AuditLog
 actor = ContextVar('audit_actor', default='local-owner')
 router = APIRouter(prefix='/api/auth', tags=['Acesso'])
 COOKIE = 'leadcob_session'
+# A interface usa atributos onclick e estilos inline, por isso 'unsafe-inline' em script/style.
+# Mesmo assim a política bloqueia scripts de outros domínios, envio de dados para fora (connect-src),
+# formulários para outros sites, <base> e <object>, e o carregamento do painel dentro de outro site.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; "
+    "form-action 'self'; frame-ancestors 'none'"
+)
 
 
 def password_hash(password, salt=None):
@@ -104,6 +113,10 @@ async def access_middleware(request, call_next):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
+        response.headers['Content-Security-Policy'] = CONTENT_SECURITY_POLICY
+        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), payment=()'
+        if settings.app_env == 'production':
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000'
         if request.url.path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store'
         return response

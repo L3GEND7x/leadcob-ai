@@ -200,3 +200,19 @@ def test_assistant_approval_uses_real_task(monkeypatch):
         assert failed['request_status'] == 'failed'
         assert 'Não foi possível concluir' in failed['messages'][-1]['text']
         assert 'private provider detail' not in str(failed)
+
+
+def test_security_headers_restrict_scripts_and_framing(monkeypatch):
+    monkeypatch.setattr(settings, 'admin_password_hash', password_hash('senha-de-teste-muito-forte'))
+    with TestClient(app) as c:
+        r = c.get('/api/health')
+        csp = r.headers['content-security-policy']
+        for directive in ("default-src 'self'", "connect-src 'self'", "object-src 'none'", "base-uri 'none'",
+                          "frame-ancestors 'none'", "form-action 'self'"):
+            assert directive in csp
+        assert 'https://fonts.googleapis.com' in csp and 'https://fonts.gstatic.com' in csp
+        assert 'camera=()' in r.headers['permissions-policy']
+        assert 'strict-transport-security' not in r.headers  # só em produção (HTTPS)
+        monkeypatch.setattr(settings, 'app_env', 'production')
+        monkeypatch.setattr(settings, 'public_url', 'https://painel.example.com')
+        assert c.get('/api/health').headers['strict-transport-security'] == 'max-age=31536000'
