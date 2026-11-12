@@ -13,7 +13,7 @@ import re
 import time
 from app.services.safe_http import public_client, bounded_get, validate_url
 from html import unescape
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qs, unquote
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -40,6 +40,44 @@ def _role_box(local: str) -> bool:
     return norm in ROLE
 
 
+SOCIAL_HOSTS = {
+    "linkedin": {"linkedin.com", "www.linkedin.com", "br.linkedin.com"},
+    "instagram": {"instagram.com", "www.instagram.com"},
+    "facebook": {"facebook.com", "www.facebook.com", "m.facebook.com"},
+}
+
+
+def published_channels(html, source_url):
+    """Extract explicit contact links published by the registered business site."""
+    channels = {}
+    for href in HREF.findall(html):
+        link = urlparse(urljoin(source_url, href.strip()))
+        kind, value = None, None
+        if link.scheme.lower() == "tel":
+            kind, value = "phone", re.sub(r"\D", "", unquote(link.path).split(";")[0])
+        elif link.scheme in {"http", "https"} and not link.username and not link.password:
+            host = (link.hostname or "").lower()
+            if host in {"wa.me", "api.whatsapp.com", "web.whatsapp.com"}:
+                number = link.path.strip("/") if host == "wa.me" else parse_qs(link.query).get("phone", [""])[0]
+                kind, value = "whatsapp", re.sub(r"\D", "", number)
+            for platform, hosts in SOCIAL_HOSTS.items():
+                if host in hosts:
+                    path = link.path.strip("/")
+                    parts = path.split("/")
+                    if platform == "linkedin":
+                        valid = len(parts) == 2 and parts[0] == "company" and bool(parts[1])
+                    else:
+                        valid = len(parts) == 1 and bool(path) and path.lower() not in {
+                            "share", "sharer", "sharer.php", "login", "intent", "p", "reel", "stories", "dialog"}
+                    if valid:
+                        kind, value = platform, "https://www." + platform + ".com/" + path + "/"
+        if kind in {"phone", "whatsapp"} and not (10 <= len(value or "") <= 13):
+            continue
+        if kind and value:
+            channels[(kind, value)] = {"kind": kind, "value": value, "source_url": source_url}
+    return list(channels.values())
+
+
 def discover(website: str, client: httpx.Client | None = None, max_pages: int = 4) -> dict:
     website = (website or "").strip()
     if not re.match(r"^(https?://)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(:\d+)?(/.*)?$", website):
@@ -53,7 +91,7 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
     domain = _root(u.hostname)
     own = client is None
     client = client or public_client()
-    found, pages, notes = {}, [], []
+    found, pages, notes, channels = {}, [], [], {}
     try:
         robots = RobotFileParser()
         try:
@@ -86,6 +124,8 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
                 continue
             html = unescape(resp.text[:MAX_BYTES])
             pages.append(str(resp.url))
+            for item in published_channels(html, str(resp.url)):
+                channels.setdefault((item["kind"], item["value"]), item)
             for email in EMAIL.findall(html):
                 email = email.lower().rstrip(".")
                 local, _, host = email.partition("@")
@@ -101,4 +141,4 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
         if own:
             client.close()
     return {"domain": domain, "pages_read": pages, "emails": [{"email": e, "source_url": s} for e, s in found.items()],
-            "notes": notes[:10]}
+            "channels": list(channels.values()), "notes": notes[:10]}

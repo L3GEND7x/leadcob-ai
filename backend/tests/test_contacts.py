@@ -32,3 +32,53 @@ def test_sync_dedupe_and_suppression():
         db.query(BusinessContact).filter_by(company_id=cid).delete()
         db.query(Company).filter_by(id=cid).delete()
         db.commit()
+
+
+def test_discovery_channels_filters_counts_and_suppression(monkeypatch):
+    from app.collectors import site_contacts
+    ensure_schema()
+    with SessionLocal() as db:
+        company = Company(name="CHANNELS TEST", state="AM", city="Manaus", website="https://empresa.com.br")
+        db.add(company)
+        db.commit()
+        cid = company.id
+    monkeypatch.setattr(site_contacts, "discover", lambda _: {
+        "emails": [], "pages_read": ["https://empresa.com.br"], "notes": [],
+        "channels": [
+            {"kind": "phone", "value": "559232324040", "source_url": "https://empresa.com.br"},
+            {"kind": "linkedin", "value": "https://linkedin.com/company/empresa", "source_url": "https://empresa.com.br"},
+        ],
+    })
+    client = TestClient(app)
+    try:
+        first = client.post(f"/api/contacts/discover/{cid}")
+        assert first.status_code == 200
+        assert first.json()["added"] == 2
+        assert client.post(f"/api/contacts/discover/{cid}").json()["added"] == 0
+        params = {"company_id": cid, "uf": "am", "city": "Manaus"}
+        data = client.get("/api/contacts", params=params).json()
+        assert data["total"] == 2
+        assert data["companies_by_channel"] == {"phone": 1, "linkedin": 1}
+        assert client.get("/api/contacts", params={**params, "uf": "SP"}).json()["total"] == 0
+        phone = next(x for x in data["items"] if x["kind"] == "phone")
+        client.patch(f"/api/contacts/{phone['id']}/verify?status=invalido")
+        assert client.get("/api/contacts", params=params).json()["companies_by_channel"] == {"linkedin": 1}
+        with SessionLocal() as db:
+            db.add(Suppression(company_id=cid, reason="Não contatar"))
+            db.commit()
+        assert client.get("/api/contacts", params=params).json()["companies_by_channel"] == {}
+        assert client.post(f"/api/contacts/discover/{cid}").status_code == 403
+    finally:
+        with SessionLocal() as db:
+            db.query(Suppression).filter_by(company_id=cid).delete()
+            db.query(BusinessContact).filter_by(company_id=cid).delete()
+            db.query(Company).filter_by(id=cid).delete()
+            db.commit()
+
+
+def test_social_and_whatsapp_validation():
+    assert clean("whatsapp", "(92) 99999-9999") == "5592999999999"
+    assert clean("linkedin", "https://linkedin.com/company/empresa") == "https://www.linkedin.com/company/empresa/"
+    for url in ("https://linkedin.com/in/pessoa", "https://linkedin.com.evil.test/company/empresa"):
+        with pytest.raises(HTTPException):
+            clean("linkedin", url)

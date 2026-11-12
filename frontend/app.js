@@ -409,9 +409,9 @@ async function viewEmpresa(id) {
         <label class="f full">Anotações<textarea name="notes" maxlength="5000">${esc(c.notes || '')}</textarea></label>
         <div class="end"><button class="primary">Salvar</button></div></form>`)}
       ${panel('Contatos institucionais', 'Só canais da empresa (nunca pessoais), com a origem registrada', suppressed ? '<p class="note">Empresa na lista de supressão.</p>' : `<div id="co-contacts"><p class="note">Carregando…</p></div>
-        <div class="actions" style="margin:8px 0"><button class="small" onclick="searchDomain(${JSON.stringify(c.id)})">⌕ Sugerir sites pelo CNPJ</button>${c.website ? `<button class="small" onclick="discoverContacts(${JSON.stringify(c.id)})">⌕ Buscar e-mails no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
+        <div class="actions" style="margin:8px 0"><button class="small" onclick="searchDomain(${JSON.stringify(c.id)})">⌕ Sugerir sites pelo CNPJ</button>${c.website ? `<button class="small" onclick="discoverContacts(${JSON.stringify(c.id)})">⌕ Buscar canais no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
         ${c.website ? '' : '<p class="note">Sem site cadastrado: pesquise, confira que é o site oficial da empresa e salve-o no campo "Site institucional" acima.</p>'}
-        <div id="domain-candidates" aria-live="polite"></div><form id="f-contact" class="form"><label class="f">Canal<select name="kind"><option value="email">E-mail</option><option value="website">Site</option><option value="phone">Telefone</option></select></label><label class="f">Valor<input name="value" required minlength="3" maxlength="500"></label><label class="f full">Onde você encontrou (fonte)<input name="source_name" required minlength="2" maxlength="120" placeholder="Ex.: página Fale Conosco do site oficial"></label><label class="f full">URL da fonte (opcional)<input name="source_url" maxlength="1000"></label><div class="end"><button>＋ Adicionar contato</button></div></form>`)}
+        <div id="domain-candidates" aria-live="polite"></div><form id="f-contact" class="form"><label class="f">Canal<select name="kind"><option value="email">E-mail</option><option value="website">Site</option><option value="phone">Telefone</option><option value="whatsapp">WhatsApp</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select></label><label class="f">Valor<input name="value" required minlength="3" maxlength="500"></label><label class="f full">Onde você encontrou (fonte)<input name="source_name" required minlength="2" maxlength="120" placeholder="Ex.: página Fale Conosco do site oficial"></label><label class="f full">URL da fonte (opcional)<input name="source_url" maxlength="1000"></label><div class="end"><button>＋ Adicionar contato</button></div></form>`)}
       ${panel('Abordagem sugerida', 'Gerada com os fatos desta ficha. Nada é enviado pelo sistema.', suppressed ? '<p class="note">Empresa na lista de supressão: nenhuma abordagem é gerada.</p>' : '<div id="approach"><button class="primary" onclick="loadApproach(' + JSON.stringify(c.id) + ')">✉ Gerar e-mail, WhatsApp, roteiro e follow-ups</button></div>')}
       ${panel('Registrar interação', c.last_outreach_at ? 'Último contato em ' + when(c.last_outreach_at) : 'Nenhum contato registrado', `<form id="f-int" class="form">
         <label class="f">Tipo<select name="kind">${opts(KINDS, 'contato')}</select></label>
@@ -433,12 +433,26 @@ async function viewEmpresa(id) {
     </div></div>`;
   bindSheet(c);
 }
+function contactAction(contact) {
+  if (contact.status === 'invalido') return '';
+  let href = '', label = 'Abrir';
+  if (contact.kind === 'email' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.value)) {
+    href = 'mailto:' + encodeURIComponent(contact.value); label = 'E-mail';
+  } else if (['phone', 'whatsapp'].includes(contact.kind) && /^\d{10,13}$/.test(contact.value)) {
+    href = contact.kind === 'phone' ? 'tel:' + (contact.value.startsWith('0800') ? '' : contact.value.length <= 11 ? '+55' : '+') + contact.value : 'https://wa.me/' + contact.value;
+    label = contact.kind === 'phone' ? 'Ligar' : 'WhatsApp';
+  } else if (['website', 'linkedin', 'instagram', 'facebook'].includes(contact.kind)) {
+    href = safeHttpUrl(contact.value);
+  }
+  return href && href !== '#' ? `<a class="btn small" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
+}
+
 async function loadCompanyContacts(id) {
   const box = $('co-contacts'); if (!box) return;
   try {
     const d = await api('/contacts?company_id=' + encodeURIComponent(id));
     const ST = { a_verificar: ['A VERIFICAR', 'warn'], verificado: ['VERIFICADO', 'ok'], invalido: ['INVÁLIDO', 'bad'] };
-    box.innerHTML = d.items.length ? d.items.map(x => `<div class="task"><div class="main"><strong>${esc(x.value)}</strong><small>${esc(x.kind)} · ${x.source_url ? `<a class="src" href="${esc(safeHttpUrl(x.source_url))}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name)} <span class="badge ${ST[x.status][1]}">${ST[x.status][0]}</span></small></div>${x.status !== 'verificado' ? `<button class="small" onclick="verifyContact(${x.id},'verificado')">✓ Confirmar</button>` : ''}${x.status !== 'invalido' ? `<button class="small" onclick="verifyContact(${x.id},'invalido')">✕ Inválido</button>` : ''}</div>`).join('') : '<p class="empty">Nenhum contato institucional cadastrado.</p>';
+    box.innerHTML = d.items.length ? d.items.map(x => `<div class="task"><div class="main"><strong>${esc(x.value)}</strong><small>${esc(x.kind)} · ${x.source_url ? `<a class="src" href="${esc(safeHttpUrl(x.source_url))}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name)} <span class="badge ${ST[x.status][1]}">${ST[x.status][0]}</span></small></div>${contactAction(x)}${x.status !== 'verificado' ? `<button class="small" onclick="verifyContact(${x.id},'verificado')">✓ Confirmar</button>` : ''}${x.status !== 'invalido' ? `<button class="small" onclick="verifyContact(${x.id},'invalido')">✕ Inválido</button>` : ''}</div>`).join('') : '<p class="empty">Nenhum contato institucional cadastrado.</p>';
   } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Contatos indisponíveis.'))}</p>`; }
 }
 async function discoverContacts(id) {
@@ -446,7 +460,7 @@ async function discoverContacts(id) {
   try {
     const r = await send('/contacts/discover/' + id, 'POST');
     if (!r.pages_read.length) return toast('Não foi possível ler o site: ' + (r.notes[0] || 'sem resposta') + '. Se a rede deste servidor bloqueia sites externos, cadastre o contato à mão com a fonte.', 10000, true);
-    toast(`${r.pages_read.length} página(s) lida(s) · ${r.emails.length} e-mail(s) institucional(is) · ${r.added} novo(s). Confira antes de usar.`, 9000);
+    toast(`${r.pages_read.length} página(s) lida(s) · ${r.emails.length + (r.channels || []).length} canal(is) encontrado(s) · ${r.added} novo(s). Confira antes de usar.`, 9000);
     viewEmpresa(id);
   } catch (e) { toast(errMsg(e, 'Não foi possível ler o site.'), 9000, true); }
 }
@@ -757,12 +771,12 @@ route();
 // Contatos institucionais — dados reais da API, sem exemplos fictícios.
 async function viewContatos() {
   V().innerHTML = head('DIRETÓRIO COMERCIAL', 'Contatos empresariais', 'Canais institucionais com origem registrada. A ausência de contato não significa que ele foi encontrado.', '<button id="sync-contacts" class="primary">Sincronizar fichas</button>');
-  V().insertAdjacentHTML('beforeend', `<article class="panel"><div class="actions"><input id="contact-search" placeholder="Empresa, CNPJ ou contato" aria-label="Pesquisar contatos"><select id="contact-kind" aria-label="Filtrar canal"><option value="">Todos os canais</option><option value="email">E-mails</option><option value="website">Sites</option><option value="phone">Telefones</option></select><button id="contact-filter">Pesquisar</button></div><p class="note">Sincronizar importa apenas sites e e-mails já cadastrados. Não busca contatos pessoais nem inventa informações.</p><div id="contact-results" aria-live="polite"></div><div class="actions"><button id="contact-prev">Anterior</button><span id="contact-page" aria-live="polite"></span><button id="contact-next">Próxima</button></div></article>`);
+  V().insertAdjacentHTML('beforeend', `<article class="panel"><div class="actions"><input id="contact-search" placeholder="Empresa, CNPJ ou contato" aria-label="Pesquisar contatos"><select id="contact-kind" aria-label="Filtrar canal"><option value="">Todos os canais</option><option value="email">E-mails</option><option value="website">Sites</option><option value="phone">Telefones</option><option value="whatsapp">WhatsApp</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select><input id="contact-uf" placeholder="UF" maxlength="2" aria-label="UF"><input id="contact-city" placeholder="Município" aria-label="Município"><button id="contact-filter">Pesquisar</button></div><p class="note">Sincronizar importa apenas sites e e-mails já cadastrados. Não busca contatos pessoais nem inventa informações.</p><div id="contact-results" aria-live="polite"></div><div class="actions"><button id="contact-prev">Anterior</button><span id="contact-page" aria-live="polite"></span><button id="contact-next">Próxima</button></div></article>`);
   let offset = 0;
   async function refresh() {
     const q = $('contact-search').value.trim(), kind = $('contact-kind').value;
-    const data = await api('/contacts?q=' + encodeURIComponent(q) + '&kind=' + encodeURIComponent(kind) + '&offset=' + offset);
-    $('contact-results').innerHTML = `<p class="note">${fmt(data.total)} canal(is) cadastrado(s) · até 100 por página</p>` + (data.items.length ? `<div class="rows">${data.items.map(c => `<div class="row"><div class="main"><strong>${esc(c.company_name)}</strong><small>${esc(c.cnpj || 'Sem CNPJ')} · ${esc(c.kind)} · ${esc(c.value)}</small><small>Origem: ${esc(c.source_name)} · ${esc(c.status)}</small></div><a class="btn small" href="#/empresa/${c.company_id}">Empresa</a></div>`).join('')}</div>` : '<p class="empty">Nenhum contato institucional encontrado.</p>');
+    const data = await api('/contacts?q=' + encodeURIComponent(q) + '&kind=' + encodeURIComponent(kind) + '&offset=' + offset + '&uf=' + encodeURIComponent($('contact-uf').value.trim()) + '&city=' + encodeURIComponent($('contact-city').value.trim()));
+    $('contact-results').innerHTML = `<p class="note">Empresas com canal disponível: ${Object.entries(data.companies_by_channel || {}).map(([k,n]) => esc(k) + ": " + fmt(n)).join(" · ") || "Nenhuma"}</p><p class="note">${fmt(data.total)} canal(is) cadastrado(s) · até 100 por página</p>` + (data.items.length ? `<div class="rows">${data.items.map(c => `<div class="row"><div class="main"><strong>${esc(c.company_name)}</strong><small>${esc(c.city || "")} / ${esc(c.state || "")} · ${esc(c.cnpj || 'Sem CNPJ')} · ${esc(c.kind)} · ${esc(c.value)}</small><small>Origem: ${esc(c.source_name)} · ${esc(c.status)}</small></div>${contactAction(c)}<a class="btn small" href="#/empresa/${c.company_id}">Empresa</a></div>`).join('')}</div>` : '<p class="empty">Nenhum contato institucional encontrado.</p>');
     $('contact-page').textContent = data.total ? `${fmt(offset + 1)}–${fmt(offset + data.items.length)} de ${fmt(data.total)}` : 'Nenhum resultado';
     $('contact-prev').disabled = offset === 0;
     $('contact-next').disabled = offset + data.items.length >= data.total;

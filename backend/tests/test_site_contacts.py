@@ -42,3 +42,21 @@ def test_invalid_site():
     import pytest
     with pytest.raises(ValueError):
         discover("javascript:alert(1)")
+
+
+def test_published_business_channels_and_share_links():
+    from app.collectors.site_contacts import published_channels
+    html = """<a href="tel:+55 (92) 3232-4040">Ligar</a>
+    <a href="https://wa.me/5592999999999?text=oi">WhatsApp</a>
+    <a href="https://www.linkedin.com/company/exemplo/">LinkedIn</a>
+    <a href="https://www.linkedin.com/in/pessoa/">Pessoa</a>
+    <a href="https://instagram.com/empresa/">Instagram</a>
+    <a href="https://facebook.com/empresa/">Facebook</a>
+    <a href="https://facebook.com/sharer.php?u=x">Compartilhar</a>
+    <a href="https://www.linkedin.com.evil.test/company/exemplo/">Falso</a>
+    <a href="https://wa.me/abc">Inválido</a>"""
+    rows = published_channels(html, "https://empresa.com.br/contato")
+    assert {x["kind"] for x in rows} == {"phone", "whatsapp", "linkedin", "instagram", "facebook"}
+    assert len(rows) == 5
+    assert all(x["source_url"] == "https://empresa.com.br/contato" for x in rows)
+    assert next(x["value"] for x in rows if x["kind"] == "phone") == "559232324040"
