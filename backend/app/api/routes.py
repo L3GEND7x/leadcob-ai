@@ -485,5 +485,5 @@ def market_datajud_latest(uf: str = Query(..., min_length=2, max_length=2), db: 
     snap = (db.query(MarketSnapshot).filter_by(source="datajud", uf=uf.upper())
             .order_by(MarketSnapshot.created_at.desc()).first())
     if not snap:
-        raise HTTPException(404, f"Sem fotografia do DataJud para {uf.upper()}. Use POST /api/market/datajud?uf={uf.upper()}.")
+        raise HTTPException(404, f"Ainda não há dados do DataJud para {uf.upper()}.")
     return {"snapshot_id": snap.id, "created_at": iso(snap.created_at), **snap.payload}

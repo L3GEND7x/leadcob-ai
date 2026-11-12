@@ -48,3 +48,23 @@ Railway nem à Backblaze**: o que depende do ambiente real está em "Não testad
   (testes existentes).
 - A prospecção usa só dados de PJ. A inteligência de cobrança descarta nome, CPF e contato de devedores na importação.
 - **Não importar carteiras ou dados financeiros reais** antes de: backup real com snapshot + ensaio de restauração real.
+
+## 5. Atualização — 12/11/2026
+
+| Item | Situação |
+|---|---|
+| F1 (Restic e quebra de linha) | **Resolvido.** A credencial foi corrigida na Railway. Backup real `a788ae04` e ensaio de restauração real OK (`docs/ensaio-restauracao.md`). |
+| F2 (sessões após troca de senha) | **Corrigido** no PR #34, revisado pelo ChatGPT. |
+| F3 (bloqueio de login global) | **Aberto.** O ChatGPT confirmou o risco. A correção depende de validar qual IP real a Railway repassa ao app. |
+| Reserva do assistente não devolvida | **Corrigido** no PR #38: a reserva volta quando a falha ocorre antes da chamada à OpenAI. |
+| Starlette 0.46.2 com avisos de segurança | Atualização para FastAPI 0.162.5 / Starlette 1.10.0 proposta em PR. `pip-audit` sem vulnerabilidades. |
+| Sem CSP/HSTS | Cabeçalhos propostos em PR, testados nas 15 telas sem violação. |
+| Banco de produção com dados reais | O importador do PR #41 pode ter carregado ~23 mil empresas. **Repetir o ensaio de restauração** com esses dados ([NECESSÁRIO CONFERIR] se a importação já rodou). |
+
+**Auditoria de 12/11 no app rodando** (PostgreSQL, Alembic, login e 3.000 empresas reais da base AM; navegador com Playwright):
+- 15 telas sem erro de JavaScript;
+- 28 verificações de fluxo OK;
+- teste de XSS em 7 campos sem execução;
+- telas no tamanho de celular (390 px) sem transbordar;
+- `alembic check` sem diferença entre modelos e migrações;
+- `ruff` sem erros reais: os avisos restantes são o padrão `Depends` do FastAPI ou falsos positivos.
