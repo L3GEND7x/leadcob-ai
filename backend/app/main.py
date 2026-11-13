@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -11,7 +12,11 @@ from app.api.routes_stage2 import router as stage2_router
 from app.api.routes_reports import router as reports_router
 from app.services.scoring import score_opportunity
 from app.core.security import router as auth_router, access_middleware, validate_configuration
-app=FastAPI(title=settings.app_name,version="0.5.3",description="Inteligência comercial B2B para oportunidades de cobrança.")
+@asynccontextmanager
+async def lifespan(_app):
+    startup()   # definida abaixo; o FastAPI só chama o lifespan quando o servidor inicia
+    yield
+app=FastAPI(title=settings.app_name,version="0.5.3",description="Inteligência comercial B2B para oportunidades de cobrança.",lifespan=lifespan)
 from app.api.routes_contacts import router as contacts_router
 app.middleware("http")(access_middleware)
 app.include_router(auth_router)
@@ -48,7 +53,6 @@ def seed():
                 db.add(Opportunity(company_id=c.id,kind=kind,title=title,description=desc,evidence=evidence,source_name=src,source_url=url,score=score,score_reason=reason,status="review",confidence=0.2,is_verified=False))
             db.commit()
     finally: db.close()
-@app.on_event("startup")
 def startup():
     validate_configuration()
     if settings.app_env.lower() == 'production':
@@ -58,3 +62,5 @@ def startup():
     seed()
 @app.get("/")
 def dashboard(): return FileResponse(frontend/"index.html")
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon(): return FileResponse(frontend/"favicon.svg", media_type="image/svg+xml")
