@@ -155,8 +155,8 @@ const opts = (pairs, cur, empty) => (empty !== undefined ? `<option value="">${e
 
 async function viewEmpresas() {
   const L = await lookups();
-  const inp = (k, ph, type = 'text') => `<input data-f="${k}" type="${type}" placeholder="${ph}" value="${esc(F[k] ?? '')}">`;
-  const sel = (k, pairs, empty) => `<select data-f="${k}">${opts(pairs, F[k], empty)}</select>`;
+  const inp = (k, ph, type = 'text') => `<input data-f="${k}" type="${type}" placeholder="${ph}" aria-label="${esc(ph)}" value="${esc(F[k] ?? '')}">`;
+  const sel = (k, pairs, empty, label) => `<select data-f="${k}" aria-label="${esc(label || empty)}">${opts(pairs, F[k], empty)}</select>`;
   V().innerHTML = head('Prospecção nacional', 'Encontrar empresas',
     'Todos os setores, portes e UFs da base. Cadastro não comprova demanda: a pontuação mostra o que é fato e o que é hipótese.',
     '<button class="primary" onclick="$(\'dlg-company\').showModal()">＋ Adicionar empresa</button><button onclick="exportCSV()">⇩ Exportar CSV</button>')
@@ -166,7 +166,7 @@ async function viewEmpresas() {
         ${inp('uf', 'UF(s): AM,PA')}
         ${inp('municipio', 'Município')}
         ${sel('profile', L.segs.map(s => [s.key, s.label]), 'Todos os perfis')}
-        ${sel('sort', [['score', 'Ordenar: pontuação'], ['capital', 'Ordenar: capital social'], ['name', 'Ordenar: nome'], ['opened', 'Ordenar: mais antigas'], ['recent', 'Ordenar: sinal mais recente']])}
+        ${sel('sort', [['score', 'Ordenar: pontuação'], ['capital', 'Ordenar: capital social'], ['name', 'Ordenar: nome'], ['opened', 'Ordenar: mais antigas'], ['recent', 'Ordenar: sinal mais recente']], undefined, 'Ordenar resultados')}
       </div>
       <details class="more" ${['cnae', 'debt_type', 'size', 'situacao', 'capital_min', 'capital_max', 'years_min', 'years_max', 'stage', 'band', 'has_signal'].some(k => F[k]) ? 'open' : ''}><summary>Mais filtros</summary><div class="filters">
         ${inp('cnae', 'CNAE (ex.: 4639 ou 8630501)')}
@@ -248,10 +248,10 @@ async function viewSinais() {
       'Editais (PNCP), vagas de cobrança (Greenhouse/Lever) e sinais cadastrados por você. Só é “comprovada” a oportunidade com edital aberto, aderente e confirmado na API oficial.',
       '<button class="capture" id="capture-pncp" onclick="capturePNCP()">⌕ Buscar editais PNCP</button><button class="capture" id="capture-jobs" onclick="captureJobs()">↗ Buscar vagas públicas</button><button class="primary" onclick="$(\'dlg-opp\').showModal()">＋ Nova oportunidade</button>')
       + `<section class="kpis" id="opp-kpis"></section>
-      <div class="filters inline"><input id="search" placeholder="Buscar empresa ou título..." oninput="render()">
-        <select id="kind" onchange="render()"><option value="">Todas as frentes</option><option value="hiring">Vagas de cobrança</option><option value="outsourcing">Terceirização</option><option value="public_procurement">Editais públicos</option></select>
-        <select id="status" onchange="load()"><option value="">Todos os status</option><option value="review">Em análise</option><option value="qualified">Qualificado</option><option value="discarded">Descartado</option></select>
-        <select id="signal" onchange="render()"><option value="">Comprovadas e sinais</option><option value="oportunidade_comprovada">Só comprovadas</option><option value="sinal_a_confirmar">Só sinais a confirmar</option></select></div>
+      <div class="filters inline"><input id="search" placeholder="Buscar empresa ou título..." aria-label="Buscar empresa ou título" oninput="render()">
+        <select id="kind" aria-label="Frente" onchange="render()"><option value="">Todas as frentes</option><option value="hiring">Vagas de cobrança</option><option value="outsourcing">Terceirização</option><option value="public_procurement">Editais públicos</option></select>
+        <select id="status" aria-label="Status" onchange="load()"><option value="">Todos os status</option><option value="review">Em análise</option><option value="qualified">Qualificado</option><option value="discarded">Descartado</option></select>
+        <select id="signal" aria-label="Tipo de sinal" onchange="render()"><option value="">Comprovadas e sinais</option><option value="oportunidade_comprovada">Só comprovadas</option><option value="sinal_a_confirmar">Só sinais a confirmar</option></select></div>
       <div class="tablebox"><table><thead><tr><th>Empresa / oportunidade</th><th>Frente</th><th>Localização</th><th>Origem / prazo</th><th>Score</th><th>Status</th><th></th></tr></thead><tbody id="rows"><tr><td colspan="7">Carregando…</td></tr></tbody></table></div>
       <div class="grid2" style="margin-top:14px">${panel('Pipeline de agentes', 'Rode pelo botão ↗ de cada linha', `<div class="rows">
         <div class="row"><span class="pill">01</span><div class="main"><strong>Pesquisa</strong><small>Confere fonte, URL e evidência registradas</small></div></div>
@@ -535,7 +535,7 @@ function bars(items, labelKey, extra) {
 }
 async function viewRadar() {
   V().innerHTML = head('DataJud · CNJ', 'Radar de mercado', 'Volume e tipo de cobrança ajuizada na Justiça Estadual por UF. Dado agregado: orienta onde e em quais setores prospectar, mas não diz nada sobre uma empresa específica.',
-    '<select id="m-uf" onchange="loadMarket()" style="width:auto"></select><button class="capture" id="m-refresh" onclick="refreshMarket()">⟳ Atualizar pelo DataJud</button>')
+    '<select id="m-uf" aria-label="UF" onchange="loadMarket()" style="width:auto"></select><button class="capture" id="m-refresh" onclick="refreshMarket()">⟳ Atualizar pelo DataJud</button>')
     + '<div id="m-body" class="market"><p class="note">Carregando…</p></div>';
   $('m-uf').innerHTML = UFS.map(u => `<option ${u === 'AM' ? 'selected' : ''}>${u}</option>`).join('');
   loadMarket();
@@ -733,7 +733,7 @@ let SCRIPTS = null;
 async function viewScripts() {
   SCRIPTS = SCRIPTS || await api('/scripts');
   V().innerHTML = head('Etapa 2 · modelos', 'Biblioteca de scripts', esc(SCRIPTS.nota))
-    + `<div class="filters inline"><input id="sc-q" placeholder="Buscar no texto…"><select id="sc-cat"><option value="">Todas as categorias</option>${SCRIPTS.categorias.map(c => `<option>${esc(c)}</option>`).join('')}</select></div><div id="sc-list" class="cards"></div>`;
+    + `<div class="filters inline"><input id="sc-q" placeholder="Buscar no texto…" aria-label="Buscar no texto dos scripts"><select id="sc-cat" aria-label="Categoria"><option value="">Todas as categorias</option>${SCRIPTS.categorias.map(c => `<option>${esc(c)}</option>`).join('')}</select></div><div id="sc-list" class="cards"></div>`;
   const draw = () => {
     const q = $('sc-q').value.toLowerCase(), cat = $('sc-cat').value;
     const items = SCRIPTS.scripts.filter(s => (!cat || s.categoria === cat) && (!q || (s.titulo + ' ' + s.texto + ' ' + s.quando_usar).toLowerCase().includes(q)));
