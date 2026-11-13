@@ -1,6 +1,8 @@
 # Changelog
 
 ## Não lançado
+- Inicialização do servidor usa `lifespan` (o `@app.on_event`, obsoleto no FastAPI, saiu). Ícone do painel na aba do
+  navegador (`/favicon.ico` público), sem o 404 que aparecia no log de produção.
 - Radar: a mensagem "sem dados do DataJud" não mostra mais o endereço técnico da API. Manual atualizado para a 0.5.3
   (Agenda, Assistente e canais de contato do site oficial). Revisão de produção atualizada com a auditoria de 12/11.
 - **Segurança (cabeçalhos)**: `Content-Security-Policy` bloqueia scripts e envio de dados para outros domínios, `<object>`,

@@ -86,7 +86,7 @@ def current_session(request, db):
 
 
 async def access_middleware(request, call_next):
-    public = request.url.path in {'/', '/api/health', '/api/auth/login', '/api/auth/session'} or request.url.path.startswith('/static/')
+    public = request.url.path in {'/', '/favicon.ico', '/api/health', '/api/auth/login', '/api/auth/session'} or request.url.path.startswith('/static/')
     token = actor.set('local-owner')
     try:
         if auth_enabled():
