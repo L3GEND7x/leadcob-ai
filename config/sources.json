@@ -209,6 +209,15 @@
       "official": false,
       "use": "Identificar QUAIS empresas cobram na Justiça (o DataJud público não traz partes)",
       "status": "NÃO conectada; exige contrato, avaliação de custo e de base legal"
+    },
+    {
+      "category": "planejada",
+      "name": "Compras.gov.br — API de Dados Abertos (Contratos)",
+      "url": "https://dadosabertos.compras.gov.br/modulo-contratos/1_consultarContratos",
+      "official": true,
+      "documented": true,
+      "use": "Contratos públicos relacionados a cobrança e recuperação de crédito, filtrados por órgão e período",
+      "status": "NÃO conectada em produção. Conector implementado com testes simulados em 16/11/2026. [NECESSÁRIO CONFERIR] coleta real antes de marcar como integrada e testada."
     }
   ]
 }

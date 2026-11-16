@@ -47,6 +47,7 @@ Rotina sugerida: `docs/manual-uso-diario.md`. Pontuação: `docs/lead-score.md`.
 - `GET /api/export/companies.csv` — só dados de PJ, sem empresas suprimidas
 - `GET /api/dashboard/summary` · `GET|POST /api/opportunities` · `POST /api/agents/run/{id}`
 - `POST /api/capture/pncp` (`mode=busca|varredura`, `only_open`, `include_review`, `max_pages`, `days`) · `POST /api/capture/jobs` · `GET /api/capture/runs`
+- `POST /api/capture/compras-gov` — contratos por códigos de órgão + período; grava apenas sinais históricos a confirmar
 - `GET /api/cnpj/{cnpj}` · `POST /api/companies/{id}/enrich` · `GET /api/prospects` · `GET /api/segments`
 - `GET /api/sources` — catálogo com estado de cada fonte
 - `POST|GET /api/market/datajud?uf=AM` — mapa de inadimplência judicializada · `GET /api/debt-types`
