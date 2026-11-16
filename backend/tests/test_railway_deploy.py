@@ -37,6 +37,7 @@ def test_railway_backup_verifies_dump_before_upload(tmp_path):
     for name, script in {
         'pg_dump': '#!/bin/sh\nfor arg in "$@"; do case "$arg" in --file=*) printf dump > "${arg#--file=}";; esac; done\n',
         'pg_restore': '#!/bin/sh\n[ "${FAIL_RESTORE:-}" != 1 ]\n',
+        'psql': '#!/bin/sh\ncat >/dev/null; echo "companies 3"\n',
         'restic': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
                   'if [ "$1" = cat ]; then exit 0; fi\nexit 0\n',
     }.items():
@@ -66,6 +67,7 @@ def _fake_tools(tmp_path):
         'pg_dump': '#!/bin/sh\nprintf "pg_dump\\n" >> "$CALLS"\n'
                    'for arg in "$@"; do case "$arg" in --file=*) printf dump > "${arg#--file=}";; esac; done\n',
         'pg_restore': '#!/bin/sh\nexit 0\n',
+        'psql': '#!/bin/sh\nprintf "psql-source\\n" >> "$CALLS"\ncat >/dev/null; echo "companies 3"\n',
         'restic': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\nexit 0\n',
     }.items():
         path = fake / name
@@ -118,10 +120,12 @@ def test_railway_backup_reports_each_stage_and_latest_snapshot(tmp_path):
     result = subprocess.run(['sh', str(ROOT / 'infra' / 'railway-backup.sh')], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     calls = log.read_text().splitlines()
-    assert calls[0] == 'pg_dump' and calls[1] == 'cat config'
-    assert calls[2].startswith('backup ') and calls[3] == 'check'
-    assert calls[4] == 'snapshots --tag leadcob --latest 1'
+    assert calls[0] == 'pg_dump' and calls[1] == 'psql-source' and calls[2] == 'cat config'
+    assert calls[3].startswith('backup ') and '.dump ' in calls[3] and '.counts --tag leadcob' in calls[3]
+    assert calls[4] == 'check'
+    assert calls[5] == 'snapshots --tag leadcob --latest 1'
     assert 'Configuração conferida (keyID com 26 caracteres' in result.stdout
+    assert 'Manifesto de contagens gerado' in result.stdout
     assert 'BACKUP CONCLUÍDO' in result.stdout
     assert 'fakefake' not in result.stdout + result.stderr and 'segredoFalso' not in result.stdout + result.stderr
 
@@ -140,7 +144,7 @@ def _drill_env(tmp_path, tables='0'):
     (fake / 'pg_restore').write_text('#!/bin/sh\nprintf "pg_restore %s %s@%s\\n" "$*" "$PGDATABASE" "$PGHOST" >> "$CALLS"\n')
     (fake / 'restic').write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
                                  'if [ "$1" = restore ]; then while [ $# -gt 0 ]; do [ "$1" = --target ] && t=$2; shift; done; '
-                                 'mkdir -p "$t/tmp/x" && printf dump > "$t/tmp/x/leadcob-20261111T000000Z.dump"; fi\n')
+                                 'mkdir -p "$t/tmp/x" && printf dump > "$t/tmp/x/leadcob-20261111T000000Z.dump" && printf "companies 3\\n" > "$t/tmp/x/leadcob-20261111T000000Z.counts"; fi\n')
     for name in ('psql', 'pg_restore', 'restic'):
         (fake / name).chmod(0o755)
     env.update({'RESTORE_PGHOST': 'postgres-ensaio.internal', 'RESTORE_PGUSER': 'ensaio', 'RESTORE_PGPASSWORD': 'x',
@@ -161,6 +165,23 @@ def test_restore_drill_writes_only_to_isolated_database(tmp_path):
     assert '--no-owner --no-acl --exit-on-error --dbname=ensaio' in calls
     assert 'postgres.internal' not in calls          # nenhuma chamada ao banco de produção
     assert 'ENSAIO DE RESTAURAÇÃO CONCLUÍDO' in result.stdout and 'companies 3' in result.stdout
+    assert 'CONCILIAÇÃO DE CONTAGENS: sem diferenças' in result.stdout
+
+
+def test_restore_drill_reports_count_mismatch_without_hiding_it(tmp_path):
+    env, log = _drill_env(tmp_path)
+    fake = tmp_path / 'bin'
+    restic = fake / 'restic'
+    restic.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
+                      'if [ "$1" = restore ]; then while [ $# -gt 0 ]; do [ "$1" = --target ] && t=$2; shift; done; '
+                      'mkdir -p "$t/tmp/x" && printf dump > "$t/tmp/x/leadcob-20261111T000000Z.dump" && '
+                      'printf "companies 2\\n" > "$t/tmp/x/leadcob-20261111T000000Z.counts"; fi\n')
+    restic.chmod(0o755)
+    result = _drill(env)
+    assert result.returncode == 0, result.stderr
+    assert 'ALERTA DE CONCILIAÇÃO' in result.stdout
+    assert 'companies 2' in result.stdout and 'companies 3' in result.stdout
+
 
 
 @pytest.mark.parametrize('change,expected', [

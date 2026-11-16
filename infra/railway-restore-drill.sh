@@ -40,8 +40,14 @@ echo 'Etapa 2/4: baixando o snapshot (o Restic confere o hash de cada bloco).'
 restic restore latest --tag leadcob --target "$temporary/restaurado"
 dump=$(find "$temporary/restaurado" -type f -name 'leadcob-*.dump' | sort | tail -n 1)
 [ -n "$dump" ] || fail 'o snapshot não contém arquivo leadcob-*.dump.'
+manifest=$(find "$temporary/restaurado" -type f -name 'leadcob-*.counts' | sort | tail -n 1)
 pg_restore --list "$dump" >/dev/null
 echo "Dump recuperado: $(basename "$dump"), $(wc -c < "$dump" | tr -d ' ') bytes, sha256 $(sha256sum "$dump" | cut -c1-16)…"
+if [ -n "$manifest" ]; then
+  echo "Manifesto de contagens recuperado: $(basename "$manifest")."
+else
+  echo 'AVISO: snapshot antigo sem manifesto de contagens; a conferência ficará manual.'
+fi
 
 echo 'Etapa 3/4: restaurando no banco de ensaio.'
 pg_restore --no-owner --no-acl --exit-on-error --dbname="$RESTORE_PGDATABASE" "$dump"
@@ -55,6 +61,18 @@ FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
 SQL
 [ -s "$temporary/contagens" ] || fail 'nenhuma tabela foi restaurada.'
 sed 's/^/  /' "$temporary/contagens"
+if [ -n "$manifest" ]; then
+  sort "$manifest" > "$temporary/esperado"
+  sort "$temporary/contagens" > "$temporary/restaurado-contagens"
+  if diff -u "$temporary/esperado" "$temporary/restaurado-contagens" > "$temporary/diferencas"; then
+    echo 'CONCILIAÇÃO DE CONTAGENS: sem diferenças entre o manifesto observado no backup e o banco restaurado.'
+  else
+    echo 'ALERTA DE CONCILIAÇÃO: há diferenças entre o manifesto observado no backup e o banco restaurado.'
+    echo 'O manifesto é capturado logo após o pg_dump e não compartilha a mesma transação interna do dump;'
+    echo 'diferenças exigem investigação, mas não significam automaticamente corrupção do backup.'
+    sed 's/^/  /' "$temporary/diferencas"
+  fi
+fi
 if grep -q '^alembic_version ' "$temporary/contagens"; then
   echo "  versão do esquema (alembic): $(psql -X -tAc 'SELECT version_num FROM alembic_version')"
 fi

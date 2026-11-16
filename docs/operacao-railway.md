@@ -57,7 +57,8 @@ O ensaio usa a mesma imagem do backup no modo `BACKUP_MODE=restore-drill`. Ele:
 - baixa o snapshot mais recente com a etiqueta `leadcob`;
 - confere o dump;
 - restaura com `pg_restore --no-owner --no-acl --exit-on-error` em um banco **vazio e separado**;
-- lista as linhas de cada tabela e a versão do esquema.
+- lista as linhas de cada tabela e a versão do esquema;
+- quando o snapshot contém manifesto de contagens, compara automaticamente o banco restaurado com as contagens observadas logo após o dump.
 
 O script **recusa** quando:
 - falta `RESTORE_CONFIRM_ISOLATED=sim`;
@@ -74,7 +75,7 @@ O ensaio nunca apaga nada.
    - para a trava contra produção, **sem senha**: `PGHOST=${{Postgres.PGHOST}}`, `PGPORT=${{Postgres.PGPORT}}` e `PGDATABASE=${{Postgres.PGDATABASE}}`. O script compara e depois descarta essas três;
    - as mesmas `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` do serviço `leadcob-backup`. Use referência, por exemplo `${{leadcob-backup.RESTIC_PASSWORD}}`, para não copiar valores.
 4. Faça o deploy uma vez. O log deve terminar com `ENSAIO DE RESTAURAÇÃO CONCLUÍDO`.
-5. Compare as contagens do log com o painel. Por exemplo, empresas em "Encontrar empresas" com `companies`, e interações e carteiras com `interactions` e `portfolios`. Considere as mudanças feitas depois do horário do snapshot.
+5. Confira a seção `CONCILIAÇÃO DE CONTAGENS` do log. Em snapshots novos, o backup inclui um arquivo `.counts` com as contagens observadas logo após o `pg_dump`; o ensaio compara esse manifesto com o banco restaurado. `Sem diferenças` reforça a conciliação. `ALERTA DE CONCILIAÇÃO` exige investigação, mas não prova sozinho corrupção, porque o manifesto é observado após o snapshot transacional interno do `pg_dump`. Para snapshots antigos sem manifesto, compare as contagens manualmente com o painel.
 6. Apague o serviço de ensaio e o `Postgres-ensaio`: eles têm cópia dos dados de produção. Registre data, ID do snapshot e contagens em `docs/ensaio-restauracao.md`.
 
 ### Se o backup falhar na autenticação
