@@ -17,7 +17,7 @@ from app.db.models import Company, Interaction, MarketSnapshot, Opportunity, Set
 from app.services.cnpj import clean_cnpj, format_cnpj, is_valid_cnpj
 from app.services.crm import (CHANNELS, CLOSED, CONTACTED, INTERACTION_KINDS, MANAUS, NOT_APPROACHED, OUTREACH_KINDS,
                               STAGE_LABEL, STAGES, as_utc, audit, blocked_reason, change_stage, get_settings,
-                              last_outreach, log_interaction, stage_of, suppression_for)
+                              last_outreach, log_interaction, stage_of, suppression_for, close_follow_up_tasks)
 from app.services.crm import now as crm_now
 from app.services.lead_score import score_company, signal_strength
 from app.services.segments import SEGMENTS, debt_types_for, profile_for
@@ -349,15 +349,23 @@ def add_interaction(company_id: int, payload: InteractionIn, db: Session = Depen
         if lo and not payload.confirm_repeat and datetime.now(timezone.utc) - lo < timedelta(days=gap):
             raise HTTPException(409, f"Último contato em {lo.astimezone(MANAUS):%d/%m/%Y}, há menos de {gap} dias. "
                                      "Confirme para registrar outro contato (evita abordagens repetidas).")
+    current = stage_of(c)
+    first_outreach = payload.kind == "contato" and current in NOT_APPROACHED and not c.interactions
     it = log_interaction(db, c, payload.kind, payload.summary, payload.channel, payload.outcome, payload.happened_at)
     target = KIND_TO_STAGE.get(payload.kind)
-    current = stage_of(c)
     if (target and current not in ("perdido", "nao_contatar") and not suppression_for(db, c)
             and STAGE_ORDER[target] > STAGE_ORDER.get(current, 0)):
         change_stage(db, c, target, f"registro de {INTERACTION_KINDS[payload.kind].lower()}")
-    if payload.follow_up_days:
+    base_at = as_utc(payload.happened_at) or crm_now()
+    if payload.kind == "resposta":
+        close_follow_up_tasks(db, c, "empresa respondeu")
+    elif payload.follow_up_days:
         db.add(Task(company_id=c.id, title=f"Follow-up: {c.name}"[:250], kind="follow_up",
-                    due_at=(as_utc(payload.happened_at) or crm_now()) + timedelta(days=payload.follow_up_days)))
+                    due_at=base_at + timedelta(days=payload.follow_up_days)))
+    elif first_outreach:
+        for day in get_settings(db).get("follow_up_cadence_days") or []:
+            db.add(Task(company_id=c.id, title=f"Follow-up D+{day}: {c.name}"[:250], kind="follow_up",
+                        due_at=base_at + timedelta(days=day)))
     audit(db, "interaction_added", "company", c.id, {"kind": payload.kind, "channel": payload.channel})
     db.commit()
     return {"id": it.id, "stage": stage_of(c), "stage_label": STAGE_LABEL[stage_of(c)]}
@@ -452,6 +460,7 @@ def add_suppression(payload: SuppressionIn, db: Session = Depends(get_db)):
     if c:
         if stage_of(c) != "nao_contatar":
             c.pipeline_stage, c.stage_updated_at = "nao_contatar", crm_now()
+        close_follow_up_tasks(db, c, "empresa incluída na lista de supressão")
         log_interaction(db, c, "sistema", "Incluída na lista de supressão" + (f": {payload.reason}" if payload.reason else ""))
     audit(db, "suppression_added", "suppression", None, {"cnpj": cnpj, "company_id": c.id if c else None, "reason": payload.reason})
     db.commit()
@@ -479,6 +488,7 @@ class SettingsIn(BaseModel):
     remetente_nome: str | None = Field(default=None, max_length=120)
     remetente_empresa: str | None = Field(default=None, max_length=160)
     remetente_contato: str | None = Field(default=None, max_length=200)
+    follow_up_cadence_days: list[int] | None = None
 
 
 @router.get("/settings")
@@ -495,6 +505,11 @@ def write_settings(payload: SettingsIn, db: Session = Depends(get_db)):
         if bad:
             raise HTTPException(400, f"UF inválida: {', '.join(bad)}")
         data["ufs_atuacao"] = sorted(set(ufs))
+    if "follow_up_cadence_days" in data:
+        days = data["follow_up_cadence_days"] or []
+        if len(days) > 10 or any((not isinstance(d, int)) or isinstance(d, bool) or d < 1 or d > 90 for d in days):
+            raise HTTPException(400, "Cadência inválida: use até 10 dias inteiros entre 1 e 90.")
+        data["follow_up_cadence_days"] = sorted(set(days))
     row = db.get(Setting, "geral")
     value = {**get_settings(db), **data}
     if row:
