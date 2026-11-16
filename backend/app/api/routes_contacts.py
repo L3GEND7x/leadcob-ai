@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from app.db.database import get_db
-from app.db.models import BusinessContact, Company, Suppression, AuditLog
+from app.db.models import BusinessContact, Company, Suppression, AuditLog, DomainCandidate
+from app.services.contactability import build_map as build_contact_map, department_from_email
 
 router = APIRouter(prefix="/api/contacts", tags=["contatos empresariais"])
 KINDS = {"email", "website", "phone", "whatsapp", "linkedin", "instagram", "facebook"}
@@ -55,12 +56,17 @@ def serialize(x, company=None):
             "source_name": x.source_name, "source_url": x.source_url, "status": x.status,
             "created_at": x.created_at.isoformat(), "checked_at": x.checked_at.isoformat() if x.checked_at else None}
 
-def insert(db, company, kind, value, source, url=None):
+def insert(db, company, kind, value, source, url=None, department=None, status="a_verificar"):
     if not value or is_blocked(db, company): return False
     v = clean(kind, value)
     existing = db.query(BusinessContact).filter_by(company_id=company.id, kind=kind, value=v).first()
-    if existing: return False
-    db.add(BusinessContact(company_id=company.id, kind=kind, value=v, source_name=source, source_url=url))
+    if existing:
+        if existing.department == "geral" and department and department != "geral": existing.department = department
+        if existing.status != "verificado" and status == "verificado": existing.status = "verificado"
+        return False
+    dep = department or (department_from_email(v) if kind == "email" else "geral")
+    db.add(BusinessContact(company_id=company.id, kind=kind, value=v, source_name=source, source_url=url,
+                           department=dep, status=status))
     return True
 
 @router.get("")
@@ -145,7 +151,7 @@ def discover_from_site(company_id: int, db: Session = Depends(get_db)):
     added = 0
     for item in result["emails"]:
         try:
-            if insert(db, c, "email", item["email"], "Site institucional (leitura automática)", item["source_url"]): added += 1
+            if insert(db, c, "email", item["email"], "Site institucional (leitura automática)", item["source_url"], department_from_email(item["email"])): added += 1
         except HTTPException:
             pass
     for item in result.get("channels", []):
@@ -164,6 +170,115 @@ def discover_from_site(company_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {**result, "added": added,
             "note": "Canais publicados no site institucional cadastrado, com origem registrada. Confira antes de usar (status: a verificar)."}
+
+
+@router.get("/map/{company_id}")
+def contact_map(company_id: int, db: Session = Depends(get_db)):
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(404, "Empresa não encontrada")
+    contacts = db.query(BusinessContact).filter_by(company_id=c.id).all()
+    opportunities = getattr(c, "opportunities", [])
+    return build_contact_map(c, contacts, opportunities)
+
+
+@router.post("/enrich/{company_id}")
+def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
+    """Enriquece apenas canais institucionais e devolve o mapa de contato atualizado."""
+    from app.core.config import settings
+    from app.collectors import site_contacts
+    from app.services.domain_search import search
+
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(404, "Empresa não encontrada")
+    if is_blocked(db, c):
+        raise HTTPException(403, "Empresa em lista de supressão")
+
+    added = 0
+    candidates = []
+
+    if c.website:
+        try:
+            if insert(db, c, "website", c.website, "Ficha empresarial existente"):
+                added += 1
+        except HTTPException:
+            pass
+    if c.institutional_email:
+        try:
+            if insert(db, c, "email", c.institutional_email, "Ficha empresarial existente",
+                      department=department_from_email(c.institutional_email)):
+                added += 1
+        except HTTPException:
+            pass
+
+    if not c.website and settings.brave_search_api_key:
+        try:
+            found = search(c, settings.brave_search_api_key)
+        except Exception as exc:
+            found = []
+        for result in found:
+            current = db.query(DomainCandidate).filter_by(company_id=c.id, website=result["website"]).first()
+            if not current:
+                current = DomainCandidate(company_id=c.id, **result)
+                db.add(current); db.flush()
+            else:
+                current.source_url = result["source_url"]
+                current.evidence = result["evidence"]
+                current.status = result["status"]
+            candidates.append({"id": current.id, "website": current.website,
+                               "source_url": current.source_url, "evidence": current.evidence,
+                               "status": current.status})
+
+        exact = [x for x in candidates if x["status"] == "cnpj_no_site"]
+        if len(exact) == 1:
+            c.website = exact[0]["website"]
+            candidate = db.get(DomainCandidate, exact[0]["id"])
+            candidate.status = "verificado"
+            candidate.checked_at = datetime.now(timezone.utc)
+            if insert(db, c, "website", c.website, "Site oficial confirmado por CNPJ",
+                      exact[0]["source_url"], status="verificado"):
+                added += 1
+
+    discovered = {"pages_read": [], "emails": [], "channels": [], "notes": []}
+    if c.website:
+        try:
+            discovered = site_contacts.discover(c.website)
+            for item in discovered["emails"]:
+                if insert(db, c, "email", item["email"], "Site institucional (leitura automática)",
+                          item["source_url"], department_from_email(item["email"])):
+                    added += 1
+            for item in discovered.get("channels", []):
+                if insert(db, c, item["kind"], item["value"], "Site institucional (leitura automática)",
+                          item["source_url"]):
+                    added += 1
+        except ValueError as exc:
+            discovered["notes"].append(str(exc))
+
+    if not c.institutional_email:
+        email = db.query(BusinessContact).filter_by(company_id=c.id, kind="email").filter(
+            BusinessContact.status != "invalido").order_by(BusinessContact.status.desc(), BusinessContact.id).first()
+        if email:
+            c.institutional_email = email.value
+
+    db.add(AuditLog(event="contact_map_enriched", entity_type="company", entity_id=c.id,
+                    details={"added": added, "domain_candidates": len(candidates),
+                             "pages_read": len(discovered.get("pages_read", []))}))
+    db.commit()
+
+    contacts = db.query(BusinessContact).filter_by(company_id=c.id).all()
+    result = build_contact_map(c, contacts, getattr(c, "opportunities", []))
+    if not c.website and not settings.brave_search_api_key:
+        query = f'"{c.name}" "{c.cnpj or ""}" site oficial contato'
+        result["site_search_url"] = "https://duckduckgo.com/?" + urlencode({"q": query})
+        result["automatic_site_search"] = False
+    else:
+        result["automatic_site_search"] = bool(settings.brave_search_api_key)
+    result["domain_candidates"] = candidates
+    result["added"] = added
+    result["pages_read"] = discovered.get("pages_read", [])
+    result["notes"] = discovered.get("notes", [])
+    return result
 
 
 @router.post('/domain-search/{company_id}')
