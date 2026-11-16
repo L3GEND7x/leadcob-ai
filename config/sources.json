@@ -209,6 +209,15 @@
       "official": false,
       "use": "Identificar QUAIS empresas cobram na Justiça (o DataJud público não traz partes)",
       "status": "NÃO conectada; exige contrato, avaliação de custo e de base legal"
+    },
+    {
+      "category": "planejada",
+      "name": "ANS — Operadoras de planos de saúde ativas",
+      "url": "https://dadosabertos.ans.gov.br/FTP/PDA/operadoras_de_plano_de_saude_ativas/Relatorio_cadop.csv",
+      "official": true,
+      "documented": true,
+      "use": "Perfil: identificar operadoras ativas por CNPJ e modalidade, sem importar contatos ou representantes",
+      "status": "NÃO conectada em produção. Coletor implementado com descarte explícito de telefone, e-mail e representante; [NECESSÁRIO CONFERIR] coleta real no ambiente LeadCob antes de marcar como integrada e testada."
     }
   ]
 }
