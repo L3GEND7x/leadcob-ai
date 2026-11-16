@@ -20,12 +20,12 @@ import httpx
 
 UA = "LeadCobAI/0.5 (contato institucional; respeita robots.txt)"
 MAX_BYTES = 400_000
-CONTACT_HINT = re.compile(r"contato|fale|atendimento|sac|sobre|institucional|empresa|ouvidoria|contact|about", re.I)
+CONTACT_HINT = re.compile(r"contato|fale|atendimento|sac|sobre|institucional|empresa|ouvidoria|secretari|licitac|compras|financ|transparencia|contact|about", re.I)
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 HREF = re.compile(r"""href\s*=\s*["']([^"'#]+)["']""", re.I)
 ROLE = {"contato", "contatos", "comercial", "financeiro", "cobranca", "faleconosco", "atendimento", "sac", "adm",
         "administrativo", "administracao", "vendas", "info", "informacoes", "ouvidoria", "relacionamento", "diretoria",
-        "secretaria", "juridico", "credito", "contasareceber", "receber", "faturamento", "contact", "sales", "finance"}
+        "secretaria", "licitacao", "licitacoes", "compras", "financas", "tesouraria", "controladoria", "juridico", "credito", "contasareceber", "receber", "faturamento", "contact", "sales", "finance"}
 
 
 def _root(host: str) -> str:
