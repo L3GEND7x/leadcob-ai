@@ -113,10 +113,13 @@ async function viewHoje() {
   const d = await api('/daily-intelligence?limit=5');
   V().innerHTML = head('Inteligência do dia · ' + esc(today()), 'Cinco empresas para trabalhar hoje',
     'Escolhidas por regras explicáveis. Cada item separa o que é fato (fonte registrada), indício e hipótese comercial.',
-    '<button onclick="route()">↻ Recalcular</button>')
+    '<button id="today-recalculate">↻ Recalcular</button>')
     + (d.itens.length ? `<div class="cards">${d.itens.map(card).join('')}</div>`
       : panel('Nenhuma empresa elegível agora', '', '<p class="empty">Todas as empresas da base estão encerradas, na lista de supressão ou foram contatadas há pouco. Busque novas empresas em “Encontrar empresas” ou capte sinais.</p>'))
     + `<p class="note">${esc(d.metodo)} Gerado em ${when(d.gerado_em)}.</p>`;
+  $('today-recalculate').addEventListener('click', route);
+  document.querySelectorAll('[data-copy-today]').forEach(button =>
+    button.addEventListener('click', () => copyText(button)));
 }
 function card(x, i) {
   const ev = x.evidencia;
@@ -129,7 +132,7 @@ function card(x, i) {
     <dl><dt>Por que hoje</dt><dd>${esc(x.motivo)}</dd>
       <dt>Evidência</dt><dd>${evid}</dd>
       <dt>Serviço sugerido</dt><dd>${esc(x.servico)} <small class="muted">(${esc(x.servico_natureza)})</small></dd>
-      <dt>Como iniciar</dt><dd><div class="quote">${esc(x.abertura)}</div><button class="small" style="margin-top:6px" data-t="${esc(x.abertura)}" onclick="copyText(this)">⧉ Copiar texto</button></dd>
+      <dt>Como iniciar</dt><dd><div class="quote">${esc(x.abertura)}</div><button class="small" style="margin-top:6px" data-t="${esc(x.abertura)}" data-copy-today>⧉ Copiar texto</button></dd>
       <dt>Canal</dt><dd>${esc(x.canal)}</dd>
       <dt>Próxima ação</dt><dd>${esc(x.proxima_acao)}</dd></dl>
     <div class="facts">${list('Fatos', 'fato', x.fatos)}${list('Indícios', 'indicio', x.indicios)}${list('Hipóteses', 'hipotese', x.hipoteses)}</div>
