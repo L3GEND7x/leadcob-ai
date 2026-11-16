@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
-from app.db.models import AuditLog, Company, Interaction, Setting, Suppression
+from app.db.models import AuditLog, Company, Interaction, Setting, Suppression, Task
 
 MANAUS = timezone(timedelta(hours=-4))
 
@@ -39,6 +39,7 @@ CHANNELS = {"email", "telefone", "whatsapp", "presencial", "linkedin", "outro"}
 DEFAULT_SETTINGS = {
     "ufs_atuacao": [],            # vazio = Brasil inteiro
     "dias_entre_contatos": 7,     # trava contra abordagens repetidas
+    "follow_up_cadence_days": [3, 7, 14],  # agenda automática após o primeiro contato
     "servico": "Cobrança e recuperação de crédito",
     "remetente_nome": "",         # assinatura das abordagens (vazio = [PREENCHER])
     "remetente_empresa": "",
@@ -103,6 +104,19 @@ def last_outreach(c: Company) -> datetime | None:
     return max(times) if times else None
 
 
+
+def close_follow_up_tasks(db, c: Company, reason: str) -> int:
+    """Close only pending automatic/manual follow-up tasks for this company."""
+    rows = db.query(Task).filter(Task.company_id == c.id, Task.kind == "follow_up", Task.done.is_(False)).all()
+    for task in rows:
+        task.done = True
+        task.done_at = now()
+    if rows:
+        audit(db, "followups_closed", "company", c.id, {"count": len(rows), "reason": reason})
+    return len(rows)
+
+
+
 def audit(db, event: str, entity_type: str, entity_id: int | None, details: dict):
     db.add(AuditLog(event=event, entity_type=entity_type, entity_id=entity_id, details=details, created_at=now()))
 
@@ -122,6 +136,8 @@ def change_stage(db, c: Company, new: str, reason: str | None = None):
     c.pipeline_stage, c.stage_updated_at = new, now()
     log_interaction(db, c, "etapa", f"{STAGE_LABEL.get(old, old)} → {STAGE_LABEL.get(new, new)}" + (f" ({reason})" if reason else ""))
     audit(db, "stage_changed", "company", c.id, {"from": old, "to": new, "reason": reason})
-    if new == "nao_contatar" and not suppression_for(db, c):
-        db.add(Suppression(cnpj=c.cnpj, company_id=c.id, company_name=c.name, created_at=now(),
-                           reason=reason or "Marcada como 'Não contatar' no CRM"))
+    if new == "nao_contatar":
+        close_follow_up_tasks(db, c, "empresa marcada como não contatar")
+        if not suppression_for(db, c):
+            db.add(Suppression(cnpj=c.cnpj, company_id=c.id, company_name=c.name, created_at=now(),
+                               reason=reason or "Marcada como 'Não contatar' no CRM"))
