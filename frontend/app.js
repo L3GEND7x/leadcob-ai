@@ -51,7 +51,7 @@ function coRow(s, extra = '') {
 const rows = (items, emptyMsg, extra) => items.length ? `<div class="rows">${items.map(s => coRow(s, extra ? esc(extra(s)) : '')).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`;
 
 // ------------------------------------------------------------------ rotas
-const ROUTES = { relatorios: viewRelatorios, assistente: viewAssistente, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
+const ROUTES = { relatorios: viewRelatorios, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
   empresa: viewEmpresa, contatos: viewContatos, cobranca: viewCobranca, negociacao: viewNegociacao, scripts: viewScripts, radar: viewRadar, fontes: viewFontes, config: viewConfig };
 let CUR = { v: 'inicio', arg: null };
 async function route() {
