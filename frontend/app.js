@@ -535,9 +535,11 @@ function bars(items, labelKey, extra) {
 }
 async function viewRadar() {
   V().innerHTML = head('DataJud · CNJ', 'Radar de mercado', 'Volume e tipo de cobrança ajuizada na Justiça Estadual por UF. Dado agregado: orienta onde e em quais setores prospectar, mas não diz nada sobre uma empresa específica.',
-    '<select id="m-uf" aria-label="UF" onchange="loadMarket()" style="width:auto"></select><button class="capture" id="m-refresh" onclick="refreshMarket()">⟳ Atualizar pelo DataJud</button>')
+    '<select id="m-uf" aria-label="UF" style="width:auto"></select><button class="capture" id="m-refresh">⟳ Atualizar pelo DataJud</button>')
     + '<div id="m-body" class="market"><p class="note">Carregando…</p></div>';
   $('m-uf').innerHTML = UFS.map(u => `<option ${u === 'AM' ? 'selected' : ''}>${u}</option>`).join('');
+  $('m-uf').addEventListener('change', loadMarket);
+  $('m-refresh').addEventListener('click', refreshMarket);
   loadMarket();
 }
 function renderMarket(d) {
