@@ -246,12 +246,12 @@ async function viewSinais() {
   if (!$('rows')) {
     V().innerHTML = head('Prospecção · fontes públicas', 'Sinais e oportunidades',
       'Editais (PNCP), vagas de cobrança (Greenhouse/Lever) e sinais cadastrados por você. Só é “comprovada” a oportunidade com edital aberto, aderente e confirmado na API oficial.',
-      '<button class="capture" id="capture-pncp" onclick="capturePNCP()">⌕ Buscar editais PNCP</button><button class="capture" id="capture-jobs" onclick="captureJobs()">↗ Buscar vagas públicas</button><button class="primary" onclick="$(\'dlg-opp\').showModal()">＋ Nova oportunidade</button>')
+      '<button class="capture" id="capture-pncp">⌕ Buscar editais PNCP</button><button class="capture" id="capture-jobs">↗ Buscar vagas públicas</button><button class="primary" id="opportunity-add">＋ Nova oportunidade</button>')
       + `<section class="kpis" id="opp-kpis"></section>
-      <div class="filters inline"><input id="search" placeholder="Buscar empresa ou título..." aria-label="Buscar empresa ou título" oninput="render()">
-        <select id="kind" aria-label="Frente" onchange="render()"><option value="">Todas as frentes</option><option value="hiring">Vagas de cobrança</option><option value="outsourcing">Terceirização</option><option value="public_procurement">Editais públicos</option></select>
-        <select id="status" aria-label="Status" onchange="load()"><option value="">Todos os status</option><option value="review">Em análise</option><option value="qualified">Qualificado</option><option value="discarded">Descartado</option></select>
-        <select id="signal" aria-label="Tipo de sinal" onchange="render()"><option value="">Comprovadas e sinais</option><option value="oportunidade_comprovada">Só comprovadas</option><option value="sinal_a_confirmar">Só sinais a confirmar</option></select></div>
+      <div class="filters inline"><input id="search" placeholder="Buscar empresa ou título..." aria-label="Buscar empresa ou título">
+        <select id="kind" aria-label="Frente"><option value="">Todas as frentes</option><option value="hiring">Vagas de cobrança</option><option value="outsourcing">Terceirização</option><option value="public_procurement">Editais públicos</option></select>
+        <select id="status" aria-label="Status"><option value="">Todos os status</option><option value="review">Em análise</option><option value="qualified">Qualificado</option><option value="discarded">Descartado</option></select>
+        <select id="signal" aria-label="Tipo de sinal"><option value="">Comprovadas e sinais</option><option value="oportunidade_comprovada">Só comprovadas</option><option value="sinal_a_confirmar">Só sinais a confirmar</option></select></div>
       <div class="tablebox"><table><thead><tr><th>Empresa / oportunidade</th><th>Frente</th><th>Localização</th><th>Origem / prazo</th><th>Score</th><th>Status</th><th></th></tr></thead><tbody id="rows"><tr><td colspan="7">Carregando…</td></tr></tbody></table></div>
       <div class="grid2" style="margin-top:14px">${panel('Pipeline de agentes', 'Rode pelo botão ↗ de cada linha', `<div class="rows">
         <div class="row"><span class="pill">01</span><div class="main"><strong>Pesquisa</strong><small>Confere fonte, URL e evidência registradas</small></div></div>
@@ -259,6 +259,13 @@ async function viewSinais() {
         <div class="row"><span class="pill">03</span><div class="main"><strong>Auditoria</strong><small>Lista o que falta confirmar (edital, prazo, interesse em terceirizar)</small></div></div>
         <div class="row"><span class="pill">04</span><div class="main"><strong>Supervisor</strong><small>Orquestra e exige revisão humana</small></div></div></div><div id="lastrun" class="note"></div>`)}
         ${panel('Como ler', '', `<p class="note">Edital público não é oportunidade privada: a contratação segue a lei de licitações e o edital. Vaga de cobrança mostra que a empresa estrutura a área, mas não comprova interesse em terceirizar. Nenhum sinal desta tela prova que a empresa tem inadimplência.</p>`)}</div>`;
+    $('capture-pncp').addEventListener('click', capturePNCP);
+    $('capture-jobs').addEventListener('click', captureJobs);
+    $('opportunity-add').addEventListener('click', () => $('dlg-opp').showModal());
+    $('search').addEventListener('input', render);
+    $('kind').addEventListener('change', render);
+    $('status').addEventListener('change', viewSinais);
+    $('signal').addEventListener('change', render);
   }
   const status = $('status').value;
   const [s, list] = await Promise.all([api('/dashboard/summary'), api('/opportunities' + (status ? `?status=${status}` : ''))]);
@@ -288,8 +295,10 @@ function render() {
       <td>${src}${extra ? `<span class="deadline">${extra}</span>` : ''}${dl}</td>
       <td><span class="score" title="${esc(x.score_reason)}">${x.score}/100</span></td>
       <td><span class="status ${esc(x.status)}">${STATUS[x.status] || 'EM ANÁLISE'}</span></td>
-      <td><button class="action" title="Executar agentes" onclick="runAgents(${x.id})">↗</button></td></tr>`;
+      <td><button class="action" title="Executar agentes" data-run-agent="${x.id}">↗</button></td></tr>`;
   }).join('') : '<tr><td colspan="7">Nenhuma oportunidade encontrada.</td></tr>';
+  document.querySelectorAll('[data-run-agent]').forEach(button =>
+    button.addEventListener('click', () => runAgents(Number(button.dataset.runAgent))));
 }
 async function runAgents(id) {
   try {
