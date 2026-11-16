@@ -73,6 +73,22 @@ def test_score_components_are_explained_and_sum_to_total():
     assert score_company(fake(company_size="DEMAIS", capital_social=5e6), {"ufs_atuacao": ["AM"]})["score"] < r["score"] - 30
 
 
+
+def test_score_exposes_profile_and_intention_axes_and_decays_old_signal():
+    fresh = SimpleNamespace(kind="hiring", opportunity_class="operacao_interna", commercial_signal=None, evidence="x",
+                            status="review", collected_at=datetime.now(timezone.utc))
+    old = SimpleNamespace(kind="hiring", opportunity_class="operacao_interna", commercial_signal=None, evidence="x",
+                          status="review", collected_at=datetime.now(timezone.utc) - timedelta(days=200))
+    fresh_score = score_company(fake(opportunities=[fresh]), {"ufs_atuacao": ["AM"]})
+    old_score = score_company(fake(opportunities=[old]), {"ufs_atuacao": ["AM"]})
+    assert set(fresh_score["axes"]) == {"perfil", "intencao"}
+    assert fresh_score["axes"]["intencao"] > old_score["axes"]["intencao"]
+    assert fresh_score["score"] > old_score["score"]
+    assert all(p["axis"] in ("perfil", "intencao") for p in fresh_score["components"])
+    assert "peso temporal" in next(p["reason"] for p in old_score["components"] if p["key"] == "evidencia")
+
+
+
 def test_competitor_inactive_and_suppressed_score_zero():
     assert score_company(fake(cnae_main="8291100"), {})["band"] == "concorrente"
     inactive = score_company(fake(registration_status="BAIXADA"), {})
