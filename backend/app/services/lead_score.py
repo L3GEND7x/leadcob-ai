@@ -64,8 +64,8 @@ def _days(dt) -> int | None:
 def score_company(c, settings: dict, suppressed: bool = False) -> dict:
     parts: list[dict] = []
 
-    def add(key, label, points, reason, nature):
-        parts.append({"key": key, "label": label, "points": points, "reason": reason, "nature": nature})
+    def add(key, label, points, reason, nature, axis):
+        parts.append({"key": key, "label": label, "points": points, "reason": reason, "nature": nature, "axis": axis})
 
     signals = [o for o in c.opportunities if o.status != "discarded"]
     competitor = (c.cnae_main or "").startswith("8291") or any(o.opportunity_class == "concorrente" for o in signals)
@@ -74,36 +74,44 @@ def score_company(c, settings: dict, suppressed: bool = False) -> dict:
     # 1. Aderência ao serviço (hipótese comercial pelo setor)
     prof = c.target_profile or (profile_for(c.cnae_main) if c.cnae_main else None)
     if competitor:
-        add("aderencia", "Aderência ao serviço", 0, "empresa do ramo de cobrança: concorrente, não cliente", "fato")
+        add("aderencia", "Aderência ao serviço", 0, "empresa do ramo de cobrança: concorrente, não cliente", "fato", "perfil")
     elif prof in HIGH_FIT:
-        add("aderencia", "Aderência ao serviço", 22, f"setor costuma ter carteira a receber ({SEGMENTS[prof]['label']})", "hipótese")
+        add("aderencia", "Aderência ao serviço", 22, f"setor costuma ter carteira a receber ({SEGMENTS[prof]['label']})", "hipótese", "perfil")
     elif prof == "representacao_comercial":
-        add("aderencia", "Aderência ao serviço", 6, "representação comercial: carteira própria pequena", "hipótese")
+        add("aderencia", "Aderência ao serviço", 6, "representação comercial: carteira própria pequena", "hipótese", "perfil")
     elif prof in MID_FIT:
-        add("aderencia", "Aderência ao serviço", 12, f"setor com recebíveis menos típicos ({SEGMENTS.get(prof, {}).get('label', prof)})", "hipótese")
+        add("aderencia", "Aderência ao serviço", 12, f"setor com recebíveis menos típicos ({SEGMENTS.get(prof, {}).get('label', prof)})", "hipótese", "perfil")
     elif c.segment == "Órgão público":
-        add("aderencia", "Aderência ao serviço", 12, "órgão público: só contrata por licitação ou credenciamento, nos termos do edital", "hipótese")
+        add("aderencia", "Aderência ao serviço", 12, "órgão público: só contrata por licitação ou credenciamento, nos termos do edital", "hipótese", "perfil")
     else:
         seg = f" (segmento informado: {c.segment})" if c.segment else ""
-        add("aderencia", "Aderência ao serviço", 10, f"setor sem CNAE cadastrado{seg}", "hipótese")
+        add("aderencia", "Aderência ao serviço", 10, f"setor sem CNAE cadastrado{seg}", "hipótese", "perfil")
 
     # 2. Evidência comercial (fatos captados)
     if signals:
-        strengths = sorted((signal_strength(o) for o in signals), reverse=True)
-        pts = min(30, strengths[0][0] + 3 * (len(strengths) - 1))
-        extra = f" + {len(strengths) - 1} outro(s) sinal(is)" if len(strengths) > 1 else ""
-        add("evidencia", "Evidência comercial", pts, strengths[0][1] + extra, "fato")
+        ranked = []
+        for o in signals:
+            base_pts, why = signal_strength(o)
+            age = _days(o.collected_at)
+            factor = 1.0 if age is None or age <= 30 else 0.75 if age <= 90 else 0.50 if age <= 180 else 0.25
+            ranked.append((round(base_pts * factor), base_pts, factor, why, age))
+        ranked.sort(reverse=True)
+        best = ranked[0]
+        pts = min(30, best[0] + 3 * (len(ranked) - 1))
+        extra = f" + {len(ranked) - 1} outro(s) sinal(is)" if len(ranked) > 1 else ""
+        decay = "" if best[2] == 1 else f"; peso temporal {int(best[2] * 100)}% ({best[4]} dia(s))"
+        add("evidencia", "Evidência comercial", pts, best[3] + decay + extra, "fato", "intencao")
     else:
-        add("evidencia", "Evidência comercial", 0, "nenhum sinal captado: só cadastro", "fato")
+        add("evidencia", "Evidência comercial", 0, "nenhum sinal captado: só cadastro", "fato", "intencao")
 
     # 3. Atualidade do sinal mais recente
     ages = [d for d in (_days(o.collected_at) for o in signals) if d is not None]
     if ages:
         d = min(ages)
         pts = 10 if d <= 30 else 6 if d <= 90 else 3 if d <= 180 else 0
-        add("atualidade", "Atualidade", pts, f"sinal mais recente captado há {d} dia(s)", "fato")
+        add("atualidade", "Atualidade", pts, f"sinal mais recente captado há {d} dia(s)", "fato", "intencao")
     else:
-        add("atualidade", "Atualidade", 0, "sem sinal datado", "fato")
+        add("atualidade", "Atualidade", 0, "sem sinal datado", "fato", "intencao")
 
     # 4. Potencial de volume (indício; só com dado cadastral)
     pts, why = 0, []
@@ -117,24 +125,24 @@ def score_company(c, settings: dict, suppressed: bool = False) -> dict:
         pts += 4; why.append("capital social ≥ R$ 1 mi")
     elif c.capital_social and c.capital_social >= 100_000:
         pts += 2; why.append("capital social ≥ R$ 100 mil")
-    add("potencial", "Potencial de volume", min(pts, 10), ", ".join(why) or "sem dado de porte ou capital", "indício")
+    add("potencial", "Potencial de volume", min(pts, 10), ", ".join(why) or "sem dado de porte ou capital", "indício", "perfil")
 
     # 5. Compatibilidade geográfica (fato x configuração)
     ufs = [u.upper() for u in settings.get("ufs_atuacao") or []]
     if not ufs:
-        add("geografia", "Compatibilidade geográfica", 5, "nenhuma UF de atuação configurada (Brasil inteiro)", "fato")
+        add("geografia", "Compatibilidade geográfica", 5, "nenhuma UF de atuação configurada (Brasil inteiro)", "fato", "perfil")
     elif c.state and c.state.upper() in ufs:
-        add("geografia", "Compatibilidade geográfica", 10, f"{c.state} está nas UFs de atuação", "fato")
+        add("geografia", "Compatibilidade geográfica", 10, f"{c.state} está nas UFs de atuação", "fato", "perfil")
     elif not c.state:
-        add("geografia", "Compatibilidade geográfica", 3, "UF não informada", "fato")
+        add("geografia", "Compatibilidade geográfica", 3, "UF não informada", "fato", "perfil")
     else:
-        add("geografia", "Compatibilidade geográfica", 0, f"{c.state} fora das UFs de atuação", "fato")
+        add("geografia", "Compatibilidade geográfica", 0, f"{c.state} fora das UFs de atuação", "fato", "perfil")
 
     # 6. Canal institucional de contato
     if c.website or c.institutional_email:
-        add("canal", "Canal institucional", 5, "site ou e-mail institucional cadastrado", "fato")
+        add("canal", "Canal institucional", 5, "site ou e-mail institucional cadastrado", "fato", "perfil")
     else:
-        add("canal", "Canal institucional", 0, "sem canal institucional cadastrado", "fato")
+        add("canal", "Canal institucional", 0, "sem canal institucional cadastrado", "fato", "perfil")
 
     # 7. Possibilidade de contratação
     pts, why = 0, []
@@ -144,18 +152,18 @@ def score_company(c, settings: dict, suppressed: bool = False) -> dict:
         pts += 5; why.append("órgão público com contratação publicada")
     if any(o.opportunity_class in ("edital_aberto", "operacao_interna", "estrategia_dados") for o in signals):
         pts += 5; why.append("demanda aberta agora (edital ou vaga)")
-    add("contratacao", "Possibilidade de contratação", pts, ", ".join(why) or "sem indicação de demanda aberta", "fato")
+    add("contratacao", "Possibilidade de contratação", pts, ", ".join(why) or "sem indicação de demanda aberta", "fato", "perfil")
 
     # 8. Histórico de interações do CRM
     kinds = {i.kind for i in c.interactions}
     if stage == "perdido":
-        add("historico", "Histórico comercial", -20, "oportunidade marcada como perdida", "fato")
+        add("historico", "Histórico comercial", -20, "oportunidade marcada como perdida", "fato", "intencao")
     elif stage == "acompanhar_futuramente":
-        add("historico", "Histórico comercial", -5, "marcada para acompanhar no futuro", "fato")
+        add("historico", "Histórico comercial", -5, "marcada para acompanhar no futuro", "fato", "intencao")
     elif kinds & {"resposta", "reuniao", "proposta"}:
-        add("historico", "Histórico comercial", 10, "já houve resposta, reunião ou proposta", "fato")
+        add("historico", "Histórico comercial", 10, "já houve resposta, reunião ou proposta", "fato", "intencao")
     else:
-        add("historico", "Histórico comercial", 0, "sem interação registrada", "fato")
+        add("historico", "Histórico comercial", 0, "sem interação registrada", "fato", "intencao")
 
     total = max(0, min(100, sum(p["points"] for p in parts)))
     inactive = (c.registration_status or "").upper() in ("BAIXADA", "INAPTA", "NULA", "SUSPENSA")
@@ -168,5 +176,12 @@ def score_company(c, settings: dict, suppressed: bool = False) -> dict:
         key, label = "nao_contatar", "Não contatar"
     elif inactive:
         key, label = "inativa", f"Cadastro {c.registration_status.lower()}"
-    return {"score": total, "band": key, "band_label": label, "components": parts, "closed": stage in CLOSED,
+    axes = {
+        "perfil": max(0, min(60, sum(p["points"] for p in parts if p["axis"] == "perfil"))),
+        "intencao": max(-20, min(50, sum(p["points"] for p in parts if p["axis"] == "intencao"))),
+    }
+    if total == 0 and (competitor or suppressed or stage == "nao_contatar" or inactive):
+        axes = {"perfil": 0, "intencao": 0}
+    return {"score": total, "band": key, "band_label": label, "components": parts, "axes": axes,
+            "closed": stage in CLOSED,
             "disclaimer": "Ordem de prioridade comercial, não probabilidade de contratação ou de inadimplência."}
