@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- **Segurança do login**: tentativas passam a ser limitadas por endereço de origem (`X-Real-IP` da borda Railway), com 5 falhas por IP em 15 minutos e um teto global alto contra tentativas distribuídas; valores ausentes ou inválidos caem em um único bucket seguro, sem criar chaves arbitrárias.
 - **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
   (cor `--faint` 3,4–3,8:1) e 8 seletores sem nome acessível. Cor ajustada para 4,7–5,5:1 nos fundos usados e
   `aria-label` em seletores e campos sem rótulo. Depois da correção: nenhuma violação A/AA nas 16 telas e no login.
