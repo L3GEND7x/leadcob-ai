@@ -188,11 +188,12 @@
     },
     {
       "category": "planejada",
-      "name": "Diários oficiais municipais",
-      "url": null,
-      "official": true,
-      "use": "Licitações de municípios que não publicam no PNCP",
-      "status": "NÃO conectada; fonte e termos a verificar"
+      "name": "Querido Diário — diários oficiais municipais",
+      "url": "https://api.queridodiario.ok.org.br/gazettes",
+      "official": false,
+      "documented": true,
+      "use": "Sinais de licitações e contratações municipais por código IBGE e palavra-chave",
+      "status": "Conector implementado com testes simulados em 16/11/2026; formato documentado conferido. [NECESSÁRIO CONFERIR] coleta real no ambiente LeadCob antes de marcar como integrada e testada."
     },
     {
       "category": "planejada",
