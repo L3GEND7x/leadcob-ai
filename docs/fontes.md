@@ -60,5 +60,5 @@ Verificado em 2026-11-09. Fonte única: `config/sources.json` (também em `GET /
 - Links recebidos com parâmetros de rastreamento (ex.: `utm_source`) são gravados sem eles.
 
 
-### ANS — Operadoras ativas
+### ANS — Operadoras de planos de saúde ativas
 **Planejada.** Fonte de perfil por CNPJ/registro ANS. O CSV oficial também contém telefone, e-mail e representante; o coletor do LeadCob descarta esses campos e retém somente dados cadastrais corporativos necessários. Não entra como sinal de intenção. [NECESSÁRIO CONFERIR] coleta real no ambiente LeadCob.
