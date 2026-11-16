@@ -58,7 +58,10 @@ def roles_to_find(company, opportunities) -> list[str]:
 
 
 def _search_url(company, roles: list[str]) -> str:
-    query = f'"{company.name}" ' + " OR ".join(f'"{r}"' for r in roles[:2])
+    name = re.sub(r"^MUNIC[IÍ]PIO\s+DE\s+", "Prefeitura de ", company.name, flags=re.I)
+    public = name.startswith("Prefeitura de ") or any("Licitações" in r for r in roles)
+    location = " ".join(filter(None, [getattr(company, "city", None), getattr(company, "state", None)]))
+    query = f'{name} {location} ' + ("licitações financeiro contato site:gov.br" if public else "financeiro cobrança contato site oficial")
     if getattr(company, "website", None):
         host = urlparse(company.website).hostname
         if host:
@@ -67,7 +70,7 @@ def _search_url(company, roles: list[str]) -> str:
 
 
 def build_map(company, contacts, opportunities=None) -> dict:
-    valid = [c for c in contacts if getattr(c, "status", None) != "invalido"]
+    valid = [c for c in contacts if getattr(c, "status", None) in {"verificado", "a_verificar"} and not c.value.startswith("anon:")]
     best_by_kind = {}
     for c in valid:
         factor = STATUS_FACTOR.get(getattr(c, "status", "a_verificar"), 0.6)
