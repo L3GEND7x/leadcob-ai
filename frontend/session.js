@@ -29,3 +29,6 @@ async function logout() {
   await fetch('/api/auth/logout', {method:'POST', headers: {'X-CSRF-Token': csrfToken}});
   location.reload();
 }
+
+
+document.getElementById('logout-button')?.addEventListener('click', logout);
