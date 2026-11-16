@@ -58,3 +58,7 @@ Verificado em 2026-11-09. Fonte única: `config/sources.json` (também em `GET /
 - O DataJud público mede volume e tipo de cobrança judicial; **não** identifica empresas.
 - Dados de pessoas físicas (sócios/QSA, e-mail e telefone cadastrais, empresário individual/MEI) não são importados por padrão.
 - Links recebidos com parâmetros de rastreamento (ex.: `utm_source`) são gravados sem eles.
+
+
+### CVM — Companhias Abertas
+**Planejada.** Fonte de perfil por CNPJ. O coletor lê somente campos cadastrais corporativos necessários (CNPJ, denominação, situação e código CVM) e descarta qualquer outro campo. Não entra como sinal de intenção. [NECESSÁRIO CONFERIR] coleta real no ambiente LeadCob.
