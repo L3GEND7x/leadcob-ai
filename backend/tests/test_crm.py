@@ -247,6 +247,11 @@ def test_search_filters_and_pagination():
 def test_command_center_and_daily_intelligence():
     hot = make_company(name="INTELIGENCIA DIA LTDA", website="https://exemplo.com.br")
     add_signal(hot)
+    with SessionLocal() as db:
+        db.add(BusinessContact(company_id=hot, kind="email", value="financeiro@exemplo.com.br",
+                               department="Financeiro", source_name="site oficial",
+                               source_url="https://exemplo.com.br/contato", status="verificado"))
+        db.commit()
     contacted = make_company(name="JA CONTATADA LTDA")
     add_signal(contacted)
     with TestClient(app) as c:
@@ -260,8 +265,14 @@ def test_command_center_and_daily_intelligence():
         assert contacted not in got  # contatada há menos de 7 dias
         item = got[hot]
         assert item["evidencia"]["natureza"] == "fato" and item["evidencia"]["url"]
+        assert item["evidencia"]["url_disponivel"] is True
         assert item["fatos"] and item["hipoteses"] and "inadimplência" in item["cuidado"]
-        assert item["abertura"] and item["proxima_acao"] and item["canal"] == "site institucional"
+        assert item["abertura"] and item["proxima_acao"]
+        assert item["canal"] == "email: financeiro@exemplo.com.br"
+        assert item["mapa_contato"]["score"] >= 25
+        assert item["mapa_contato"]["priority_contacts"][0]["value"] == "financeiro@exemplo.com.br"
+        assert "Financeiro" in item["mapa_contato"]["departments_found"]
+        assert item["mapa_contato"]["responsible_search_url"].startswith("https://duckduckgo.com/")
         assert "sem modelo de linguagem" in di["metodo"]
 
 
