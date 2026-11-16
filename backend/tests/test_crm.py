@@ -125,6 +125,40 @@ def test_interactions_advance_stage_and_block_repeated_outreach():
         assert any(t["company_id"] == cid for t in c.get("/api/tasks").json())
 
 
+
+def test_configurable_follow_up_cadence_stops_on_response_and_opt_out():
+    cid = make_company()
+    with TestClient(app) as c:
+        saved = c.put("/api/settings", json={"follow_up_cadence_days": [3, 7, 14]}).json()
+        assert saved["follow_up_cadence_days"] == [3, 7, 14]
+        first = c.post(f"/api/companies/{cid}/interactions",
+                       json={"kind": "contato", "channel": "email", "summary": "Primeiro contato"})
+        assert first.status_code == 201
+        tasks = [x for x in c.get("/api/tasks").json() if x["company_id"] == cid and x["kind"] == "follow_up" and not x["done"]]
+        assert len(tasks) == 3
+        assert {x["title"].split(":")[0] for x in tasks} == {"Follow-up D+3", "Follow-up D+7", "Follow-up D+14"}
+
+        response = c.post(f"/api/companies/{cid}/interactions",
+                          json={"kind": "resposta", "summary": "Empresa respondeu"})
+        assert response.status_code == 201
+        assert not [x for x in c.get("/api/tasks").json() if x["company_id"] == cid and x["kind"] == "follow_up" and not x["done"]]
+
+        cid2 = make_company()
+        c.post(f"/api/companies/{cid2}/interactions",
+               json={"kind": "contato", "channel": "email", "summary": "Primeiro contato"})
+        assert [x for x in c.get("/api/tasks").json() if x["company_id"] == cid2 and not x["done"]]
+        assert c.post("/api/suppression", json={"company_id": cid2, "reason": "Pediu opt-out"}).status_code == 201
+        assert not [x for x in c.get("/api/tasks").json() if x["company_id"] == cid2 and x["kind"] == "follow_up" and not x["done"]]
+
+
+def test_follow_up_cadence_validation():
+    with TestClient(app) as c:
+        assert c.put("/api/settings", json={"follow_up_cadence_days": [0, 7]}).status_code == 400
+        assert c.put("/api/settings", json={"follow_up_cadence_days": list(range(1, 12))}).status_code == 400
+        assert c.put("/api/settings", json={"follow_up_cadence_days": [14, 3, 7, 7]}).json()["follow_up_cadence_days"] == [3, 7, 14]
+
+
+
 def test_lost_requires_reason_and_lowers_score():
     cid = make_company()
     with TestClient(app) as c:
