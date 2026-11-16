@@ -1,7 +1,7 @@
-# Lead score explicável (0–100)
+# Lead score explicável — perfil + intenção (0–100)
 
 Ordem de prioridade de trabalho comercial. **Não é probabilidade de contratação nem de inadimplência.**
-Código: `backend/app/services/lead_score.py`. Cada componente declara a natureza da informação:
+Além do total de priorização, a ficha expõe dois eixos: **perfil** (quem a empresa é) e **intenção** (sinais e comportamento recente). O total continua sendo uma ordem de trabalho, não uma probabilidade.\n\nCódigo: `backend/app/services/lead_score.py`. Cada componente declara a natureza da informação:
 **fato** (fonte verificável), **indício** (sugere, não comprova) ou **hipótese** (premissa comercial).
 
 | Componente | Pontos | Natureza | Regra |
@@ -22,3 +22,4 @@ cadastro BAIXADA, INAPTA, NULA ou SUSPENSA.
 
 Os pesos são uma regra inicial, não calibrada com resultados reais. Calibrar depois de haver
 histórico suficiente de contatos e contratos no CRM.
+\n## Peso temporal dos sinais\nA força do sinal comercial perde peso com o tempo: até 30 dias mantém 100%; 31–90 dias 75%; 91–180 dias 50%; acima de 180 dias 25%. O histórico comercial pode gerar pontos negativos (por exemplo, oportunidade perdida). A explicação do desconto temporal aparece no componente de evidência.\n
