@@ -585,6 +585,8 @@ async function viewConfig() {
     + `<div class="grid2">${panel('Atuação comercial', '', `<form id="f-set" class="form">
         <div class="full"><p class="note" style="margin:0 0 6px">UFs de atuação (nenhuma marcada = Brasil inteiro). Empresas fora delas perdem os pontos de geografia.</p><div class="ufs">${UFS.map(u => `<label><input type="checkbox" name="uf" value="${u}" ${s.ufs_atuacao.includes(u) ? 'checked' : ''}>${u}</label>`).join('')}</div></div>
         <label class="f">Dias mínimos entre contatos<input name="dias" type="number" min="1" max="90" value="${s.dias_entre_contatos}"></label>
+        <label class="f">Cadência de follow-up (dias)<input name="follow_up_cadence" inputmode="numeric" placeholder="3, 7, 14" value="${esc((s.follow_up_cadence_days || []).join(', '))}" aria-describedby="follow-up-help"></label>
+        <p id="follow-up-help" class="note full">Após o primeiro contato, o sistema cria tarefas nesses dias. A cadência para quando houver resposta ou opt-out. Use até 10 números entre 1 e 90, separados por vírgula.</p>
         <label class="f">Serviço oferecido<input name="servico" maxlength="200" value="${esc(s.servico || '')}"></label>
         <label class="f">Seu nome (assinatura das abordagens)<input name="remetente_nome" maxlength="120" value="${esc(s.remetente_nome || '')}"></label>
         <label class="f">Sua empresa<input name="remetente_empresa" maxlength="160" value="${esc(s.remetente_empresa || '')}"></label>
@@ -597,7 +599,14 @@ async function viewConfig() {
   $('f-set').addEventListener('submit', async e => {
     e.preventDefault();
     const f = e.target, ufs = [...f.querySelectorAll('input[name=uf]:checked')].map(i => i.value);
-    try { await send('/settings', 'PUT', { ufs_atuacao: ufs, dias_entre_contatos: Number(f.dias.value), servico: f.servico.value.trim(), remetente_nome: f.remetente_nome.value.trim(), remetente_empresa: f.remetente_empresa.value.trim(), remetente_contato: f.remetente_contato.value.trim() }); toast('Configurações salvas.'); viewConfig(); }
+    const cadence = f.follow_up_cadence.value.trim()
+      ? f.follow_up_cadence.value.split(',').map(v => Number(v.trim()))
+      : [];
+    if (cadence.some(v => !Number.isInteger(v) || v < 1 || v > 90) || cadence.length > 10) {
+      toast('Cadência inválida. Use até 10 números inteiros entre 1 e 90, separados por vírgula.', 7000, true);
+      return;
+    }
+    try { await send('/settings', 'PUT', { ufs_atuacao: ufs, dias_entre_contatos: Number(f.dias.value), follow_up_cadence_days: cadence, servico: f.servico.value.trim(), remetente_nome: f.remetente_nome.value.trim(), remetente_empresa: f.remetente_empresa.value.trim(), remetente_contato: f.remetente_contato.value.trim() }); toast('Configurações salvas.'); viewConfig(); }
     catch (err) { toast(errMsg(err), 7000, true); }
   });
   $('f-addsup').addEventListener('submit', async e => {
