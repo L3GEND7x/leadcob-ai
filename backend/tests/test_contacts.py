@@ -114,3 +114,39 @@ def test_domain_search_without_provider_offers_public_search(monkeypatch):
             db.query(Suppression).filter_by(company_id=cid).delete()
             db.query(Company).filter_by(id=cid).delete()
             db.commit()
+
+
+def test_contact_retention_disabled_until_owner_sets_days():
+    from app.db.models import Setting
+    from app.jobs.retention import run_retention
+    ensure_schema()
+    with SessionLocal() as db:
+        db.query(Setting).filter_by(key="geral").delete()
+        db.commit()
+        result = run_retention(db)
+        assert result == {"enabled": False, "days": None, "anonymized": 0}
+
+
+def test_contact_retention_anonymizes_old_invalid_contact():
+    from datetime import datetime, timedelta, timezone
+    from app.db.models import Setting
+    from app.jobs.retention import run_retention
+    ensure_schema()
+    with SessionLocal() as db:
+        c = Company(name="RETENCAO TESTE")
+        db.add(c); db.flush()
+        db.add(Setting(key="geral", value={"contact_retention_days": 30}))
+        old = datetime.now(timezone.utc) - timedelta(days=31)
+        contact = BusinessContact(company_id=c.id, kind="email", value="financeiro@example.org",
+                                  source_name="teste", source_url="https://example.org",
+                                  status="invalido", created_at=old, checked_at=old)
+        db.add(contact); db.commit(); cid=c.id; contact_id=contact.id
+        result = run_retention(db, datetime.now(timezone.utc))
+        db.refresh(contact)
+        assert result["anonymized"] == 1
+        assert contact.value.startswith("anon:") and "financeiro@" not in contact.value
+        assert contact.source_url is None
+        db.query(BusinessContact).filter_by(id=contact_id).delete()
+        db.query(Company).filter_by(id=cid).delete()
+        db.query(Setting).filter_by(key="geral").delete()
+        db.commit()
