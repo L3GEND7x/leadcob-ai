@@ -39,6 +39,7 @@ CHANNELS = {"email", "telefone", "whatsapp", "presencial", "linkedin", "outro"}
 DEFAULT_SETTINGS = {
     "ufs_atuacao": [],            # vazio = Brasil inteiro
     "dias_entre_contatos": 7,     # trava contra abordagens repetidas
+    "contact_retention_days": None, # desativado até a proprietária definir N
     "servico": "Cobrança e recuperação de crédito",
     "remetente_nome": "",         # assinatura das abordagens (vazio = [PREENCHER])
     "remetente_empresa": "",
