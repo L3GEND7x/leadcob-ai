@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.agents.pipeline import run_pipeline
-from app.collectors import cnpj_api, datajud, jobboards, pncp
+from app.collectors import cnpj_api, datajud, jobboards, pncp, compras_gov
 from app.db.database import get_db
 from app.db.models import CaptureRun, Company, MarketSnapshot, Opportunity
 from app.schemas import OpportunityCreate
@@ -296,6 +296,132 @@ def capture_pncp(mode: str = Query(default="busca", pattern="^(busca|varredura)$
             "discarded": discarded, "proven": proven, "to_confirm": len(stored) - proven,
             "discarded_samples": discarded_samples, "errors": batch["errors"][:10], "message": run.message, "fallback": fallback,
             "duplicates_skipped": updated}  # compatibilidade com o frontend v0.2
+
+
+
+def _compras_source_key(item: dict) -> str:
+    if item.get("pncp_control"):
+        return "compras-gov:pncp:" + str(item["pncp_control"])
+    raw = "|".join([
+        item.get("org_code") or "",
+        item.get("contract_number") or "",
+        item.get("start_date") or "",
+        item.get("object") or "",
+    ])
+    return "compras-gov:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _apply_compras_item(o: Opportunity, item: dict):
+    relevance = item.get("relevance") or "revisar"
+    points = 20 if relevance == "alta" else 8
+    o.title = (item.get("object") or "Contrato público relacionado a cobrança/recuperação")[:250]
+    o.description = (
+        "Contrato público localizado na API de Dados Abertos do Compras.gov.br. "
+        "É sinal histórico/operacional de contratação deste tipo de serviço, não edital aberto nem prova de demanda atual."
+    )
+    evidence_parts = [
+        "Fonte: Compras.gov.br — API de Dados Abertos (Contratos)",
+        f"Órgão: {item.get('org_name') or 'não informado'}",
+        f"Unidade gestora: {item.get('management_unit') or 'não informada'}",
+        f"Contrato: {item.get('contract_number') or 'não informado'}",
+        f"Objeto: {(item.get('object') or 'não informado')[:1000]}",
+        f"Vigência inicial: {item.get('start_date') or 'não informada'}",
+        f"Vigência final: {item.get('end_date') or 'não informada'}",
+        f"Aderência: {relevance} — {item.get('relevance_reason') or 'sem motivo'}",
+        f"Termos: {', '.join(item.get('matched_terms') or []) or 'não informados'}",
+    ]
+    o.evidence = " | ".join(evidence_parts) + "."
+    o.source_name = "Compras.gov.br — contratos"
+    o.source_url = item.get("source_url")
+    o.origin_url = None
+    o.score = points
+    o.score_reason = (
+        f"contrato público aderente ({relevance}); sinal histórico, sem inferir demanda atual ou inadimplência"
+    )
+    o.relevance, o.relevance_reason = relevance, item.get("relevance_reason")
+    o.opportunity_class = "contrato_publico"
+    o.evidence_level = "fonte_primaria_contrato"
+    o.commercial_signal = "sinal_a_confirmar"
+    o.deadline = None
+    try:
+        value = float(item.get("value")) if item.get("value") not in (None, "") else None
+        o.estimated_value = value if value and value > 0 else None
+    except (TypeError, ValueError):
+        o.estimated_value = None
+    o.modality_name = "Contrato público"
+    o.confidence = 0.55 if relevance == "alta" else 0.35
+    o.is_verified = False
+
+
+@router.post("/capture/compras-gov")
+def capture_compras_gov(
+    org_codes: str = Query(min_length=1, max_length=500),
+    start_date: str = Query(min_length=10, max_length=10),
+    end_date: str = Query(min_length=10, max_length=10),
+    max_pages: int = Query(default=2, ge=1, le=5),
+    db: Session = Depends(get_db),
+):
+    codes = [x.strip() for x in org_codes.split(",") if x.strip()]
+    if not codes or any(not x.isdigit() for x in codes):
+        raise HTTPException(400, "org_codes deve conter códigos numéricos de órgão, separados por vírgula.")
+    try:
+        start = datetime.fromisoformat(start_date).date()
+        end = datetime.fromisoformat(end_date).date()
+    except ValueError:
+        raise HTTPException(400, "start_date e end_date devem usar AAAA-MM-DD.")
+    if end < start:
+        raise HTTPException(400, "end_date não pode ser anterior a start_date.")
+
+    run = CaptureRun(source_name="Compras.gov.br — contratos", status="running")
+    db.add(run); db.commit(); db.refresh(run)
+    try:
+        batch = compras_gov.search_contracts(codes, start_date, end_date, max_pages=max_pages)
+    except Exception as exc:
+        batch = {"records": [], "pages_read": 0, "errors": [f"{type(exc).__name__}: {str(exc)[:300]}"]}
+
+    if batch.get("pages_read", 0) == 0:
+        run.status = "failed"
+        run.message = "Nenhuma página do Compras.gov.br foi lida. " + " ; ".join(batch.get("errors", [])[:5])
+        run.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(502, "O Compras.gov.br não respondeu ou a consulta não pôde ser validada. Tente novamente mais tarde.")
+
+    created = updated = discarded = 0
+    for item in batch.get("records", []):
+        if item.get("relevance") not in {"alta", "revisar"}:
+            discarded += 1
+            continue
+        key = _compras_source_key(item)
+        o = db.query(Opportunity).filter_by(source_key=key).first()
+        if o:
+            updated += 1
+        else:
+            name = item.get("org_name") or "Órgão público não identificado"
+            company = (db.query(Company)
+                       .filter(func.lower(Company.name) == name.lower(),
+                               Company.segment == "Órgão público")
+                       .first())
+            if not company:
+                company = Company(name=name, segment="Órgão público")
+                db.add(company); db.flush()
+            o = Opportunity(company_id=company.id, kind="public_procurement",
+                            source_key=key, status="review")
+            db.add(o); created += 1
+        _apply_compras_item(o, item)
+
+    run.status = "partial" if batch.get("errors") else "completed"
+    run.records_seen = len(batch.get("records", []))
+    run.records_created = created
+    run.records_skipped = discarded
+    run.message = (f"páginas lidas: {batch.get('pages_read', 0)}; novas: {created}; "
+                   f"atualizadas: {updated}; descartadas por aderência: {discarded}; "
+                   f"falhas: {len(batch.get('errors', []))}")
+    run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"run_id": run.id, "status": run.status, "source": "Compras.gov.br",
+            "pages_read": batch.get("pages_read", 0), "found": len(batch.get("records", [])),
+            "created": created, "updated": updated, "discarded": discarded,
+            "errors": batch.get("errors", [])[:10], "message": run.message}
 
 
 @router.get("/capture/runs")
