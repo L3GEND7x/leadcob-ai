@@ -788,3 +788,9 @@ async function viewContatos() {
   $('sync-contacts').onclick = async () => { const b = $('sync-contacts'); b.disabled = true; try { let cursor = 0, added = 0, batches = 0; do { const result = await send('/contacts/sync?after_id=' + cursor, 'POST'); added += result.added; cursor = result.next_cursor || 0; batches++; b.textContent = `Sincronizando… ${batches}`; } while (cursor); toast(`${added} contato(s) incorporado(s) das fichas existentes.`); offset = 0; await refresh(); } catch(e) { toast(errMsg(e), 5000, true); } finally { b.disabled = false; b.textContent = 'Sincronizar fichas'; } };
   await refresh();
 }
+
+
+document.getElementById('fill-cnpj-button')?.addEventListener('click', fillFromCNPJ);
+document.querySelectorAll('[data-close-dialog]').forEach(button => {
+  button.addEventListener('click', () => button.closest('dialog')?.close());
+});
