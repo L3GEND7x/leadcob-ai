@@ -217,7 +217,7 @@
       "official": true,
       "documented": true,
       "use": "Alerta de conformidade por CNPJ da pessoa jurídica na ficha da empresa",
-      "status": "Consulta implementada com testes simulados; exige PORTAL_TRANSPARENCIA_API_KEY. [NECESSÁRIO CONFERIR] chamada real antes de marcar como integrada e testada."
+      "status": "NÃO conectada em produção. Consulta implementada com testes simulados; exige PORTAL_TRANSPARENCIA_API_KEY. [NECESSÁRIO CONFERIR] chamada real antes de marcar como integrada e testada."
     }
   ]
 }
