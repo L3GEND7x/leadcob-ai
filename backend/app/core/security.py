@@ -1,6 +1,7 @@
 """Single-owner authentication. A deployment is one private workspace."""
 import hashlib
 import hmac
+import ipaddress
 import secrets
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,9 @@ from app.db.models import LoginSession, LoginAttempt, AuditLog
 actor = ContextVar('audit_actor', default='local-owner')
 router = APIRouter(prefix='/api/auth', tags=['Acesso'])
 COOKIE = 'leadcob_session'
+LOGIN_WINDOW_MINUTES = 15
+LOGIN_IP_FAILURE_LIMIT = 5
+LOGIN_GLOBAL_FAILURE_LIMIT = 100
 # A interface usa atributos onclick e estilos inline, por isso 'unsafe-inline' em script/style.
 # Mesmo assim a política bloqueia scripts de outros domínios, envio de dados para fora (connect-src),
 # formulários para outros sites, <base> e <object>, e o carregamento do painel dentro de outro site.
@@ -29,6 +33,44 @@ CONTENT_SECURITY_POLICY = (
     "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; "
     "form-action 'self'; frame-ancestors 'none'"
 )
+
+
+def _client_ip(request: Request) -> str | None:
+    """Return the Railway edge client IP only when it is a single valid address.
+
+    Railway documents X-Real-IP as the remote client address on public HTTP traffic.
+    Invalid or missing values are not trusted as an address and fall back to an
+    anonymous proxy bucket; this prevents arbitrary strings from creating unlimited keys.
+    """
+    raw = request.headers.get('x-real-ip', '').strip()
+    if not raw:
+        return None
+    try:
+        return str(ipaddress.ip_address(raw))
+    except ValueError:
+        return None
+
+
+def _attempt_key(request: Request) -> str:
+    ip = _client_ip(request)
+    material = ip if ip else 'railway-proxy-unknown'
+    return 'ip:' + hashlib.sha256(material.encode()).hexdigest()
+
+
+def _get_attempt(db, key: str, now: datetime) -> LoginAttempt:
+    attempt = db.get(LoginAttempt, key)
+    if not attempt:
+        attempt = LoginAttempt(key=key, count=0, started_at=now)
+        db.add(attempt)
+        db.flush()
+    elif stamp(attempt.started_at) < now - timedelta(minutes=LOGIN_WINDOW_MINUTES):
+        attempt.count = 0
+        attempt.started_at = now
+    return attempt
+
+
+def _blocked(attempt: LoginAttempt, limit: int) -> bool:
+    return attempt.count >= limit
 
 
 def password_hash(password, salt=None):
@@ -134,25 +176,28 @@ def login(payload: Credentials, request: Request):
     if not auth_enabled():
         raise HTTPException(400, 'Acesso local ativo; configure autenticação para publicar.')
     now = datetime.now(timezone.utc)
-    # Shared database counter works across API processes. The account counter also
-    # prevents spreading attempts over IPs. Reset only after the lock window.
+    # Railway's public edge documents X-Real-IP as the client address. Keep a
+    # per-IP bucket so one source cannot lock out every other source, plus a high
+    # global failed-attempt ceiling to limit distributed guessing.
     with SessionLocal() as db:
-        key = 'owner'
-        attempt = db.get(LoginAttempt, key)
-        if attempt and stamp(attempt.started_at) < now - timedelta(minutes=15):
-            attempt.count = 0
-            attempt.started_at = now
-        if attempt and attempt.count >= 5:
-            raise HTTPException(429, 'Muitas tentativas. Aguarde 15 minutos.')
-        if not attempt:
-            attempt = LoginAttempt(key=key, count=0, started_at=now)
-            db.add(attempt)
-        attempt.count += 1
-        db.commit()
+        ip_attempt = _get_attempt(db, _attempt_key(request), now)
+        global_attempt = _get_attempt(db, 'global', now)
+        if _blocked(ip_attempt, LOGIN_IP_FAILURE_LIMIT):
+            raise HTTPException(429, 'Muitas tentativas deste endereço. Aguarde 15 minutos.')
+        if _blocked(global_attempt, LOGIN_GLOBAL_FAILURE_LIMIT):
+            raise HTTPException(429, 'Muitas tentativas de acesso. Aguarde 15 minutos.')
+
         valid = password_matches(payload.password)
-        if not valid or not hmac.compare_digest(payload.username, settings.admin_username):
+        valid = valid and hmac.compare_digest(payload.username, settings.admin_username)
+        if not valid:
+            ip_attempt.count += 1
+            global_attempt.count += 1
+            db.commit()
             raise HTTPException(401, 'Credenciais inválidas.')
-        attempt.count = 0
+
+        # A successful login only clears this source. The global counter represents
+        # failed attempts in the current window and is intentionally not reset here.
+        ip_attempt.count = 0
         raw, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
         db.add(LoginSession(token_hash=session_key(raw), csrf_token=csrf,
                             username=settings.admin_username, expires_at=now + timedelta(hours=8)))

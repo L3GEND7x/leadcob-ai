@@ -108,6 +108,63 @@ def test_owner_login_and_csrf(monkeypatch):
         assert c.get('/api/companies/search').status_code == 401
 
 
+
+def test_login_rate_limit_isolated_by_real_ip(monkeypatch):
+    from app.db.models import LoginAttempt
+    from app.core import security
+    ensure_schema()
+    monkeypatch.setattr(settings, 'admin_password_hash', password_hash('senha-de-teste-muito-forte'))
+    monkeypatch.setattr(settings, 'admin_username', 'admin')
+    with SessionLocal() as db:
+        db.query(LoginAttempt).delete()
+        db.commit()
+    with TestClient(app) as c:
+        bad = {'username': 'admin', 'password': 'errada'}
+        for _ in range(security.LOGIN_IP_FAILURE_LIMIT):
+            assert c.post('/api/auth/login', json=bad, headers={'X-Real-IP': '203.0.113.10'}).status_code == 401
+        assert c.post('/api/auth/login', json=bad, headers={'X-Real-IP': '203.0.113.10'}).status_code == 429
+        ok = c.post('/api/auth/login',
+                    json={'username': 'admin', 'password': 'senha-de-teste-muito-forte'},
+                    headers={'X-Real-IP': '203.0.113.11'})
+        assert ok.status_code == 200
+
+
+def test_login_rate_limit_rejects_invalid_x_real_ip(monkeypatch):
+    from app.db.models import LoginAttempt
+    from app.core import security
+    ensure_schema()
+    monkeypatch.setattr(settings, 'admin_password_hash', password_hash('senha-de-teste-muito-forte'))
+    monkeypatch.setattr(settings, 'admin_username', 'admin')
+    with SessionLocal() as db:
+        db.query(LoginAttempt).delete()
+        db.commit()
+    with TestClient(app) as c:
+        bad = {'username': 'admin', 'password': 'errada'}
+        for _ in range(security.LOGIN_IP_FAILURE_LIMIT):
+            assert c.post('/api/auth/login', json=bad, headers={'X-Real-IP': 'not-an-ip'}).status_code == 401
+        assert c.post('/api/auth/login', json=bad, headers={'X-Real-IP': 'outro-texto'}).status_code == 429
+
+
+def test_login_global_limit_still_blocks_distributed_attempts(monkeypatch):
+    from app.db.models import LoginAttempt
+    from app.core import security
+    ensure_schema()
+    monkeypatch.setattr(settings, 'admin_password_hash', password_hash('senha-de-teste-muito-forte'))
+    monkeypatch.setattr(settings, 'admin_username', 'admin')
+    monkeypatch.setattr(security, 'LOGIN_GLOBAL_FAILURE_LIMIT', 3)
+    with SessionLocal() as db:
+        db.query(LoginAttempt).delete()
+        db.commit()
+    with TestClient(app) as c:
+        bad = {'username': 'admin', 'password': 'errada'}
+        for idx in range(3):
+            assert c.post('/api/auth/login', json=bad,
+                          headers={'X-Real-IP': f'203.0.113.{20 + idx}'}).status_code == 401
+        assert c.post('/api/auth/login',
+                      json={'username': 'admin', 'password': 'senha-de-teste-muito-forte'},
+                      headers={'X-Real-IP': '203.0.113.99'}).status_code == 429
+
+
 def test_production_configuration_and_secure_session(monkeypatch):
     import pytest
     ensure_schema()
