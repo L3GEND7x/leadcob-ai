@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- **IFData (BCB)**: fonte de perfil registrada como Planejada; parser não foi criado porque o campo oficial de CNPJ para vinculação ainda precisa ser confirmado.
 - **Querido Diário**: coletor e endpoint de captação preparados para busca por código IBGE e palavra-chave; achados aderentes entram no CRM como sinais a confirmar, com `CaptureRun` e deduplicação. A fonte permanece Planejada até uma coleta real ser validada.\n- **Cadência de follow-up**: configuração recebe uma sequência de dias (padrão 3, 7 e 14); o primeiro contato cria tarefas na Agenda e tarefas abertas são encerradas automaticamente quando a empresa responde ou entra em supressão/opt-out.\n- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
   (cor `--faint` 3,4–3,8:1) e 8 seletores sem nome acessível. Cor ajustada para 4,7–5,5:1 nos fundos usados e
   `aria-label` em seletores e campos sem rótulo. Depois da correção: nenhuma violação A/AA nas 16 telas e no login.

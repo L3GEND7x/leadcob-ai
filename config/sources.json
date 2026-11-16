@@ -210,6 +210,15 @@
       "official": false,
       "use": "Identificar QUAIS empresas cobram na Justiça (o DataJud público não traz partes)",
       "status": "NÃO conectada; exige contrato, avaliação de custo e de base legal"
+    },
+    {
+      "category": "planejada",
+      "name": "Banco Central — IFData",
+      "url": "https://dadosabertos.bcb.gov.br/dataset/ifdata---dados-selecionados-de-instituies-financeiras",
+      "official": true,
+      "documented": true,
+      "use": "Perfil de instituições financeiras autorizadas/em operação; não é sinal de intenção comercial",
+      "status": "NÃO conectada. A API OData e o conjunto IFData estão confirmados; [NECESSÁRIO CONFERIR] o campo oficial de CNPJ adequado para vincular cada instituição à base LeadCob antes de escrever o parser."
     }
   ]
 }
