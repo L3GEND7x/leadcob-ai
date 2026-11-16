@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.agents.pipeline import run_pipeline
@@ -21,6 +21,18 @@ from app.services.scoring import score_opportunity
 
 router = APIRouter(prefix="/api")
 KINDS = ("hiring", "outsourcing", "public_procurement")
+
+FREELANCE_TERMS = ("freelance", "freelancer", "freela", "contractor", "autônom", "autonom")
+
+
+def opportunity_text(o):
+    return " ".join([o.title or "", o.description or "", o.evidence or ""]).casefold()
+
+
+def is_freelance_opportunity(o) -> bool:
+    text = opportunity_text(o)
+    return any(term in text for term in FREELANCE_TERMS)
+
 
 
 def iso(value):
@@ -39,6 +51,7 @@ def serialize(o):
         "opportunity_class": o.opportunity_class, "evidence_level": o.evidence_level,
         "commercial_signal": o.commercial_signal, "deadline": iso(o.deadline),
         "estimated_value": o.estimated_value, "modality_name": o.modality_name,
+        "work_mode": "freelance" if o.kind == "hiring" and is_freelance_opportunity(o) else None,
         "cnae_main": o.company.cnae_main, "cnae_desc": o.company.cnae_desc, "company_size": o.company.company_size,
     }
 
@@ -83,7 +96,10 @@ def summary(db: Session = Depends(get_db)):
 
 @router.get("/opportunities")
 def list_opportunities(kind: str | None = None, status: str | None = None, signal: str | None = None,
-                       q: str | None = Query(default=None), db: Session = Depends(get_db)):
+                       q: str | None = Query(default=None),
+                       keywords: str | None = Query(default=None, max_length=250),
+                       freelance_only: bool = False,
+                       db: Session = Depends(get_db)):
     query = db.query(Opportunity).options(joinedload(Opportunity.company))
     if kind in KINDS:
         query = query.filter(Opportunity.kind == kind)
@@ -95,6 +111,26 @@ def list_opportunities(kind: str | None = None, status: str | None = None, signa
         query = query.filter(Opportunity.commercial_signal == signal)
     if q:
         query = query.join(Company).filter(Company.name.ilike(f"%{q}%") | Opportunity.title.ilike(f"%{q}%"))
+    if keywords:
+        terms = [x.strip() for x in re.split(r"[,;]+|\s+", keywords) if x.strip()]
+        for term in terms[:12]:
+            pattern = f"%{term}%"
+            query = query.filter(or_(
+                Opportunity.title.ilike(pattern),
+                Opportunity.description.ilike(pattern),
+                Opportunity.evidence.ilike(pattern),
+            ))
+    if freelance_only:
+        query = query.filter(Opportunity.kind == "hiring")
+        freelance_filters = []
+        for term in FREELANCE_TERMS:
+            pattern = f"%{term}%"
+            freelance_filters.extend([
+                Opportunity.title.ilike(pattern),
+                Opportunity.description.ilike(pattern),
+                Opportunity.evidence.ilike(pattern),
+            ])
+        query = query.filter(or_(*freelance_filters))
     rows = query.order_by(Opportunity.score.desc(), Opportunity.collected_at.desc()).limit(250).all()
     return [serialize(o) for o in rows]
 

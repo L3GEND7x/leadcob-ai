@@ -284,6 +284,8 @@ async function viewSinais() {
       '<button class="capture" id="capture-pncp" onclick="capturePNCP()">⌕ Buscar editais PNCP</button><button class="capture" id="capture-jobs" onclick="captureJobs()">↗ Buscar vagas públicas</button><button class="primary" onclick="$(\'dlg-opp\').showModal()">＋ Nova oportunidade</button>')
       + `<section class="kpis" id="opp-kpis"></section>
       <div class="filters inline"><input id="search" placeholder="Buscar empresa ou título..." aria-label="Buscar empresa ou título" oninput="render()">
+        <input id="keywords" placeholder="Palavras-chave (ex.: cobrança)" aria-label="Palavras-chave da vaga">
+        <label class="check"><input id="freelance-only" type="checkbox"> Somente freelance</label>
         <select id="kind" aria-label="Frente" onchange="render()"><option value="">Todas as frentes</option><option value="hiring">Vagas de cobrança</option><option value="outsourcing">Terceirização</option><option value="public_procurement">Editais públicos</option></select>
         <select id="status" aria-label="Status" onchange="load()"><option value="">Todos os status</option><option value="review">Em análise</option><option value="qualified">Qualificado</option><option value="discarded">Descartado</option></select>
         <select id="signal" aria-label="Tipo de sinal" onchange="render()"><option value="">Comprovadas e sinais</option><option value="oportunidade_comprovada">Só comprovadas</option><option value="sinal_a_confirmar">Só sinais a confirmar</option></select></div>
@@ -296,12 +298,22 @@ async function viewSinais() {
         ${panel('Como ler', '', `<p class="note">Edital público não é oportunidade privada: a contratação segue a lei de licitações e o edital. Vaga de cobrança mostra que a empresa estrutura a área, mas não comprova interesse em terceirizar. Nenhum sinal desta tela prova que a empresa tem inadimplência.</p>`)}</div>`;
   }
   const status = $('status').value;
-  const [s, list] = await Promise.all([api('/dashboard/summary'), api('/opportunities' + (status ? `?status=${status}` : ''))]);
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  const keywords = $('keywords')?.value.trim();
+  if (keywords) params.set('keywords', keywords);
+  if ($('freelance-only')?.checked) params.set('freelance_only', 'true');
+  const [s, list] = await Promise.all([api('/dashboard/summary'), api('/opportunities' + (params.toString() ? '?' + params : ''))]);
   data = list;
   const kp = (l, v, sub, cls = '') => `<article class="${cls}"><small>${l}</small><strong>${fmt(v)}</strong><span>${sub}</span></article>`;
   $('opp-kpis').innerHTML = kp('Sinais mapeados', s.total, 'base atual') + kp('Vagas de cobrança', s.hiring, 'empresas contratando')
     + kp('Editais públicos', s.public_procurement, 'PNCP') + kp('Comprovadas', s.proven, 'edital aberto · aderente · API oficial', 'accent')
     + kp('A confirmar', s.to_confirm, `qualificados: ${fmt(s.qualified)} · score médio ${s.average_score}`);
+  $('keywords')?.addEventListener('input', () => {
+    clearTimeout(viewSinais._kw);
+    viewSinais._kw = setTimeout(viewSinais, 250);
+  });
+  $('freelance-only')?.addEventListener('change', viewSinais);
   render(); lastRun();
 }
 function render() {
@@ -311,7 +323,8 @@ function render() {
     && (!st || x.status === st) && (!sg || x.commercial_signal === sg));
   $('rows').innerHTML = a.length ? a.map(x => {
     const proc = x.kind === 'public_procurement' || !!x.evidence_level;
-    const badges = proc ? `<div class="badges">${x.commercial_signal === 'oportunidade_comprovada' ? '<span class="badge ok">✓ COMPROVADA</span>' : '<span class="badge warn">SINAL A CONFIRMAR</span>'}${badge(CLASS, x.opportunity_class)}${badge(REL, x.relevance)}${badge(EVID, x.evidence_level)}</div>` : '';
+    const badges = proc ? `<div class="badges">${x.commercial_signal === 'oportunidade_comprovada' ? '<span class="badge ok">✓ COMPROVADA</span>' : '<span class="badge warn">SINAL A CONFIRMAR</span>'}${badge(CLASS, x.opportunity_class)}${badge(REL, x.relevance)}${badge(EVID, x.evidence_level)}</div>`
+      : (x.work_mode === 'freelance' ? '<div class="badges"><span class="badge ok">FREELANCE</span></div>' : '');
     const why = proc && x.relevance_reason ? `<span class="why">${esc(x.relevance_reason)}</span>` : '';
     const src = x.source_url ? `<a class="src" href="${esc(safeHttpUrl(x.source_url))}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name);
     const extra = [x.modality_name, money(x.estimated_value)].filter(Boolean).map(esc).join(' · ');
