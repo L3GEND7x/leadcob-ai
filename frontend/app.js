@@ -590,10 +590,10 @@ async function viewConfig() {
         <label class="f">Sua empresa<input name="remetente_empresa" maxlength="160" value="${esc(s.remetente_empresa || '')}"></label>
         <label class="f full">Contato institucional para a assinatura<input name="remetente_contato" maxlength="200" value="${esc(s.remetente_contato || '')}"></label>
         <div class="end"><button class="primary">Salvar configurações</button></div></form>`)}
-      ${panel('Lista de supressão (não contatar)', 'Empresas que pediram para não receber contato ou que você bloqueou', `${sup.length ? `<div>${sup.map(x => `<div class="task"><div class="main"><strong>${x.company_id ? `<a class="src" href="#/empresa/${x.company_id}">${esc(x.company_name || x.cnpj)}</a>` : esc(x.company_name || x.cnpj || '—')}</strong><small>${esc(x.cnpj || '')}${x.reason ? ' · ' + esc(x.reason) : ''} · desde ${day(x.created_at)}</small></div><button class="small" onclick="unsuppress(${x.id})">Retirar</button></div>`).join('')}</div>` : '<p class="empty">Lista vazia.</p>'}
+      ${panel('Lista de supressão (não contatar)', 'Empresas que pediram para não receber contato ou que você bloqueou', `${sup.length ? `<div>${sup.map(x => `<div class="task"><div class="main"><strong>${x.company_id ? `<a class="src" href="#/empresa/${x.company_id}">${esc(x.company_name || x.cnpj)}</a>` : esc(x.company_name || x.cnpj || '—')}</strong><small>${esc(x.cnpj || '')}${x.reason ? ' · ' + esc(x.reason) : ''} · desde ${day(x.created_at)}</small></div><button class="small" data-unsuppress="${x.id}">Retirar</button></div>`).join('')}</div>` : '<p class="empty">Lista vazia.</p>'}
         <form id="f-addsup" class="form" style="margin-top:10px"><label class="f">CNPJ<input name="cnpj" required placeholder="00.000.000/0000-00"></label><label class="f">Motivo<input name="reason" maxlength="1000"></label><div class="end"><button>⛔ Incluir</button></div></form>`)}
       ${panel('Dados e LGPD', '', `<p class="note">• A base guarda só dados de pessoa jurídica: razão social, CNAE, porte, capital, município/UF e situação cadastral. Sócios, CPF, e-mail e telefone do cadastro da Receita são descartados na importação; empresário individual (natureza 2135) fica fora por padrão.<br>• Dados judiciais (DataJud) são agregados por UF e não identificam empresas.<br>• Nenhum contato é enviado pelo sistema: abordagens, cobranças, protestos e negativações dependem sempre de decisão humana.<br>• Toda mudança de etapa, supressão, exportação e alteração de configurações fica na trilha de auditoria.</p>
-        <div class="actions"><button onclick="exportCSV()">⇩ Exportar empresas (CSV, só PJ, sem suprimidas)</button></div>`)}</div>`;
+        <div class="actions"><button id="config-export">⇩ Exportar empresas (CSV, só PJ, sem suprimidas)</button></div>`)}</div>`;
   $('f-set').addEventListener('submit', async e => {
     e.preventDefault();
     const f = e.target, ufs = [...f.querySelectorAll('input[name=uf]:checked')].map(i => i.value);
@@ -605,6 +605,9 @@ async function viewConfig() {
     try { await send('/suppression', 'POST', { cnpj: e.target.cnpj.value, reason: e.target.reason.value.trim() }); toast('Incluída na lista de supressão.'); viewConfig(); }
     catch (err) { toast(errMsg(err), 7000, true); }
   });
+  document.querySelectorAll('[data-unsuppress]').forEach(button =>
+    button.addEventListener('click', () => unsuppress(Number(button.dataset.unsuppress))));
+  $('config-export').addEventListener('click', exportCSV);
 }
 async function unsuppress(id) {
   try { await send('/suppression/' + id, 'DELETE'); toast('Retirada da lista. A empresa volta como “Acompanhar futuramente”.'); route(); }
