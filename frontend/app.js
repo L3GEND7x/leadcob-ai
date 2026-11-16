@@ -358,10 +358,13 @@ async function viewCRM() {
       : '<p class="note">Vazio.</p>'}</div>`;
   const now = Date.now();
   V().innerHTML = head('Relacionamento comercial', 'CRM comercial', 'Funil de 13 etapas. Para mover uma empresa, abra a ficha: cada mudança fica registrada no histórico e na auditoria.',
-    '<button class="primary" onclick="$(\'dlg-company\').showModal()">＋ Adicionar empresa</button>')
+    '<button class="primary" id="crm-add-company">＋ Adicionar empresa</button>')
     + `<div class="board">${p.stages.map(col).join('')}</div>`
-    + `<div class="grid2" style="margin-top:14px">${panel('Tarefas em aberto', 'Follow-ups e atividades com prazo', tasks.length ? `<div>${tasks.map(t => `<div class="task ${t.overdue ? 'overdue' : ''}"><div class="main"><strong>${esc(t.title)}</strong><small>${t.company_id ? `<a class="src" href="#/empresa/${t.company_id}">${esc(t.company_name)}</a> · ` : ''}${t.due_at ? (t.overdue ? 'atrasada desde ' : 'até ') + when(t.due_at) : 'sem prazo'}</small></div><button class="small" onclick="doneTask(${t.id})">✓ Concluir</button></div>`).join('')}</div>` : '<p class="empty">Nenhuma tarefa em aberto.</p>')}
+    + `<div class="grid2" style="margin-top:14px">${panel('Tarefas em aberto', 'Follow-ups e atividades com prazo', tasks.length ? `<div>${tasks.map(t => `<div class="task ${t.overdue ? 'overdue' : ''}"><div class="main"><strong>${esc(t.title)}</strong><small>${t.company_id ? `<a class="src" href="#/empresa/${t.company_id}">${esc(t.company_name)}</a> · ` : ''}${t.due_at ? (t.overdue ? 'atrasada desde ' : 'até ') + when(t.due_at) : 'sem prazo'}</small></div><button class="small" data-crm-done-task="${t.id}">✓ Concluir</button></div>`).join('')}</div>` : '<p class="empty">Nenhuma tarefa em aberto.</p>')}
       ${panel('Regras do funil', '', `<p class="note">• “Perdido” exige motivo.<br>• Empresas na lista de supressão (“Não contatar”) não podem receber contato nem mudar de etapa até serem retiradas da lista em Configurações.<br>• Um novo contato antes do intervalo mínimo (Configurações) pede confirmação, para evitar abordagens repetidas.<br>• Registrar contato, resposta, reunião, proposta ou contrato avança a etapa automaticamente; nunca a faz voltar.</p>`)}</div>`;
+  $('crm-add-company').addEventListener('click', () => $('dlg-company').showModal());
+  document.querySelectorAll('[data-crm-done-task]').forEach(button =>
+    button.addEventListener('click', () => doneTask(Number(button.dataset.crmDoneTask))));
 }
 async function doneTask(id) {
   try { await send('/tasks/' + id, 'PATCH', { done: true }); toast('Tarefa concluída.'); route(); }
