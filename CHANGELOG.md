@@ -1,7 +1,7 @@
 # Changelog
 
 ## Não lançado
-- **Compras.gov.br**: coletor preparado para contratos públicos de cobrança/recuperação, com filtro por órgão e período; fonte permanece Planejada até coleta real validada e não persiste identificador de fornecedor que possa ser CPF.\n- **Cadência de follow-up**: configuração recebe uma sequência de dias (padrão 3, 7 e 14); o primeiro contato cria tarefas na Agenda e tarefas abertas são encerradas automaticamente quando a empresa responde ou entra em supressão/opt-out.\n- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
+- **Compras.gov.br**: coletor e endpoint de captação preparados para contratos públicos de cobrança/recuperação; achados aderentes entram como sinais históricos a confirmar, com deduplicação e `CaptureRun`. Nenhuma identidade de fornecedor é persistida. A fonte permanece Planejada até coleta real validada.\n- **Cadência de follow-up**: configuração recebe uma sequência de dias (padrão 3, 7 e 14); o primeiro contato cria tarefas na Agenda e tarefas abertas são encerradas automaticamente quando a empresa responde ou entra em supressão/opt-out.\n- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
   (cor `--faint` 3,4–3,8:1) e 8 seletores sem nome acessível. Cor ajustada para 4,7–5,5:1 nos fundos usados e
   `aria-label` em seletores e campos sem rótulo. Depois da correção: nenhuma violação A/AA nas 16 telas e no login.
 - Inicialização do servidor usa `lifespan` (o `@app.on_event`, obsoleto no FastAPI, saiu). Ícone do painel na aba do
