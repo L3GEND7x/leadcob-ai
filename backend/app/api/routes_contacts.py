@@ -160,6 +160,7 @@ def discover_from_site(company_id: int, db: Session = Depends(get_db)):
                 added += 1
         except HTTPException:
             pass
+    db.flush()
     if not c.institutional_email:
         email = db.query(BusinessContact).filter_by(company_id=c.id, kind="email").filter(
             BusinessContact.status != "invalido").order_by(BusinessContact.id).first()
@@ -177,6 +178,8 @@ def contact_map(company_id: int, db: Session = Depends(get_db)):
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(404, "Empresa não encontrada")
+    if is_blocked(db, c):
+        raise HTTPException(403, "Empresa em lista de supressão")
     contacts = db.query(BusinessContact).filter_by(company_id=c.id).all()
     opportunities = getattr(c, "opportunities", [])
     return build_contact_map(c, contacts, opportunities)
@@ -197,6 +200,7 @@ def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
 
     added = 0
     candidates = []
+    search_notes = []
 
     if c.website:
         try:
@@ -215,8 +219,9 @@ def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
     if not c.website and settings.brave_search_api_key:
         try:
             found = search(c, settings.brave_search_api_key)
-        except Exception as exc:
+        except Exception:
             found = []
+            search_notes.append("Pesquisa automática indisponível; nenhum domínio foi confirmado.")
         for result in found:
             current = db.query(DomainCandidate).filter_by(company_id=c.id, website=result["website"]).first()
             if not current:
@@ -277,7 +282,7 @@ def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
     result["domain_candidates"] = candidates
     result["added"] = added
     result["pages_read"] = discovered.get("pages_read", [])
-    result["notes"] = discovered.get("notes", [])
+    result["notes"] = search_notes + discovered.get("notes", [])
     return result
 
 
