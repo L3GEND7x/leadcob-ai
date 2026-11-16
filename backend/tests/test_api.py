@@ -177,3 +177,52 @@ def test_agents_error_returns_reason(monkeypatch):
         oid = c.get("/api/opportunities").json()[0]["id"]
         r = c.post(f"/api/agents/run/{oid}")
         assert r.status_code == 500 and "database is locked" in r.json()["detail"]
+
+
+def test_opportunities_filter_keywords_and_freelance():
+    from app.db.database import SessionLocal, ensure_schema
+    from app.db.models import Company, Opportunity
+
+    ensure_schema()
+    with SessionLocal() as db:
+        company = Company(name="FILTRO FREELA TESTE")
+        db.add(company); db.flush()
+        rows = [
+            Opportunity(company_id=company.id, kind="hiring", title="Freelancer de cobrança",
+                        description="Projeto freelance para cobrança B2B e recuperação de crédito",
+                        evidence="vaga publicada", source_name="teste", source_key="kw-freela-1",
+                        status="review", score=50),
+            Opportunity(company_id=company.id, kind="hiring", title="Analista de cobrança",
+                        description="Vaga efetiva CLT para cobrança B2B",
+                        evidence="vaga publicada", source_name="teste", source_key="kw-clt-1",
+                        status="review", score=50),
+            Opportunity(company_id=company.id, kind="hiring", title="Freelancer de design",
+                        description="Projeto freelance para design gráfico",
+                        evidence="vaga publicada", source_name="teste", source_key="kw-design-1",
+                        status="review", score=50),
+        ]
+        db.add_all(rows); db.commit(); cid = company.id
+
+    try:
+        with TestClient(app) as client:
+            keyword = client.get("/api/opportunities", params={"kind": "hiring", "keywords": "cobrança"}).json()
+            titles = {x["title"] for x in keyword if x["company_name"] == "FILTRO FREELA TESTE"}
+            assert titles == {"Freelancer de cobrança", "Analista de cobrança"}
+
+            only_freela = client.get("/api/opportunities", params={
+                "kind": "hiring", "keywords": "cobrança", "freelance_only": True
+            }).json()
+            titles = {x["title"] for x in only_freela if x["company_name"] == "FILTRO FREELA TESTE"}
+            assert titles == {"Freelancer de cobrança"}
+            assert next(x for x in only_freela if x["company_name"] == "FILTRO FREELA TESTE")["work_mode"] == "freelance"
+
+            multi = client.get("/api/opportunities", params={
+                "kind": "hiring", "keywords": "cobrança B2B", "freelance_only": True
+            }).json()
+            titles = {x["title"] for x in multi if x["company_name"] == "FILTRO FREELA TESTE"}
+            assert titles == {"Freelancer de cobrança"}
+    finally:
+        with SessionLocal() as db:
+            db.query(Opportunity).filter(Opportunity.source_key.in_(["kw-freela-1", "kw-clt-1", "kw-design-1"])).delete(synchronize_session=False)
+            db.query(Company).filter_by(id=cid).delete()
+            db.commit()
