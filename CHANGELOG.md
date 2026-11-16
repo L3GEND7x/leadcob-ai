@@ -1,7 +1,7 @@
 # Changelog
 
 ## Não lançado
-- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
+- **Retenção LGPD de contatos**: mecanismo de anonimização para contatos institucionais inválidos ou de empresas suprimidas; permanece desativado até a proprietária configurar `contact_retention_days`, sem prazo presumido pelo sistema.\n- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
   (cor `--faint` 3,4–3,8:1) e 8 seletores sem nome acessível. Cor ajustada para 4,7–5,5:1 nos fundos usados e
   `aria-label` em seletores e campos sem rótulo. Depois da correção: nenhuma violação A/AA nas 16 telas e no login.
 - Inicialização do servidor usa `lifespan` (o `@app.on_event`, obsoleto no FastAPI, saiu). Ícone do painel na aba do
