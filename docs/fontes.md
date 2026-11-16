@@ -58,3 +58,7 @@ Verificado em 2026-11-09. Fonte única: `config/sources.json` (também em `GET /
 - O DataJud público mede volume e tipo de cobrança judicial; **não** identifica empresas.
 - Dados de pessoas físicas (sócios/QSA, e-mail e telefone cadastrais, empresário individual/MEI) não são importados por padrão.
 - Links recebidos com parâmetros de rastreamento (ex.: `utm_source`) são gravados sem eles.
+
+
+### Querido Diário — diários oficiais municipais
+**Planejada.** Conector preparado com testes simulados; busca por código IBGE e palavra-chave. [NECESSÁRIO CONFERIR] coleta real antes de classificar como integrada.
