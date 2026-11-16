@@ -383,7 +383,7 @@ async function viewEmpresa(id) {
       <p>${esc(s.source)} · captado em ${when(s.captured_at)}${s.deadline ? ' · prazo ' + when(s.deadline) : ''}</p><p>Leitura: ${esc(s.reading)}</p>${s.excerpt ? `<p class="muted">${esc(s.excerpt)}</p>` : ''}<p class="muted">⚠ ${esc(s.caveat)}</p></div>`).join('')
     : '<p class="empty">Nenhum sinal captado para esta empresa. A pontuação vem do cadastro (fato), do porte e capital (indício) e do setor (hipótese).</p>';
   const timeline = c.timeline.length ? `<ul class="timeline">${c.timeline.map(t => `<li class="${esc(t.kind)}"><small>${when(t.at)} · ${esc(t.kind_label)}${t.channel ? ' · ' + esc(t.channel) : ''}${t.outcome ? ' · ' + esc(t.outcome) : ''}</small><p>${esc(t.summary)}</p></li>`).join('')}</ul>` : '<p class="empty">Sem histórico.</p>';
-  const tasks = c.tasks.length ? c.tasks.map(t => `<div class="task ${!t.done && t.due_at && new Date(t.due_at) < new Date() ? 'overdue' : ''}"><div class="main"><strong>${t.done ? '✓ ' : ''}${esc(t.title)}</strong><small>${t.due_at ? 'até ' + when(t.due_at) : 'sem prazo'}${t.done ? ' · concluída' : ''}</small></div>${t.done ? '' : `<button class="small" onclick="doneTask(${t.id})">✓ Concluir</button>`}</div>`).join('') : '<p class="empty">Nenhuma tarefa.</p>';
+  const tasks = c.tasks.length ? c.tasks.map(t => `<div class="task ${!t.done && t.due_at && new Date(t.due_at) < new Date() ? 'overdue' : ''}"><div class="main"><strong>${t.done ? '✓ ' : ''}${esc(t.title)}</strong><small>${t.due_at ? 'até ' + when(t.due_at) : 'sem prazo'}${t.done ? ' · concluída' : ''}</small></div>${t.done ? '' : `<button class="small" data-sheet-done-task="${t.id}">✓ Concluir</button>`}</div>`).join('') : '<p class="empty">Nenhuma tarefa.</p>';
   const mc = c.market_context;
   const market = mc ? `<p class="note">${esc(mc.aviso)}</p><div class="kpi">${fmt(mc.total_processos)}</div><p class="note">processos de cobrança na Justiça Estadual de ${esc(mc.uf)} (${esc(mc.periodo?.inicio || '')} a ${esc(mc.periodo?.fim || '')})</p>${(mc.tipos || []).map(t => `<div class="bar"><span>${esc(t.label)}</span><b>${fmt(t.processos)}</b></div>`).join('')}`
     : '<p class="empty">Sem fotografia do DataJud para a UF desta empresa. Gere em “Radar de mercado”.</p>';
@@ -409,10 +409,10 @@ async function viewEmpresa(id) {
         <label class="f full">Anotações<textarea name="notes" maxlength="5000">${esc(c.notes || '')}</textarea></label>
         <div class="end"><button class="primary">Salvar</button></div></form>`)}
       ${panel('Contatos institucionais', 'Só canais da empresa (nunca pessoais), com a origem registrada', suppressed ? '<p class="note">Empresa na lista de supressão.</p>' : `<div id="co-contacts"><p class="note">Carregando…</p></div>
-        <div class="actions" style="margin:8px 0"><button class="small" onclick="searchDomain(${JSON.stringify(c.id)})">⌕ Sugerir sites pelo CNPJ</button>${c.website ? `<button class="small" onclick="discoverContacts(${JSON.stringify(c.id)})">⌕ Buscar canais no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
+        <div class="actions" style="margin:8px 0"><button class="small" id="sheet-domain-search">⌕ Sugerir sites pelo CNPJ</button>${c.website ? `<button class="small" id="sheet-discover-contacts">⌕ Buscar canais no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
         ${c.website ? '' : '<p class="note">Sem site cadastrado: pesquise, confira que é o site oficial da empresa e salve-o no campo "Site institucional" acima.</p>'}
         <div id="domain-candidates" aria-live="polite"></div><form id="f-contact" class="form"><label class="f">Canal<select name="kind"><option value="email">E-mail</option><option value="website">Site</option><option value="phone">Telefone</option><option value="whatsapp">WhatsApp</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select></label><label class="f">Valor<input name="value" required minlength="3" maxlength="500"></label><label class="f full">Onde você encontrou (fonte)<input name="source_name" required minlength="2" maxlength="120" placeholder="Ex.: página Fale Conosco do site oficial"></label><label class="f full">URL da fonte (opcional)<input name="source_url" maxlength="1000"></label><div class="end"><button>＋ Adicionar contato</button></div></form>`)}
-      ${panel('Abordagem sugerida', 'Gerada com os fatos desta ficha. Nada é enviado pelo sistema.', suppressed ? '<p class="note">Empresa na lista de supressão: nenhuma abordagem é gerada.</p>' : '<div id="approach"><button class="primary" onclick="loadApproach(' + JSON.stringify(c.id) + ')">✉ Gerar e-mail, WhatsApp, roteiro e follow-ups</button></div>')}
+      ${panel('Abordagem sugerida', 'Gerada com os fatos desta ficha. Nada é enviado pelo sistema.', suppressed ? '<p class="note">Empresa na lista de supressão: nenhuma abordagem é gerada.</p>' : '<div id="approach"><button class="primary" id="sheet-load-approach">✉ Gerar e-mail, WhatsApp, roteiro e follow-ups</button></div>')}
       ${panel('Registrar interação', c.last_outreach_at ? 'Último contato em ' + when(c.last_outreach_at) : 'Nenhum contato registrado', `<form id="f-int" class="form">
         <label class="f">Tipo<select name="kind">${opts(KINDS, 'contato')}</select></label>
         <label class="f">Canal<select name="channel">${opts(CHANNELS, 'email', '—')}</select></label>
@@ -452,7 +452,9 @@ async function loadCompanyContacts(id) {
   try {
     const d = await api('/contacts?company_id=' + encodeURIComponent(id));
     const ST = { a_verificar: ['A VERIFICAR', 'warn'], verificado: ['VERIFICADO', 'ok'], invalido: ['INVÁLIDO', 'bad'] };
-    box.innerHTML = d.items.length ? d.items.map(x => `<div class="task"><div class="main"><strong>${esc(x.value)}</strong><small>${esc(x.kind)} · ${x.source_url ? `<a class="src" href="${esc(safeHttpUrl(x.source_url))}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name)} <span class="badge ${ST[x.status][1]}">${ST[x.status][0]}</span></small></div>${contactAction(x)}${x.status !== 'verificado' ? `<button class="small" onclick="verifyContact(${x.id},'verificado')">✓ Confirmar</button>` : ''}${x.status !== 'invalido' ? `<button class="small" onclick="verifyContact(${x.id},'invalido')">✕ Inválido</button>` : ''}</div>`).join('') : '<p class="empty">Nenhum contato institucional cadastrado.</p>';
+    box.innerHTML = d.items.length ? d.items.map(x => `<div class="task"><div class="main"><strong>${esc(x.value)}</strong><small>${esc(x.kind)} · ${x.source_url ? `<a class="src" href="${esc(safeHttpUrl(x.source_url))}" target="_blank" rel="noopener">${esc(x.source_name)}</a>` : esc(x.source_name)} <span class="badge ${ST[x.status][1]}">${ST[x.status][0]}</span></small></div>${contactAction(x)}${x.status !== 'verificado' ? `<button class="small" data-verify-contact="${x.id}" data-contact-status="verificado">✓ Confirmar</button>` : ''}${x.status !== 'invalido' ? `<button class="small" data-verify-contact="${x.id}" data-contact-status="invalido">✕ Inválido</button>` : ''}</div>`).join('') : '<p class="empty">Nenhum contato institucional cadastrado.</p>';
+    box.querySelectorAll('[data-verify-contact]').forEach(button =>
+      button.addEventListener('click', () => verifyContact(Number(button.dataset.verifyContact), button.dataset.contactStatus)));
   } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Contatos indisponíveis.'))}</p>`; }
 }
 async function discoverContacts(id) {
@@ -470,6 +472,11 @@ async function verifyContact(cid, status) {
 }
 function bindSheet(c) {
   loadCompanyContacts(c.id);
+  document.querySelectorAll('[data-sheet-done-task]').forEach(button =>
+    button.addEventListener('click', () => doneTask(Number(button.dataset.sheetDoneTask))));
+  $('sheet-domain-search')?.addEventListener('click', () => searchDomain(c.id));
+  $('sheet-discover-contacts')?.addEventListener('click', () => discoverContacts(c.id));
+  $('sheet-load-approach')?.addEventListener('click', () => loadApproach(c.id));
   const fc = $('f-contact');
   if (fc) fc.addEventListener('submit', async e => {
     e.preventDefault();
