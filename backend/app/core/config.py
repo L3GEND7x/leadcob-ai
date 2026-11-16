@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     openai_input_usd_per_million: float = 0
     openai_output_usd_per_million: float = 0
     brave_search_api_key: str = ""
+    portal_transparencia_api_key: str = ""
     # exemplos fictícios só quando pedidos explicitamente (nunca em uso real)
     demo_seed: bool = False
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
