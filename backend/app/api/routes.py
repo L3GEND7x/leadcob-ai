@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.agents.pipeline import run_pipeline
-from app.collectors import cnpj_api, datajud, jobboards, pncp
+from app.collectors import cnpj_api, datajud, jobboards, pncp, querido_diario
 from app.db.database import get_db
 from app.db.models import CaptureRun, Company, MarketSnapshot, Opportunity
 from app.schemas import OpportunityCreate
@@ -296,6 +296,111 @@ def capture_pncp(mode: str = Query(default="busca", pattern="^(busca|varredura)$
             "discarded": discarded, "proven": proven, "to_confirm": len(stored) - proven,
             "discarded_samples": discarded_samples, "errors": batch["errors"][:10], "message": run.message, "fallback": fallback,
             "duplicates_skipped": updated}  # compatibilidade com o frontend v0.2
+
+
+
+def _qd_source_key(item: dict) -> str:
+    raw = "|".join([
+        item.get("territory_id") or "",
+        item.get("published") or "",
+        item.get("url") or "",
+        item.get("object") or "",
+    ])
+    return "querido-diario:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _apply_qd_item(o: Opportunity, item: dict):
+    score, reason = score_procurement(item)
+    o.title = item["title"]
+    o.description = (
+        "Publicação em diário oficial municipal com termos aderentes a cobrança/recuperação. "
+        "Confirmar objeto, procedimento de contratação, prazo e condições antes de qualquer abordagem."
+    )
+    o.evidence = " | ".join([
+        "Fonte: Querido Diário (diário oficial municipal)",
+        f"Município: {item.get('city') or 'não informado'} / {item.get('state') or '—'}",
+        f"Publicação: {item.get('published') or 'não informada'}",
+        f"Trecho: {(item.get('object') or 'não informado')[:900]}",
+        f"Aderência: {item.get('relevance') or 'não classificada'} — {item.get('relevance_reason') or 'sem motivo'}",
+        f"Termos: {', '.join(item.get('matched_terms') or []) or 'não informados'}",
+    ]) + "."
+    o.source_name = "Querido Diário — diário oficial municipal"
+    o.source_url = item.get("url")
+    o.origin_url = item.get("url")
+    o.score, o.score_reason = score, reason
+    o.relevance, o.relevance_reason = item.get("relevance"), item.get("relevance_reason")
+    o.opportunity_class = item.get("opportunity_class") or "prazo_nao_informado"
+    o.evidence_level = item.get("evidence_level") or "fonte_primaria_diario"
+    o.commercial_signal = "sinal_a_confirmar"
+    o.deadline = None
+    o.estimated_value = None
+    o.modality_name = "Diário oficial municipal"
+    o.confidence = 0.55 if item.get("relevance") == "alta" else 0.35
+    o.is_verified = False
+
+
+@router.post("/capture/querido-diario")
+def capture_querido_diario(
+    territory_ids: str = Query(min_length=7, max_length=300),
+    querystring: str | None = Query(default=None, min_length=3, max_length=120),
+    max_pages: int = Query(default=1, ge=1, le=3),
+    db: Session = Depends(get_db),
+):
+    ids = [x.strip() for x in territory_ids.split(",") if x.strip()]
+    if not ids or any(not x.isdigit() or len(x) != 7 for x in ids):
+        raise HTTPException(400, "territory_ids deve conter códigos IBGE municipais de 7 dígitos, separados por vírgula.")
+    terms = [querystring.strip()] if querystring else None
+    run = CaptureRun(source_name="Querido Diário — diários municipais", status="running")
+    db.add(run); db.commit(); db.refresh(run)
+    try:
+        batch = querido_diario.search_gazettes(ids, terms=terms, max_pages=max_pages)
+    except Exception as exc:
+        batch = {"records": [], "pages_read": 0, "errors": [f"{type(exc).__name__}: {str(exc)[:300]}"]}
+
+    if batch.get("pages_read", 0) == 0:
+        run.status = "failed"
+        run.message = "Nenhuma página do Querido Diário foi lida. " + " ; ".join(batch.get("errors", [])[:5])
+        run.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(502, "O Querido Diário não respondeu ou a consulta não pôde ser validada. Tente novamente mais tarde.")
+
+    created = updated = discarded = 0
+    for item in batch.get("records", []):
+        if item.get("relevance") not in {"alta", "revisar"}:
+            discarded += 1
+            continue
+        key = _qd_source_key(item)
+        o = db.query(Opportunity).filter_by(source_key=key).first()
+        if o:
+            updated += 1
+        else:
+            name = item.get("company_name") or "Município não identificado"
+            company = (db.query(Company)
+                       .filter(func.lower(Company.name) == name.lower(),
+                               Company.state == item.get("state"))
+                       .first())
+            if not company:
+                company = Company(name=name, segment="Órgão público",
+                                  city=item.get("city"), state=item.get("state"))
+                db.add(company); db.flush()
+            o = Opportunity(company_id=company.id, kind="public_procurement",
+                            source_key=key, status="review")
+            db.add(o); created += 1
+        _apply_qd_item(o, item)
+
+    run.status = "partial" if batch.get("errors") else "completed"
+    run.records_seen = len(batch.get("records", []))
+    run.records_created = created
+    run.records_skipped = discarded
+    run.message = (f"páginas lidas: {batch.get('pages_read', 0)}; novas: {created}; "
+                   f"atualizadas: {updated}; descartadas por aderência: {discarded}; "
+                   f"falhas: {len(batch.get('errors', []))}")
+    run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"run_id": run.id, "status": run.status, "source": "Querido Diário",
+            "pages_read": batch.get("pages_read", 0), "found": len(batch.get("records", [])),
+            "created": created, "updated": updated, "discarded": discarded,
+            "errors": batch.get("errors", [])[:10], "message": run.message}
 
 
 @router.get("/capture/runs")
