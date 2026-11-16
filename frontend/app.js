@@ -287,7 +287,7 @@ async function viewSinais() {
         <input id="keywords" placeholder="Palavras-chave (ex.: cobrança)" aria-label="Palavras-chave da vaga">
         <label class="check"><input id="freelance-only" type="checkbox"> Somente freelance</label>
         <select id="kind" aria-label="Frente" onchange="render()"><option value="">Todas as frentes</option><option value="hiring">Vagas de cobrança</option><option value="outsourcing">Terceirização</option><option value="public_procurement">Editais públicos</option></select>
-        <select id="status" aria-label="Status" onchange="load()"><option value="">Todos os status</option><option value="review">Em análise</option><option value="qualified">Qualificado</option><option value="discarded">Descartado</option></select>
+        <select id="status" aria-label="Status" ><option value="">Todos os status</option><option value="review">Em análise</option><option value="qualified">Qualificado</option><option value="discarded">Descartado</option></select>
         <select id="signal" aria-label="Tipo de sinal" onchange="render()"><option value="">Comprovadas e sinais</option><option value="oportunidade_comprovada">Só comprovadas</option><option value="sinal_a_confirmar">Só sinais a confirmar</option></select></div>
       <div class="tablebox"><table><thead><tr><th>Empresa / oportunidade</th><th>Frente</th><th>Localização</th><th>Origem / prazo</th><th>Score</th><th>Status</th><th></th></tr></thead><tbody id="rows"><tr><td colspan="7">Carregando…</td></tr></tbody></table></div>
       <div class="grid2" style="margin-top:14px">${panel('Pipeline de agentes', 'Rode pelo botão ↗ de cada linha', `<div class="rows">
@@ -296,7 +296,16 @@ async function viewSinais() {
         <div class="row"><span class="pill">03</span><div class="main"><strong>Auditoria</strong><small>Lista o que falta confirmar (edital, prazo, interesse em terceirizar)</small></div></div>
         <div class="row"><span class="pill">04</span><div class="main"><strong>Supervisor</strong><small>Orquestra e exige revisão humana</small></div></div></div><div id="lastrun" class="note"></div>`)}
         ${panel('Como ler', '', `<p class="note">Edital público não é oportunidade privada: a contratação segue a lei de licitações e o edital. Vaga de cobrança mostra que a empresa estrutura a área, mas não comprova interesse em terceirizar. Nenhum sinal desta tela prova que a empresa tem inadimplência.</p>`)}</div>`;
+    const refresh = () => {
+      clearTimeout(viewSinais._kw);
+      viewSinais._kw = setTimeout(() => { if (CUR.v === 'sinais') viewSinais(); }, 250);
+    };
+    $('keywords').addEventListener('input', refresh);
+    $('freelance-only').addEventListener('change', refresh);
+    $('status').addEventListener('change', refresh);
   }
+  const sequence = (viewSinais._sequence || 0) + 1;
+  viewSinais._sequence = sequence;
   const status = $('status').value;
   const params = new URLSearchParams();
   if (status) params.set('status', status);
@@ -304,16 +313,12 @@ async function viewSinais() {
   if (keywords) params.set('keywords', keywords);
   if ($('freelance-only')?.checked) params.set('freelance_only', 'true');
   const [s, list] = await Promise.all([api('/dashboard/summary'), api('/opportunities' + (params.toString() ? '?' + params : ''))]);
+  if (CUR.v !== 'sinais' || sequence !== viewSinais._sequence) return;
   data = list;
   const kp = (l, v, sub, cls = '') => `<article class="${cls}"><small>${l}</small><strong>${fmt(v)}</strong><span>${sub}</span></article>`;
   $('opp-kpis').innerHTML = kp('Sinais mapeados', s.total, 'base atual') + kp('Vagas de cobrança', s.hiring, 'empresas contratando')
     + kp('Editais públicos', s.public_procurement, 'PNCP') + kp('Comprovadas', s.proven, 'edital aberto · aderente · API oficial', 'accent')
     + kp('A confirmar', s.to_confirm, `qualificados: ${fmt(s.qualified)} · score médio ${s.average_score}`);
-  $('keywords')?.addEventListener('input', () => {
-    clearTimeout(viewSinais._kw);
-    viewSinais._kw = setTimeout(viewSinais, 250);
-  });
-  $('freelance-only')?.addEventListener('change', viewSinais);
   render(); lastRun();
 }
 function render() {
