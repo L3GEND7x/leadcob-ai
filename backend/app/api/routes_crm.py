@@ -350,7 +350,7 @@ def add_interaction(company_id: int, payload: InteractionIn, db: Session = Depen
             raise HTTPException(409, f"Último contato em {lo.astimezone(MANAUS):%d/%m/%Y}, há menos de {gap} dias. "
                                      "Confirme para registrar outro contato (evita abordagens repetidas).")
     current = stage_of(c)
-    first_outreach = payload.kind == "contato" and current in NOT_APPROACHED and not c.interactions
+    first_outreach = payload.kind == "contato" and current in NOT_APPROACHED and not any(i.kind in OUTREACH_KINDS for i in c.interactions)
     it = log_interaction(db, c, payload.kind, payload.summary, payload.channel, payload.outcome, payload.happened_at)
     target = KIND_TO_STAGE.get(payload.kind)
     if (target and current not in ("perdido", "nao_contatar") and not suppression_for(db, c)
