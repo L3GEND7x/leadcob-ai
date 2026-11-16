@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.agents.pipeline import run_pipeline
@@ -119,7 +119,6 @@ def list_opportunities(kind: str | None = None, status: str | None = None, signa
                 Opportunity.title.ilike(pattern),
                 Opportunity.description.ilike(pattern),
                 Opportunity.evidence.ilike(pattern),
-                Company.name.ilike(pattern) if "companies" in str(query) else Opportunity.title.ilike(pattern),
             ))
     if freelance_only:
         query = query.filter(Opportunity.kind == "hiring")
