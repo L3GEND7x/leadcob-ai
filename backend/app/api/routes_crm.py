@@ -489,6 +489,7 @@ class SettingsIn(BaseModel):
     remetente_empresa: str | None = Field(default=None, max_length=160)
     remetente_contato: str | None = Field(default=None, max_length=200)
     follow_up_cadence_days: list[int] | None = None
+    contact_retention_days: int | None = Field(default=None, ge=1, le=3650)
 
 
 @router.get("/settings")
