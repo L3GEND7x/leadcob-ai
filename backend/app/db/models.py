@@ -38,6 +38,7 @@ class Company(Base):
     opportunities = relationship("Opportunity", back_populates="company")
     interactions = relationship("Interaction", back_populates="company", order_by="Interaction.happened_at")
     tasks = relationship("Task", back_populates="company", order_by="Task.due_at")
+    business_contacts = relationship("BusinessContact", back_populates="company", order_by="BusinessContact.id")
 class Opportunity(Base):
     __tablename__ = "opportunities"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -160,6 +161,7 @@ class BusinessContact(Base):
     status: Mapped[str] = mapped_column(String(20), default="a_verificar")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     checked_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    company = relationship("Company", back_populates="business_contacts")
     __table_args__ = (UniqueConstraint("company_id", "kind", "value", name="uq_business_contact"),)
 
 
