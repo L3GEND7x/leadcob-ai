@@ -58,3 +58,7 @@ Verificado em 2026-11-09. Fonte única: `config/sources.json` (também em `GET /
 - O DataJud público mede volume e tipo de cobrança judicial; **não** identifica empresas.
 - Dados de pessoas físicas (sócios/QSA, e-mail e telefone cadastrais, empresário individual/MEI) não são importados por padrão.
 - Links recebidos com parâmetros de rastreamento (ex.: `utm_source`) são gravados sem eles.
+
+
+### Portal da Transparência — CEIS/CNEP
+**Planejada.** Consulta por CNPJ implementada, mas depende da chave da proprietária e de validação real antes de ser considerada integrada. O resultado é alerta de conformidade e nunca prova de inadimplência.
