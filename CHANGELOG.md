@@ -1,10 +1,14 @@
 # Changelog
 
 ## Não lançado
+- **Contatos**: pesquisa pública usa termos naturais, páginas de secretarias/licitações entram na descoberta, caixas funcionais públicas são aceitas e falhas externas são explicitadas. Mapa respeita supressão.
 - **Navegação comercial**: Assistente LeadCob é retirado da interface e deixa de carregar no navegador; menu passa a priorizar Operação diária → Prospecção → Relacionamento → Resultados.
 - **Filtro de vagas**: Sinais/Vagas ganha pesquisa por palavras-chave em título, descrição e evidência, além da opção `Somente freelance`; múltiplas palavras são cumulativas e vagas freelance recebem identificação visual.
 - **Inteligência do dia — fonte e contato**: cada card passa a mostrar botão explícito para abrir a fonte original, mapa de contato, contactabilidade, canais institucionais, setores/cargos sugeridos e ação para buscar contatos agora.
-- **Mapa de contato**: leads passam a exibir contactabilidade 0–100, canais institucionais priorizados, setores/cargos sugeridos e enriquecimento sob demanda de site/canais com origem rastreável; sem contatos pessoais e sem envio automático.\n- **Querido Diário**: coletor e endpoint de captação preparados para busca por código IBGE e palavra-chave; achados aderentes entram no CRM como sinais a confirmar, com `CaptureRun` e deduplicação. A fonte permanece Planejada até uma coleta real ser validada.\n- **Cadência de follow-up**: configuração recebe uma sequência de dias (padrão 3, 7 e 14); o primeiro contato cria tarefas na Agenda e tarefas abertas são encerradas automaticamente quando a empresa responde ou entra em supressão/opt-out.\n- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
+- **Mapa de contato**: leads passam a exibir contactabilidade 0–100, canais institucionais priorizados, setores/cargos sugeridos e enriquecimento sob demanda de site/canais com origem rastreável; sem contatos pessoais e sem envio automático.
+- **Querido Diário**: coletor e endpoint de captação preparados para busca por código IBGE e palavra-chave; achados aderentes entram no CRM como sinais a confirmar, com `CaptureRun` e deduplicação. A fonte permanece Planejada até uma coleta real ser validada.
+- **Cadência de follow-up**: configuração recebe uma sequência de dias (padrão 3, 7 e 14); o primeiro contato cria tarefas na Agenda e tarefas abertas são encerradas automaticamente quando a empresa responde ou entra em supressão/opt-out.
+- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
   (cor `--faint` 3,4–3,8:1) e 8 seletores sem nome acessível. Cor ajustada para 4,7–5,5:1 nos fundos usados e
   `aria-label` em seletores e campos sem rótulo. Depois da correção: nenhuma violação A/AA nas 16 telas e no login.
 - Inicialização do servidor usa `lifespan` (o `@app.on_event`, obsoleto no FastAPI, saiu). Ícone do painel na aba do
