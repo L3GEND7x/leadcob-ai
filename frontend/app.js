@@ -589,6 +589,8 @@ async function viewConfig() {
         <label class="f">Seu nome (assinatura das abordagens)<input name="remetente_nome" maxlength="120" value="${esc(s.remetente_nome || '')}"></label>
         <label class="f">Sua empresa<input name="remetente_empresa" maxlength="160" value="${esc(s.remetente_empresa || '')}"></label>
         <label class="f full">Contato institucional para a assinatura<input name="remetente_contato" maxlength="200" value="${esc(s.remetente_contato || '')}"></label>
+        <label class="f">Retenção de contatos inválidos/suprimidos (dias)<input name="contact_retention_days" type="number" min="1" max="3650" value="${s.contact_retention_days == null ? '' : esc(s.contact_retention_days)}" placeholder="Desativado"></label>
+        <p class="note full">Deixe vazio para manter a anonimização automática desativada. Defina o prazo somente depois de aprovar a política de retenção.</p>
         <div class="end"><button class="primary">Salvar configurações</button></div></form>`)}
       ${panel('Lista de supressão (não contatar)', 'Empresas que pediram para não receber contato ou que você bloqueou', `${sup.length ? `<div>${sup.map(x => `<div class="task"><div class="main"><strong>${x.company_id ? `<a class="src" href="#/empresa/${x.company_id}">${esc(x.company_name || x.cnpj)}</a>` : esc(x.company_name || x.cnpj || '—')}</strong><small>${esc(x.cnpj || '')}${x.reason ? ' · ' + esc(x.reason) : ''} · desde ${day(x.created_at)}</small></div><button class="small" onclick="unsuppress(${x.id})">Retirar</button></div>`).join('')}</div>` : '<p class="empty">Lista vazia.</p>'}
         <form id="f-addsup" class="form" style="margin-top:10px"><label class="f">CNPJ<input name="cnpj" required placeholder="00.000.000/0000-00"></label><label class="f">Motivo<input name="reason" maxlength="1000"></label><div class="end"><button>⛔ Incluir</button></div></form>`)}
@@ -597,7 +599,13 @@ async function viewConfig() {
   $('f-set').addEventListener('submit', async e => {
     e.preventDefault();
     const f = e.target, ufs = [...f.querySelectorAll('input[name=uf]:checked')].map(i => i.value);
-    try { await send('/settings', 'PUT', { ufs_atuacao: ufs, dias_entre_contatos: Number(f.dias.value), servico: f.servico.value.trim(), remetente_nome: f.remetente_nome.value.trim(), remetente_empresa: f.remetente_empresa.value.trim(), remetente_contato: f.remetente_contato.value.trim() }); toast('Configurações salvas.'); viewConfig(); }
+    const retentionRaw = f.contact_retention_days.value.trim();
+    const retentionDays = retentionRaw ? Number(retentionRaw) : null;
+    if (retentionDays !== null && (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 3650)) {
+      toast('Retenção inválida. Informe um número inteiro entre 1 e 3650 dias ou deixe vazio para desativar.', 7000, true);
+      return;
+    }
+    try { await send('/settings', 'PUT', { ufs_atuacao: ufs, dias_entre_contatos: Number(f.dias.value), contact_retention_days: retentionDays, servico: f.servico.value.trim(), remetente_nome: f.remetente_nome.value.trim(), remetente_empresa: f.remetente_empresa.value.trim(), remetente_contato: f.remetente_contato.value.trim() }); toast('Configurações salvas.'); viewConfig(); }
     catch (err) { toast(errMsg(err), 7000, true); }
   });
   $('f-addsup').addEventListener('submit', async e => {
