@@ -676,7 +676,7 @@ async function viewCarteira(id, ref) {
   const max = Math.max(1, ...d.faixas.map(b => b.valor));
   V().innerHTML = `<p style="margin:0 0 10px"><a class="src" href="#/cobranca">← Carteiras</a></p>`
     + head('Carteira · ' + esc(d.source_note || 'origem não informada'), esc(d.name), `Análise na data de referência ${esc(d.data_referencia.split('-').reverse().join('/'))}.`,
-      `<input type="date" id="pf-ref" value="${esc(d.data_referencia)}" style="width:auto"><button onclick="viewCarteira(${JSON.stringify(d.id)}, $('pf-ref').value)">Recalcular</button><button onclick="delPortfolio(${JSON.stringify(d.id)})">Excluir</button>`)
+      `<input type="date" id="pf-ref" value="${esc(d.data_referencia)}" style="width:auto"><button id="portfolio-recalculate">Recalcular</button><button id="portfolio-delete">Excluir</button>`)
     + `<section class="kpis">
         <article><small>Valor em aberto</small><strong>${money(r.valor_aberto)}</strong><span>${fmt(r.titulos_abertos)} título(s)</span></article>
         <article class="accent"><small>Valor vencido</small><strong>${money(r.valor_vencido)}</strong><span>${r.pct_vencido.toLocaleString('pt-BR')}% do aberto</span></article>
@@ -685,6 +685,8 @@ async function viewCarteira(id, ref) {
         <article><small>Pagos</small><strong>${fmt(r.titulos_pagos)}</strong><span>${money(r.valor_pago)}</span></article></section>`
     + panel('Faixas de atraso e estratégia sugerida', 'Sugestões de rotina operacional. Decisão e execução são humanas.', d.faixas.map(b => `<div class="bar"><span>${esc(b.label)} · ${fmt(b.titulos)} título(s)</span><b>${money(b.valor)} · ${b.pct_valor.toLocaleString('pt-BR')}%</b><i style="--w:${(100 * b.valor / max).toFixed(1)}%"></i><small>${esc(b.estrategia)}</small></div>`).join(''))
     + `<div class="warnbox">${d.avisos.map(esc).join('<br>')}</div><div id="portfolio-items"></div>`;
+  $('portfolio-recalculate').addEventListener('click', () => viewCarteira(d.id, $('pf-ref').value));
+  $('portfolio-delete').addEventListener('click', () => delPortfolio(d.id));
   renderPortfolioItems(d);
 }
 async function delPortfolio(id) {
