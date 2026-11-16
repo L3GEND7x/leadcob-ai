@@ -141,7 +141,7 @@ def test_login_rate_limit_rejects_invalid_x_real_ip(monkeypatch):
     with TestClient(app) as c:
         bad = {'username': 'admin', 'password': 'errada'}
         for _ in range(security.LOGIN_IP_FAILURE_LIMIT):
-            assert c.post('/api/auth/login', json=bad, headers={'X-Real-IP': 'não-é-ip'}).status_code == 401
+            assert c.post('/api/auth/login', json=bad, headers={'X-Real-IP': 'not-an-ip'}).status_code == 401
         assert c.post('/api/auth/login', json=bad, headers={'X-Real-IP': 'outro-texto'}).status_code == 429
 
 
