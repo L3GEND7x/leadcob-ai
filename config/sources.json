@@ -209,6 +209,15 @@
       "official": false,
       "use": "Identificar QUAIS empresas cobram na Justiça (o DataJud público não traz partes)",
       "status": "NÃO conectada; exige contrato, avaliação de custo e de base legal"
+    },
+    {
+      "category": "planejada",
+      "name": "Portal da Transparência — CEIS/CNEP",
+      "url": "https://api.portaldatransparencia.gov.br/",
+      "official": true,
+      "documented": true,
+      "use": "Alerta de conformidade por CNPJ da pessoa jurídica na ficha da empresa",
+      "status": "Consulta implementada com testes simulados; exige PORTAL_TRANSPARENCIA_API_KEY. [NECESSÁRIO CONFERIR] chamada real antes de marcar como integrada e testada."
     }
   ]
 }
