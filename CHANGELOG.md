@@ -1,7 +1,7 @@
 # Changelog
 
 ## Não lançado
-- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
+- **CSP (estrutura base)**: remove handlers JavaScript inline do botão Sair e dos dialogs estáticos; listeners passam para arquivos JS externos. O snapshot publicado foi ajustado para o novo seletor. `unsafe-inline` ainda permanece enquanto outras telas geradas pelo frontend usam handlers inline.\n- **Acessibilidade (WCAG 2.2 AA)**: auditoria com axe-core no app rodando apontava 188 textos com contraste baixo
   (cor `--faint` 3,4–3,8:1) e 8 seletores sem nome acessível. Cor ajustada para 4,7–5,5:1 nos fundos usados e
   `aria-label` em seletores e campos sem rótulo. Depois da correção: nenhuma violação A/AA nas 16 telas e no login.
 - Inicialização do servidor usa `lifespan` (o `@app.on_event`, obsoleto no FastAPI, saiu). Ícone do painel na aba do
