@@ -62,3 +62,7 @@ Verificado em 2026-11-09. Fonte única: `config/sources.json` (também em `GET /
 
 ### Querido Diário — diários oficiais municipais
 **Planejada.** Conector preparado com testes simulados; busca por código IBGE e palavra-chave. [NECESSÁRIO CONFERIR] coleta real antes de classificar como integrada.
+
+
+### Banco Central — IFData
+**Planejada.** O Banco Central publica o IFData em API/OData e JSON, com atualização trimestral. A fonte deve servir apenas como perfil de instituição financeira. **[NECESSÁRIO CONFERIR]** qual campo oficial representa o CNPJ correto para vinculação por empresa; enquanto isso não for confirmado em resposta/documentação real, nenhum parser é implementado.
