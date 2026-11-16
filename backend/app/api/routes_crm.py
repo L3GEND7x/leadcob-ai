@@ -20,6 +20,7 @@ from app.services.crm import (CHANNELS, CLOSED, CONTACTED, INTERACTION_KINDS, MA
                               last_outreach, log_interaction, stage_of, suppression_for, close_follow_up_tasks)
 from app.services.crm import now as crm_now
 from app.services.lead_score import score_company, signal_strength
+from app.services.contactability import build_map as build_contact_map
 from app.services.segments import SEGMENTS, debt_types_for, profile_for
 
 router = APIRouter(prefix="/api")
@@ -56,7 +57,7 @@ def years_active(c) -> float | None:
 
 
 def _with_relations(q):
-    return q.options(selectinload(Company.opportunities), selectinload(Company.interactions), selectinload(Company.tasks))
+    return q.options(selectinload(Company.opportunities), selectinload(Company.interactions), selectinload(Company.tasks), selectinload(Company.business_contacts))
 
 
 def _suppressed_ids(db) -> tuple[set, set]:
@@ -86,6 +87,7 @@ def summarize(c, settings, sup) -> dict:
         "score": sc["score"], "band": sc["band"], "band_label": sc["band_label"],
         "signals": len(signals), "last_signal_at": iso(last_sig), "suppressed": suppressed,
         "registry_source": c.registry_source,
+        "contactability": build_contact_map(c, c.business_contacts, signals),
     }
 
 

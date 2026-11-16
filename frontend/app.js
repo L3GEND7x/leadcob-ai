@@ -197,7 +197,7 @@ async function searchCompanies() {
   try {
     const d = await api('/companies/search?' + p);
     const from = d.total ? (d.page - 1) * d.per_page + 1 : 0, to = (d.page - 1) * d.per_page + d.items.length;
-    box.innerHTML = `<div class="tablebox"><table><thead><tr><th>Empresa</th><th>Localização</th><th>Perfil / CNAE</th><th>Porte / capital</th><th>Atividade</th><th>Sinais</th><th>Etapa</th><th>Pontuação</th></tr></thead><tbody>
+    box.innerHTML = `<div class="tablebox"><table><thead><tr><th>Empresa</th><th>Localização</th><th>Perfil / CNAE</th><th>Porte / capital</th><th>Atividade</th><th>Sinais</th><th>Contato</th><th>Etapa</th><th>Pontuação</th></tr></thead><tbody>
       ${d.items.length ? d.items.map(c => `<tr>
         <td><a class="name" href="#/empresa/${c.id}"><strong>${esc(c.name)}</strong></a><small>${esc(c.cnpj_formatted || 'sem CNPJ')}${c.trade_name ? ' · ' + esc(c.trade_name) : ''}</small>${c.registration_status && c.registration_status !== 'ATIVA' ? `<div class="badges"><span class="badge bad">${esc(c.registration_status)}</span></div>` : ''}</td>
         <td>${esc(loc(c))}<small>${esc(c.region || '')}</small></td>
@@ -205,9 +205,10 @@ async function searchCompanies() {
         <td>${esc(c.company_size || '—')}<small>${money(c.capital_social)}</small></td>
         <td>${c.years_active != null ? `${c.years_active.toLocaleString('pt-BR')} anos` : '—'}<small>${c.opened_at ? 'desde ' + esc(c.opened_at.split('-').reverse().join('/')) : ''}</small></td>
         <td>${c.signals ? `<span class="badge ok">${c.signals}</span><small>${day(c.last_signal_at)}</small>` : '<small>nenhum</small>'}</td>
+        <td><span class="score">${fmt(c.contactability?.score || 0)}/100</span><small>${esc(c.contactability?.label || 'Baixa')} · ${esc(c.contactability?.best_channel || 'sem canal')}</small></td>
         <td>${esc(c.stage_label)}</td>
         <td>${pill(c.score, c.band, c.band_label)}<small>${esc(c.band_label)}</small></td></tr>`).join('')
-      : '<tr><td colspan="8">Nenhuma empresa com esses filtros. Amplie a busca ou importe a base de CNPJ da UF (job em lote).</td></tr>'}
+      : '<tr><td colspan="9">Nenhuma empresa com esses filtros. Amplie a busca ou importe a base de CNPJ da UF (job em lote).</td></tr>'}
       </tbody></table></div>
       <div class="pager"><span class="note">${d.total ? `Mostrando ${fmt(from)}–${fmt(to)} de ${fmt(d.total)}` : 'Nenhum resultado'}${d.note ? ' · ' + esc(d.note) : ''}</span>
         <span class="actions"><button class="small" ${d.page <= 1 ? 'disabled' : ''} onclick="goPage(${d.page - 1})">← Anterior</button><button class="small" ${to >= d.total ? 'disabled' : ''} onclick="goPage(${d.page + 1})">Próxima →</button></span></div>`;
@@ -408,6 +409,7 @@ async function viewEmpresa(id) {
         <label class="f">E-mail institucional<input name="institutional_email" type="email" maxlength="255" value="${esc(c.institutional_email || '')}"></label>
         <label class="f full">Anotações<textarea name="notes" maxlength="5000">${esc(c.notes || '')}</textarea></label>
         <div class="end"><button class="primary">Salvar</button></div></form>`)}
+      ${panel('Mapa de contato', 'Como chegar à organização usando somente canais institucionais', suppressed ? '<p class="note">Empresa na lista de supressão.</p>' : '<div id="contact-map"><p class="note">Carregando mapa…</p></div><div class="actions" style="margin:8px 0"><button class="primary" id="contact-map-enrich">⌕ Montar / atualizar mapa de contato</button></div>')}
       ${panel('Contatos institucionais', 'Só canais da empresa (nunca pessoais), com a origem registrada', suppressed ? '<p class="note">Empresa na lista de supressão.</p>' : `<div id="co-contacts"><p class="note">Carregando…</p></div>
         <div class="actions" style="margin:8px 0"><button class="small" onclick="searchDomain(${JSON.stringify(c.id)})">⌕ Sugerir sites pelo CNPJ</button>${c.website ? `<button class="small" onclick="discoverContacts(${JSON.stringify(c.id)})">⌕ Buscar canais no site oficial</button>` : ''}<a class="btn small" target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent('"' + c.name + '" ' + (c.cnpj_formatted || '') + ' site oficial contato')}">↗ Pesquisar o site oficial</a></div>
         ${c.website ? '' : '<p class="note">Sem site cadastrado: pesquise, confira que é o site oficial da empresa e salve-o no campo "Site institucional" acima.</p>'}
@@ -447,6 +449,53 @@ function contactAction(contact) {
   return href && href !== '#' ? `<a class="btn small" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
 }
 
+function contactKindLabel(kind) {
+  return { email: 'E-mail', phone: 'Telefone', whatsapp: 'WhatsApp', linkedin: 'LinkedIn', website: 'Site',
+    instagram: 'Instagram', facebook: 'Facebook' }[kind] || kind || 'canal';
+}
+function renderContactMap(d) {
+  const box = $('contact-map'); if (!box) return;
+  const channels = (d.priority_contacts || []).slice(0, 5).map(function(x) {
+    return '<div class="task"><div class="main"><strong>' + esc(contactKindLabel(x.kind)) + ' · ' + esc(x.value) + '</strong>'
+      + '<small>' + esc(x.department && x.department !== 'geral' ? x.department : 'institucional') + ' · ' + esc(x.status)
+      + ' · ' + esc(x.source_name || '') + '</small></div>' + contactAction(x) + '</div>';
+  }).join('');
+  const deps = (d.recommended_departments || []).map(function(x) { return '<span class="badge">' + esc(x) + '</span>'; }).join(' ');
+  const roles = (d.roles_to_find || []).map(function(x) { return '<li>' + esc(x) + '</li>'; }).join('');
+  const missing = (d.missing || []).length ? '<p class="note"><b>Falta localizar:</b> ' + esc(d.missing.join(' · ')) + '</p>' : '';
+  box.innerHTML = '<div class="kpis"><article><small>Contactabilidade</small><strong>' + fmt(d.score || 0) + '/100</strong><span>' + esc(d.label || 'Baixa') + '</span></article>'
+    + '<article><small>Canais</small><strong>' + fmt(d.channels_available || 0) + '</strong><span>' + fmt(d.verified_channels || 0) + ' verificado(s)</span></article></div>'
+    + '<p><b>Setores prioritários:</b> ' + (deps || '<span class="note">a definir</span>') + '</p>'
+    + (channels || '<p class="empty">Nenhum canal institucional encontrado ainda.</p>')
+    + '<div class="warnbox"><b>Cargos/setores para procurar:</b><ul>' + roles + '</ul>'
+    + '<a class="btn small" href="' + esc(safeHttpUrl(d.responsible_search_url)) + '" target="_blank" rel="noopener noreferrer">↗ Pesquisar responsáveis em fonte pública</a></div>'
+    + missing + '<p class="note">' + esc(d.note || '') + '</p>';
+}
+async function loadContactMap(id) {
+  try { renderContactMap(await api('/contacts/map/' + encodeURIComponent(id))); }
+  catch (e) { const box = $('contact-map'); if (box) box.innerHTML = '<p class="note">' + esc(errMsg(e, 'Mapa de contato indisponível.')) + '</p>'; }
+}
+async function enrichContactMap(id) {
+  const btn = $('contact-map-enrich');
+  if (btn) { btn.disabled = true; btn.textContent = 'Buscando canais institucionais…'; }
+  toast('Buscando site/canais institucionais e respeitando as regras de origem…', 9000);
+  try {
+    const d = await send('/contacts/enrich/' + id, 'POST');
+    renderContactMap(d);
+    await loadCompanyContacts(id);
+    const detail = d.added ? d.added + ' novo(s) canal(is) registrado(s).' : 'Nenhum canal novo foi registrado.';
+    const candidate = (d.domain_candidates || []).length && !(d.pages_read || []).length
+      ? ' Há candidato(s) de site para você conferir.' : '';
+    toast(detail + candidate, 9000);
+    if (d.site_search_url && !d.automatic_site_search) {
+      const box = $('contact-map');
+      box.insertAdjacentHTML('beforeend', '<p class="note">A busca automática de site não está configurada. <a class="src" href="'
+        + esc(safeHttpUrl(d.site_search_url)) + '" target="_blank" rel="noopener noreferrer">Pesquisar site oficial</a>.</p>');
+    }
+  } catch (e) { toast(errMsg(e, 'Não foi possível enriquecer o mapa de contato.'), 9000, true); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '⌕ Montar / atualizar mapa de contato'; } }
+}
+
 async function loadCompanyContacts(id) {
   const box = $('co-contacts'); if (!box) return;
   try {
@@ -470,6 +519,8 @@ async function verifyContact(cid, status) {
 }
 function bindSheet(c) {
   loadCompanyContacts(c.id);
+  loadContactMap(c.id);
+  $('contact-map-enrich')?.addEventListener('click', () => enrichContactMap(c.id));
   const fc = $('f-contact');
   if (fc) fc.addEventListener('submit', async e => {
     e.preventDefault();

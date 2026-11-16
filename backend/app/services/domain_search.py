@@ -27,7 +27,8 @@ def search(company, api_key):
         try:
             parsed = validate_url(url)
             root = _root(parsed.hostname)
-            if root in BLOCKED or root.endswith('.gov.br') or root in found:
+            public_entity = (getattr(company, 'segment', None) or '').casefold() == 'órgão público'.casefold()
+            if root in BLOCKED or (root.endswith('.gov.br') and not public_entity) or root in found:
                 continue
             website = f'https://{parsed.hostname}'
             # The returned search snippet is not evidence that this is the company's own site.
