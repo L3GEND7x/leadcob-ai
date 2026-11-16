@@ -427,6 +427,7 @@ async function viewEmpresa(id) {
         : `<form id="f-sup" class="form"><label class="f full">Motivo (ex.: pediu para não receber contato)<input name="reason" maxlength="1000"></label><div class="end"><button>⛔ Incluir na lista de supressão</button></div></form>`)}
     </div><div class="stack">
       ${panel('Por que esta pontuação', `Total ${c.score}/100 · ${esc(c.band_label)}`, comps)}
+      ${panel('Conformidade CEIS/CNEP', 'Consulta pública por CNPJ. Sanção não significa inadimplência.', '<div id="compliance-box"><p class="note">Carregando…</p></div>')}
       ${panel('Sinais e evidências', 'Origem de cada informação', signals)}
       ${panel('Histórico', 'Contatos, respostas, mudanças de etapa e registros do sistema', timeline)}
       ${panel('Contexto regional (DataJud)', '', market)}
@@ -445,6 +446,27 @@ function contactAction(contact) {
     href = safeHttpUrl(contact.value);
   }
   return href && href !== '#' ? `<a class="btn small" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
+}
+
+async function loadCompliance(id) {
+  const box = $('compliance-box'); if (!box) return;
+  try {
+    const data = await api('/companies/' + encodeURIComponent(id) + '/compliance');
+    if (!data.configured) {
+      box.innerHTML = '<p class="note">Consulta não configurada. Cadastre a chave do Portal da Transparência na variável de ambiente do servidor.</p>';
+      return;
+    }
+    if (!data.has_records) {
+      box.innerHTML = '<p class="note">Nenhum registro CEIS/CNEP foi localizado para este CNPJ na consulta atual.</p><p class="note">Isso não é certificação negativa; confirme no Portal da Transparência quando necessário.</p>';
+      return;
+    }
+    box.innerHTML = '<div class="warnbox"><b>Alerta de conformidade:</b> ' + fmt(data.records.length) + ' registro(s) público(s) localizado(s). Isto não é prova de inadimplência ou risco de crédito.</div>'
+      + data.records.map(r => '<div class="task"><div class="main"><strong>' + esc(r.source + (r.sanction_type ? ' · ' + r.sanction_type : '')) + '</strong><small>'
+        + esc([r.sanctioning_body, r.start_date ? 'início ' + r.start_date : null, r.end_date ? 'fim ' + r.end_date : null].filter(Boolean).join(' · '))
+        + '</small></div>' + (r.publication_url ? '<a class="btn small" target="_blank" rel="noopener noreferrer" href="' + esc(safeHttpUrl(r.publication_url)) + '">Fonte</a>' : '') + '</div>').join('');
+  } catch (e) {
+    box.innerHTML = '<p class="note">' + esc(errMsg(e, 'Não foi possível consultar CEIS/CNEP.')) + '</p>';
+  }
 }
 
 async function loadCompanyContacts(id) {
@@ -470,6 +492,7 @@ async function verifyContact(cid, status) {
 }
 function bindSheet(c) {
   loadCompanyContacts(c.id);
+  if (c.cnpj) loadCompliance(c.id);
   const fc = $('f-contact');
   if (fc) fc.addEventListener('submit', async e => {
     e.preventDefault();

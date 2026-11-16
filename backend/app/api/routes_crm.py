@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.database import get_db
 from app.db.models import Company, Interaction, MarketSnapshot, Opportunity, Setting, Suppression, Task
 from app.services.cnpj import clean_cnpj, format_cnpj, is_valid_cnpj
+from app.services import compliance
 from app.services.crm import (CHANNELS, CLOSED, CONTACTED, INTERACTION_KINDS, MANAUS, NOT_APPROACHED, OUTREACH_KINDS,
                               STAGE_LABEL, STAGES, as_utc, audit, blocked_reason, change_stage, get_settings,
                               last_outreach, log_interaction, stage_of, suppression_for, close_follow_up_tasks)
@@ -204,6 +205,17 @@ def _signal_view(o) -> dict:
             "caveat": {"public_procurement": "Edital público não é oportunidade privada: a contratação segue a lei de licitações.",
                        "hiring": "Vaga de cobrança não comprova interesse em terceirizar."}.get(o.kind,
                       "Sinal informado manualmente: confirme com a empresa.")}
+
+
+@router.get("/companies/{company_id}/compliance")
+def company_compliance(company_id: int, db: Session = Depends(get_db)):
+    c = _company_or_404(db, company_id)
+    if not c.cnpj:
+        raise HTTPException(400, "Empresa sem CNPJ para consulta CEIS/CNEP.")
+    try:
+        return compliance.check_company(c.cnpj)
+    except compliance.ComplianceUnavailable as exc:
+        raise HTTPException(502, str(exc))
 
 
 @router.get("/companies/{company_id}")
