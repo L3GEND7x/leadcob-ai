@@ -114,3 +114,109 @@ def test_domain_search_without_provider_offers_public_search(monkeypatch):
             db.query(Suppression).filter_by(company_id=cid).delete()
             db.query(Company).filter_by(id=cid).delete()
             db.commit()
+
+
+def test_contactability_map_is_transparent_and_department_aware():
+    from types import SimpleNamespace
+    from app.services.contactability import build_map, department_from_email
+
+    assert department_from_email("licitacao@prefeitura.gov.br") == "Licitações/Compras"
+    assert department_from_email("financeiro@empresa.com.br") == "Financeiro"
+    assert department_from_email("joao.silva@empresa.com.br") == "geral"
+
+    company = SimpleNamespace(name="MUNICIPIO TESTE", website="https://teste.gov.br")
+    contacts = [
+        SimpleNamespace(id=1, kind="email", value="licitacao@teste.gov.br", status="verificado",
+                        department="Licitações/Compras", source_name="site oficial", source_url="https://teste.gov.br"),
+        SimpleNamespace(id=2, kind="phone", value="83999999999", status="a_verificar",
+                        department="geral", source_name="site oficial", source_url="https://teste.gov.br"),
+    ]
+    opportunities = [SimpleNamespace(kind="public_procurement", status="review",
+                                     title="recuperação de créditos tributários", description="", evidence="")]
+    result = build_map(company, contacts, opportunities)
+    assert result["score"] == 40
+    assert result["label"] == "Média"
+    assert result["recommended_departments"][0] == "Finanças"
+    assert "Licitações/Compras" in result["departments_found"]
+    assert "inadimplência" not in result["note"].lower()
+
+
+def test_enrich_contact_map_finds_verified_domain_and_institutional_channels(monkeypatch):
+    from app.core.config import settings
+    from app.collectors import site_contacts
+    from app.services import domain_search
+    from app.db.models import DomainCandidate, Opportunity
+
+    ensure_schema()
+    monkeypatch.setattr(settings, "brave_search_api_key", "chave-de-teste")
+    with SessionLocal() as db:
+        company = Company(name="MUNICIPIO MAPA TESTE", cnpj="12345678000190", segment="Órgão público",
+                          state="PB", city="Caraúbas")
+        db.add(company); db.flush()
+        db.add(Opportunity(company_id=company.id, kind="public_procurement", source_key="mapa-contato-teste",
+                           title="Recuperação de créditos tributários", description="", evidence="",
+                           source_name="Teste", status="review"))
+        db.commit(); cid = company.id
+
+    monkeypatch.setattr(domain_search, "search", lambda company, key: [{
+        "website": "https://caraubas.pb.gov.br",
+        "source_url": "https://search.example/result",
+        "evidence": "CNPJ 12345678000190 encontrado na página inicial do domínio.",
+        "status": "cnpj_no_site",
+    }])
+    monkeypatch.setattr(site_contacts, "discover", lambda website: {
+        "domain": "caraubas.pb.gov.br",
+        "pages_read": [website, website + "/contato"],
+        "emails": [{"email": "licitacao@caraubas.pb.gov.br", "source_url": website + "/contato"}],
+        "channels": [{"kind": "phone", "value": "8331428503", "source_url": website + "/contato"}],
+        "notes": [],
+    })
+
+    client = TestClient(app)
+    try:
+        response = client.post(f"/api/contacts/enrich/{cid}")
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["added"] >= 3
+        assert data["automatic_site_search"] is True
+        assert data["score"] > 0
+        assert "Licitações/Compras" in data["departments_found"]
+        assert data["recommended_departments"][0] == "Finanças"
+        with SessionLocal() as db:
+            company = db.get(Company, cid)
+            assert company.website == "https://caraubas.pb.gov.br"
+            email = db.query(BusinessContact).filter_by(company_id=cid, kind="email").one()
+            assert email.department == "Licitações/Compras"
+            website = db.query(BusinessContact).filter_by(company_id=cid, kind="website").one()
+            assert website.status == "verificado"
+
+        mapped = client.get(f"/api/contacts/map/{cid}")
+        assert mapped.status_code == 200
+        assert mapped.json()["channels_available"] >= 3
+    finally:
+        with SessionLocal() as db:
+            db.query(DomainCandidate).filter_by(company_id=cid).delete()
+            db.query(BusinessContact).filter_by(company_id=cid).delete()
+            db.query(Opportunity).filter_by(company_id=cid).delete()
+            db.query(Company).filter_by(id=cid).delete()
+            db.commit()
+
+
+def test_company_search_exposes_contactability():
+    ensure_schema()
+    with SessionLocal() as db:
+        company = Company(name="CONTACTABILITY SEARCH TEST", cnpj="12345678000190", state="AM")
+        db.add(company); db.flush()
+        db.add(BusinessContact(company_id=company.id, kind="email", value="financeiro@example.org",
+                               department="Financeiro", source_name="teste", status="verificado"))
+        db.commit(); cid = company.id
+    try:
+        data = TestClient(app).get("/api/companies/search", params={"q": "CONTACTABILITY SEARCH TEST"}).json()
+        item = next(x for x in data["items"] if x["id"] == cid)
+        assert item["contactability"]["score"] == 25
+        assert item["contactability"]["best_channel"] == "email"
+    finally:
+        with SessionLocal() as db:
+            db.query(BusinessContact).filter_by(company_id=cid).delete()
+            db.query(Company).filter_by(id=cid).delete()
+            db.commit()
