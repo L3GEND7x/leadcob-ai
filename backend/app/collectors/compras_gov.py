@@ -51,8 +51,8 @@ def normalize_contract(row: dict) -> dict:
         "contract_number": clean(row.get("numeroContrato")) or None,
         "object": obj,
         "complement": comp,
-        "supplier_name": clean(row.get("nomeRazaoSocialFornecedor")) or None,
-        # niFornecedor is deliberately not persisted: the field may contain CPF.
+        # Supplier identity is deliberately not persisted. The API may represent PF or PJ suppliers,
+        # and LeadCob prospecting must not ingest personal identities from this source.
         "start_date": clean(row.get("dataVigenciaInicial")) or None,
         "end_date": clean(row.get("dataVigenciaFinal")) or None,
         "value": row.get("valorGlobal"),
@@ -63,11 +63,11 @@ def normalize_contract(row: dict) -> dict:
     }
 
 
-def _matches(item: dict, terms: list[str]) -> tuple[bool, list[str], str]:
+def _matches(item: dict, terms: list[str]) -> tuple[bool, list[str], str, str]:
     text = f"{item['object']} {item['complement']}".casefold()
     hits = [term for term in terms if term.casefold() in text]
     relevance, reason = relevance_of(text)
-    return bool(hits) and relevance != "descartar", hits, reason
+    return bool(hits) and relevance != "descartar", hits, relevance, reason
 
 
 def request_json(client: httpx.Client, params: dict, attempts: int = 3, pause: float = 1.5) -> dict:
@@ -126,10 +126,11 @@ def search_contracts(org_codes: list[str], start_date: str, end_date: str, terms
                     item = normalize_contract(raw)
                     if item["deleted"]:
                         continue
-                    matched, hits, reason = _matches(item, terms)
+                    matched, hits, relevance, reason = _matches(item, terms)
                     if not matched:
                         continue
                     item["matched_terms"] = hits
+                    item["relevance"] = relevance
                     item["relevance_reason"] = reason
                     records.append(item)
                 total_pages = int(payload.get("totalPaginas") or page)
