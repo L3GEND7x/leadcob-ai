@@ -220,3 +220,18 @@ def test_company_search_exposes_contactability():
             db.query(BusinessContact).filter_by(company_id=cid).delete()
             db.query(Company).filter_by(id=cid).delete()
             db.commit()
+
+
+def test_public_contact_search_uses_natural_terms_and_functional_mailboxes():
+    from types import SimpleNamespace
+    from urllib.parse import urlparse, parse_qs
+    from app.services.contactability import _search_url
+    from app.collectors.site_contacts import _role_box, CONTACT_HINT
+    company = SimpleNamespace(name="MUNICIPIO DE BIRIGUI", city="Birigui", state="SP", website=None)
+    q = parse_qs(urlparse(_search_url(company, ["responsável por Licitações/Compras"])).query)["q"][0]
+    assert "Prefeitura de BIRIGUI" in q
+    assert "site:gov.br" in q
+    assert "responsável por" not in q
+    assert _role_box("licitacao") and _role_box("financas")
+    assert not _role_box("joao.silva")
+    assert CONTACT_HINT.search("/secretarias/financas")
