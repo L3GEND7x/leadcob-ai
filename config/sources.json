@@ -217,7 +217,7 @@
       "official": true,
       "documented": true,
       "use": "Contratos públicos relacionados a cobrança e recuperação de crédito, filtrados por órgão e período",
-      "status": "Conector implementado com testes simulados em 16/11/2026. [NECESSÁRIO CONFERIR] coleta real antes de marcar como integrada e testada."
+      "status": "NÃO conectada em produção. Conector implementado com testes simulados em 16/11/2026. [NECESSÁRIO CONFERIR] coleta real antes de marcar como integrada e testada."
     }
   ]
 }
