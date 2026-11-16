@@ -383,7 +383,7 @@ def render(data: dict) -> str:
 {css}
 .demo-banner{{background:#21152f;border-bottom:1px solid #52316f;color:#e6d9f7;font:13px 'DM Sans',sans-serif;padding:9px max(16px,env(safe-area-inset-right,0px)) 9px max(16px,env(safe-area-inset-left,0px));text-align:center}}
 .demo-banner b{{color:#fff}}
-aside > button[onclick="logout()"]{{display:none}}
+aside > #logout-button{{display:none}}
 </style>
 <div class="demo-banner">{banner}</div>
 {body}
