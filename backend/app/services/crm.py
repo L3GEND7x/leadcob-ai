@@ -40,6 +40,7 @@ DEFAULT_SETTINGS = {
     "ufs_atuacao": [],            # vazio = Brasil inteiro
     "dias_entre_contatos": 7,     # trava contra abordagens repetidas
     "follow_up_cadence_days": [3, 7, 14],  # agenda automática após o primeiro contato
+    "contact_retention_days": None,  # desativado até a proprietária definir N
     "servico": "Cobrança e recuperação de crédito",
     "remetente_nome": "",         # assinatura das abordagens (vazio = [PREENCHER])
     "remetente_empresa": "",
