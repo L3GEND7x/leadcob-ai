@@ -737,8 +737,10 @@ async function viewScripts() {
   const draw = () => {
     const q = $('sc-q').value.toLowerCase(), cat = $('sc-cat').value;
     const items = SCRIPTS.scripts.filter(s => (!cat || s.categoria === cat) && (!q || (s.titulo + ' ' + s.texto + ' ' + s.quando_usar).toLowerCase().includes(q)));
-    $('sc-list').innerHTML = items.length ? items.map(s => `<article class="card"><header><div><small class="eyebrow">${esc(s.categoria)} · ${esc(s.canal)}</small><h2 style="display:block;margin-top:4px">${esc(s.titulo)}</h2></div><button class="small" data-t="${esc(s.texto)}" onclick="copyText(this)">⧉ Copiar</button></header>
+    $('sc-list').innerHTML = items.length ? items.map(s => `<article class="card"><header><div><small class="eyebrow">${esc(s.categoria)} · ${esc(s.canal)}</small><h2 style="display:block;margin-top:4px">${esc(s.titulo)}</h2></div><button class="small" data-t="${esc(s.texto)}" data-script-copy>⧉ Copiar</button></header>
       <p class="note">Quando usar: ${esc(s.quando_usar)}</p><div class="quote" style="white-space:pre-wrap">${esc(s.texto)}</div>${s.cuidados ? `<div class="warnbox">⚠ ${esc(s.cuidados)}</div>` : ''}</article>`).join('') : '<p class="empty">Nenhum script encontrado.</p>';
+    document.querySelectorAll('[data-script-copy]').forEach(button =>
+      button.addEventListener('click', () => copyText(button)));
   };
   $('sc-q').oninput = draw; $('sc-cat').onchange = draw; draw();
 }
