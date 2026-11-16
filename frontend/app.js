@@ -117,11 +117,44 @@ async function viewHoje() {
     + (d.itens.length ? `<div class="cards">${d.itens.map(card).join('')}</div>`
       : panel('Nenhuma empresa elegível agora', '', '<p class="empty">Todas as empresas da base estão encerradas, na lista de supressão ou foram contatadas há pouco. Busque novas empresas em “Encontrar empresas” ou capte sinais.</p>'))
     + `<p class="note">${esc(d.metodo)} Gerado em ${when(d.gerado_em)}.</p>`;
+  document.querySelectorAll('[data-daily-enrich]').forEach(button =>
+    button.addEventListener('click', () => enrichDailyContactMap(Number(button.dataset.dailyEnrich), button)));
+}
+function dailyContactBlock(x) {
+  const m = x.mapa_contato || x.contactability || {};
+  const contacts = (m.priority_contacts || []).slice(0, 3).map(function(c) {
+    return '<div class="row"><div class="main"><strong>' + esc(contactKindLabel(c.kind)) + ': ' + esc(c.value) + '</strong>'
+      + '<small>' + esc(c.department && c.department !== 'geral' ? c.department : 'institucional') + ' · '
+      + esc(c.status || 'a verificar') + ' · ' + esc(c.source_name || '') + '</small></div>' + contactAction(c) + '</div>';
+  }).join('');
+  const deps = (m.recommended_departments || []).slice(0, 4).map(d => '<span class="badge">' + esc(d) + '</span>').join(' ');
+  const roles = (m.roles_to_find || []).slice(0, 3).map(r => '<li>' + esc(r) + '</li>').join('');
+  const search = m.responsible_search_url ? '<a class="btn small" href="' + esc(safeHttpUrl(m.responsible_search_url))
+    + '" target="_blank" rel="noopener noreferrer">↗ Procurar responsável/setor</a>' : '';
+  return '<div class="contact-map-mini"><div class="kpis"><article><small>Contactabilidade</small><strong>'
+    + fmt(m.score || 0) + '/100</strong><span>' + esc(m.label || 'Baixa') + '</span></article><article><small>Canais encontrados</small><strong>'
+    + fmt(m.channels_available || 0) + '</strong><span>' + fmt(m.verified_channels || 0) + ' verificado(s)</span></article></div>'
+    + '<p><b>Setores recomendados:</b> ' + (deps || '<span class="note">a identificar</span>') + '</p>'
+    + (contacts || '<p class="empty">Nenhum canal institucional cadastrado ainda.</p>')
+    + (roles ? '<div class="note"><b>Quem procurar:</b><ul>' + roles + '</ul></div>' : '')
+    + '<div class="actions">' + search + '<button class="primary small" data-daily-enrich="' + esc(x.id) + '">⌕ Buscar contatos agora</button></div></div>';
+}
+async function enrichDailyContactMap(id, button) {
+  const original = button.textContent;
+  button.disabled = true; button.textContent = 'Buscando…';
+  try {
+    const d = await send('/contacts/enrich/' + id, 'POST');
+    toast(d.added ? d.added + ' novo(s) canal(is) encontrado(s).' : 'Busca concluída; nenhum canal novo foi confirmado.', 8000);
+    await viewHoje();
+  } catch (e) {
+    toast(errMsg(e, 'Não foi possível buscar contatos institucionais.'), 9000, true);
+    button.disabled = false; button.textContent = original;
+  }
 }
 function card(x, i) {
   const ev = x.evidencia;
-  const evid = ev.url ? `<a class="src" href="${esc(ev.url)}" target="_blank" rel="noopener">${esc(ev.titulo)}</a> · ${esc(ev.fonte || '')} · captada em ${day(ev.captada_em)} <span class="nat fato">fato</span>`
-    : `${esc(ev.titulo)} <span class="nat ${natCls(ev.natureza)}">${esc(ev.natureza)}</span>`;
+  const evid = ev.url ? `<div><strong>${esc(ev.titulo)}</strong></div><div class="actions" style="margin-top:6px"><a class="btn small" href="${esc(safeHttpUrl(ev.url))}" target="_blank" rel="noopener noreferrer">↗ Abrir fonte original</a></div><small>${esc(ev.fonte || '')} · captada em ${day(ev.captada_em)} · <span class="nat fato">fato</span></small>`
+    : `${esc(ev.titulo)} <span class="nat ${natCls(ev.natureza)}">${esc(ev.natureza)}</span><div class="warnbox" style="margin-top:6px">Fonte sem URL registrada. Verifique o sinal antes de abordar.</div>`;
   const list = (t, cls, arr) => `<div><span class="nat ${cls}">${t}</span>${arr.length ? `<ul>${arr.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : '<p class="note">Nenhum.</p>'}</div>`;
   return `<article class="card"><header><div><span class="rank">${i + 1}</span><h2>${esc(x.name)}</h2>
       <div class="facts-line"><span>${esc(x.cnpj_formatted || 'sem CNPJ')}</span><span>${esc(loc(x))}</span><span>${esc(x.profile_label || x.segment || 'setor não identificado')}</span><span>${esc(x.stage_label)}</span></div></div>
@@ -130,7 +163,8 @@ function card(x, i) {
       <dt>Evidência</dt><dd>${evid}</dd>
       <dt>Serviço sugerido</dt><dd>${esc(x.servico)} <small class="muted">(${esc(x.servico_natureza)})</small></dd>
       <dt>Como iniciar</dt><dd><div class="quote">${esc(x.abertura)}</div><button class="small" style="margin-top:6px" data-t="${esc(x.abertura)}" onclick="copyText(this)">⧉ Copiar texto</button></dd>
-      <dt>Canal</dt><dd>${esc(x.canal)}</dd>
+      <dt>Contato</dt><dd>${dailyContactBlock(x)}</dd>
+      <dt>Canal prioritário</dt><dd>${esc(x.canal)}</dd>
       <dt>Próxima ação</dt><dd>${esc(x.proxima_acao)}</dd></dl>
     <div class="facts">${list('Fatos', 'fato', x.fatos)}${list('Indícios', 'indicio', x.indicios)}${list('Hipóteses', 'hipotese', x.hipoteses)}</div>
     <div class="warnbox">⚠ ${esc(x.cuidado)}</div>
