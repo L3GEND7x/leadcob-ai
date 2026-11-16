@@ -122,7 +122,7 @@ def test_interactions_advance_stage_and_block_repeated_outreach():
         assert kinds.count("etapa") == 3 and "contato" in kinds and "resposta" in kinds
         assert sheet["tasks"] and sheet["tasks"][0]["title"].startswith("Follow-up")
         assert sheet["last_outreach_at"]
-        assert any(t["company_id"] == cid for t in c.get("/api/tasks").json())
+        assert any(t["company_id"] == cid for t in c.get("/api/tasks", params={"status": "all"}).json())
 
 
 
