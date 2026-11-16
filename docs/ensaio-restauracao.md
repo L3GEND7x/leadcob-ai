@@ -7,7 +7,7 @@ considerado operacional depois de um ensaio bem-sucedido **com o bucket real** (
 |---|---|---|---|---|
 | 2026-11-11 17:14 | **Local (simulação)** — ver abaixo | `8ac5502b` (emulador S3) | OK: 22 tabelas, contagens idênticas | Claude |
 | 2026-11-11 19:08 | **Railway + bucket `leadcob-ai-backup`** — ver abaixo | `f8c7e7d1` | OK: 22 tabelas, esquema `2b3f641847d9`, banco ainda sem dados de negócio | proprietária (execução) e Claude (análise do log) |
-| [PREENCHER] | Railway, com dados reais | [PREENCHER] | [PREENCHER] | proprietária |
+| [PREENCHER] | Railway, com dados reais | [PREENCHER] | [PREENCHER — incluir `CONCILIAÇÃO DE CONTAGENS` e principais tabelas] | proprietária |
 
 ## Ensaio local de 2026-11-11 (simulação, não substitui o ensaio real)
 
@@ -54,3 +54,14 @@ credenciais falsas. Portanto **não testa** a chave B2, a rede da Railway nem o 
 - *Limite:* a integridade com volume real **não** foi testada. Repita o ensaio depois de importar dados reais e compare as contagens com o painel.
 
 **Depois do ensaio:** apagar o serviço `leadcob-ensaio` e o banco `Postgres-ensaio`, porque eles guardam cópia dos dados de produção.
+
+
+## Critério do próximo ensaio com dados reais
+O snapshot usado deve ser posterior à importação da base empresarial. Em snapshots gerados pela versão com manifesto, registrar no resultado:
+- ID e horário do snapshot;
+- tamanho do dump;
+- revisão Alembic;
+- contagem de `companies`, `opportunities`, `interactions`, `tasks`, `business_contacts` e `portfolios`;
+- resultado literal da seção `CONCILIAÇÃO DE CONTAGENS`.
+
+O manifesto é uma observação feita logo após o dump e não compartilha a transação interna do `pg_dump`; portanto divergência deve ser investigada e explicada, não classificada automaticamente como perda de dados.
