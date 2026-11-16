@@ -159,7 +159,7 @@ async function viewEmpresas() {
   const sel = (k, pairs, empty, label) => `<select data-f="${k}" aria-label="${esc(label || empty)}">${opts(pairs, F[k], empty)}</select>`;
   V().innerHTML = head('Prospecção nacional', 'Encontrar empresas',
     'Todos os setores, portes e UFs da base. Cadastro não comprova demanda: a pontuação mostra o que é fato e o que é hipótese.',
-    '<button class="primary" onclick="$(\'dlg-company\').showModal()">＋ Adicionar empresa</button><button onclick="exportCSV()">⇩ Exportar CSV</button>')
+    '<button class="primary" id="companies-add">＋ Adicionar empresa</button><button id="companies-export">⇩ Exportar CSV</button>')
     + `<div class="panel" style="margin-bottom:12px"><div class="filters">
         ${inp('q', 'Razão social, fantasia ou CNPJ')}
         ${sel('region', Object.keys(L.regions).map(r => [r, r]), 'Todas as regiões')}
@@ -180,12 +180,15 @@ async function viewEmpresas() {
         ${sel('has_signal', [['true', 'Com sinal captado'], ['false', 'Sem sinal']], 'Com ou sem sinal')}
         <label class="check"><input type="checkbox" data-f="include_competitors" ${F.include_competitors ? 'checked' : ''}> Incluir concorrentes (CNAE 8291)</label>
       </div></details>
-      <div class="actions"><button onclick="clearFilters()">Limpar filtros</button></div></div>
+      <div class="actions"><button id="companies-clear">Limpar filtros</button></div></div>
       <div id="res"><p class="note">Buscando…</p></div>`;
   V().querySelectorAll('[data-f]').forEach(el => el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', () => {
     F[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value.trim(); F.page = 1;
     clearTimeout(viewEmpresas._t); viewEmpresas._t = setTimeout(searchCompanies, 300);
   }));
+  $('companies-add').addEventListener('click', () => $('dlg-company').showModal());
+  $('companies-export').addEventListener('click', exportCSV);
+  $('companies-clear').addEventListener('click', clearFilters);
   searchCompanies();
 }
 function clearFilters() { Object.keys(F).forEach(k => delete F[k]); Object.assign(F, { sort: 'score', page: 1, per_page: 25 }); viewEmpresas(); }
@@ -210,7 +213,9 @@ async function searchCompanies() {
       : '<tr><td colspan="8">Nenhuma empresa com esses filtros. Amplie a busca ou importe a base de CNPJ da UF (job em lote).</td></tr>'}
       </tbody></table></div>
       <div class="pager"><span class="note">${d.total ? `Mostrando ${fmt(from)}–${fmt(to)} de ${fmt(d.total)}` : 'Nenhum resultado'}${d.note ? ' · ' + esc(d.note) : ''}</span>
-        <span class="actions"><button class="small" ${d.page <= 1 ? 'disabled' : ''} onclick="goPage(${d.page - 1})">← Anterior</button><button class="small" ${to >= d.total ? 'disabled' : ''} onclick="goPage(${d.page + 1})">Próxima →</button></span></div>`;
+        <span class="actions"><button id="companies-prev" class="small" ${d.page <= 1 ? 'disabled' : ''}>← Anterior</button><button id="companies-next" class="small" ${to >= d.total ? 'disabled' : ''}>Próxima →</button></span></div>`;
+    $('companies-prev')?.addEventListener('click', () => goPage(d.page - 1));
+    $('companies-next')?.addEventListener('click', () => goPage(d.page + 1));
   } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Falha na busca.'))}</p>`; }
 }
 function exportCSV() {
