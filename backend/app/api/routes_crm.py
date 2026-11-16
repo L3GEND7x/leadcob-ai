@@ -682,15 +682,24 @@ def daily_intelligence(limit: int = Query(default=5, ge=1, le=20), db: Session =
         fatos = [f"{p['label']}: {p['reason']}" for p in sc["components"] if p["nature"] == "fato" and p["points"] > 0]
         indicios = [f"{p['label']}: {p['reason']}" for p in sc["components"] if p["nature"] == "indício" and p["points"] > 0]
         hipoteses = [f"{p['label']}: {p['reason']}" for p in sc["components"] if p["nature"] == "hipótese" and p["points"] > 0]
-        channel = ("e-mail institucional cadastrado" if c.institutional_email else "site institucional" if c.website
-                   else "nenhum canal cadastrado: localizar no site da empresa ou no edital/vaga")
+        contact_map = s.get("contactability") or {}
+        priority = contact_map.get("priority_contacts") or []
+        best_contact = priority[0] if priority else None
+        channel = (
+            f"{best_contact['kind']}: {best_contact['value']}" if best_contact
+            else "nenhum canal institucional cadastrado"
+        )
+        evidence_url = (best.source_url or best.origin_url) if best else None
         out.append({
             **s,
             "motivo": "; ".join(f"{p['reason']} (+{p['points']})" for p in reasons),
-            "evidencia": ({"titulo": best.title, "fonte": best.source_name, "url": best.source_url,
-                           "captada_em": iso(as_utc(best.collected_at)), "natureza": "fato"} if best else
-                          {"titulo": "Sem sinal de demanda captado: indicação apenas pelo cadastro e pelo setor.", "natureza": "hipótese"}),
+            "evidencia": ({"titulo": best.title, "fonte": best.source_name, "url": evidence_url,
+                           "captada_em": iso(as_utc(best.collected_at)), "natureza": "fato",
+                           "url_disponivel": bool(evidence_url)} if best else
+                          {"titulo": "Sem sinal de demanda captado: indicação apenas pelo cadastro e pelo setor.",
+                           "natureza": "hipótese", "url_disponivel": False}),
             "canal": channel,
+            "mapa_contato": contact_map,
             **_service_and_hook(c, s, best),
             "fatos": fatos, "indicios": indicios, "hipoteses": hipoteses,
             "cuidado": "Não afirme que a empresa tem inadimplência: nenhuma fonte pública usada aqui comprova isso.",
