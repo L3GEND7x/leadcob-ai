@@ -616,7 +616,7 @@ async function loadApproach(id) {
   const box = $('approach'); box.innerHTML = '<p class="note">Gerando…</p>';
   try {
     const a = await api(`/companies/${encodeURIComponent(id)}/approach`);
-    const copy = t => `<button class="small" data-t="${esc(t)}" onclick="copyText(this)">⧉ Copiar</button>`;
+    const copy = t => `<button class="small" data-t="${esc(t)}" data-approach-copy>⧉ Copiar</button>`;
     const base = `<details class="more"><summary>Base usada (fatos e hipóteses)</summary><ul class="note">${a.baseado_em.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
     const care = `<div class="warnbox">⚠ ${a.cuidados.map(esc).join('<br>⚠ ')}</div>`;
     if (a.modo === 'edital') {
@@ -625,11 +625,15 @@ async function loadApproach(id) {
     }
     const [email, wa, call] = a.mensagens;
     box.innerHTML = `
-      <h3>E-mail</h3><p class="note"><b>Assunto:</b> ${esc(email.assunto)} ${copy(email.assunto)}</p><div class="quote" style="white-space:pre-wrap">${esc(email.texto)}</div><div class="actions" style="margin:6px 0 14px">${copy(email.texto)}<button class="small" onclick="prefillInteraction('contato','email')">Registrar como enviado</button></div>
-      <h3>${esc(wa.canal)}</h3><div class="quote" style="white-space:pre-wrap">${esc(wa.texto)}</div><div class="actions" style="margin:6px 0 14px">${copy(wa.texto)}<button class="small" onclick="prefillInteraction('contato','whatsapp')">Registrar como enviado</button></div>
+      <h3>E-mail</h3><p class="note"><b>Assunto:</b> ${esc(email.assunto)} ${copy(email.assunto)}</p><div class="quote" style="white-space:pre-wrap">${esc(email.texto)}</div><div class="actions" style="margin:6px 0 14px">${copy(email.texto)}<button class="small" data-prefill-kind="contato" data-prefill-channel="email">Registrar como enviado</button></div>
+      <h3>${esc(wa.canal)}</h3><div class="quote" style="white-space:pre-wrap">${esc(wa.texto)}</div><div class="actions" style="margin:6px 0 14px">${copy(wa.texto)}<button class="small" data-prefill-kind="contato" data-prefill-channel="whatsapp">Registrar como enviado</button></div>
       <details class="more"><summary>Roteiro de ligação e objeções</summary>${call.etapas.map(e => `<p class="note"><b>${esc(e.etapa)}:</b> ${esc(e.texto)}</p>`).join('')}${call.objecoes.map(o => `<p class="note"><b>“${esc(o.objecao)}”</b> → ${esc(o.resposta)}</p>`).join('')}</details>
       <details class="more"><summary>7 follow-ups</summary>${a.follow_ups.map(f => `<div class="signal"><strong>${esc(f.tipo)}</strong> <small class="muted">· cerca de ${f.dias_depois} dia(s) depois</small><p style="white-space:pre-wrap">${esc(f.texto)}</p>${copy(f.texto)}</div>`).join('')}</details>
       ${base}${care}`;
+    box.querySelectorAll('[data-approach-copy]').forEach(button =>
+      button.addEventListener('click', () => copyText(button)));
+    box.querySelectorAll('[data-prefill-channel]').forEach(button =>
+      button.addEventListener('click', () => prefillInteraction(button.dataset.prefillKind, button.dataset.prefillChannel)));
   } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Não foi possível gerar a abordagem.'))}</p>`; }
 }
 function prefillInteraction(kind, channel) {
