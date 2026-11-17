@@ -525,3 +525,72 @@ def sandbox_payment_status(request: Request, organization_id: int, invoice_id: i
         return {'environment': 'sandbox', 'bound': bound, 'verified': verified,
                 'external_reference': reference, 'invoice_id': invoice_id,
                 'ledger_status': row.status}
+
+
+from app.services.asaas_sandbox_issuance import issue_charge
+
+
+class SandboxIssueIn(Input):
+    billing_type: Literal['PIX', 'BOLETO']
+
+
+@router.post('/organizations/{organization_id}/invoices/{invoice_id}/asaas-sandbox/issue', status_code=201)
+def issue_sandbox_payment(request: Request, organization_id: int, invoice_id: int,
+                          payload: SandboxIssueIn):
+    with SessionLocal() as db:
+        guard(request, db, True)
+        if not settings.asaas_sandbox_api_key:
+            raise HTTPException(503, 'Sandbox não configurado.')
+        billing_lock(db, organization_id)
+        row = db.get(CommercialInvoice, invoice_id)
+        if not row or row.organization_id != organization_id:
+            raise HTTPException(404, 'Recebível não encontrado.')
+        if row.status != 'open' or date.fromisoformat(row.due_date) < date.today():
+            raise HTTPException(409, 'Recebível indisponível para emissão.')
+        customer = db.execute(text('SELECT customer_id FROM asaas_sandbox_customers WHERE organization_id=:oid'),
+                              {'oid': organization_id}).scalar_one_or_none()
+        if not customer:
+            raise HTTPException(409, 'Cliente sandbox previamente vinculado obrigatório.')
+        if db.execute(text('SELECT 1 FROM asaas_sandbox_payments WHERE invoice_id=:iid'),
+                      {'iid': invoice_id}).first():
+            raise HTTPException(409, 'Cobrança já vinculada.')
+        reference = sandbox_reference(organization_id, invoice_id)
+        args = dict(iid=invoice_id, cid=customer, ref=reference, kind=payload.billing_type,
+                    amount=row.amount_cents, due=row.due_date, created=datetime.now(timezone.utc))
+        try:
+            db.execute(text("""INSERT INTO asaas_sandbox_issue_reservations
+                (invoice_id, customer_id, external_reference, billing_type, amount_cents, due_date, created_at)
+                VALUES (:iid, :cid, :ref, :kind, :amount, :due, :created)"""), args)
+            db.add(AuditLog(event='asaas_sandbox_issue_reserved', entity_type='commercial_invoice',
+                            entity_id=invoice_id, details={'organization_id': organization_id, 'reference': reference}))
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(409, 'Emissão já reservada; consulte o provedor antes de qualquer ação.') from exc
+        # At most one POST per durable reservation. Never clear reservation on failure.
+        try:
+            payment_id = issue_charge(customer_id=customer, billing_type=payload.billing_type,
+                amount_cents=args['amount'], due_date=args['due'], reference=reference,
+                api_key=settings.asaas_sandbox_api_key)
+        except (PaymentUnavailable, ValueError) as exc:
+            raise HTTPException(503, 'Emissão incerta; consulte o sandbox pela referência. Não repita.') from exc
+        billing_lock(db, organization_id)
+        row = db.get(CommercialInvoice, invoice_id, populate_existing=True)
+        if not row or row.organization_id != organization_id or row.status != 'open':
+            raise HTTPException(409, 'Recebível alterado; cobrança sandbox requer revisão manual.')
+        existing = db.execute(text('SELECT payment_id FROM asaas_sandbox_payments WHERE invoice_id=:iid'),
+                              {'iid': invoice_id}).scalar_one_or_none()
+        if existing and existing != payment_id:
+            raise HTTPException(409, 'Conflito de vínculo; revisar manualmente.')
+        try:
+            if not existing:
+                db.execute(text('INSERT INTO asaas_sandbox_payments (invoice_id,payment_id,external_reference) VALUES (:iid,:pid,:ref)'),
+                           {'iid': invoice_id, 'pid': payment_id, 'ref': reference})
+            db.add(AuditLog(event='asaas_sandbox_issued', entity_type='commercial_invoice',
+                            entity_id=invoice_id, details={'organization_id': organization_id, 'payment_id': payment_id}))
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(409, 'Cobrança emitida; vínculo requer revisão manual.') from exc
+        return {'environment': 'sandbox', 'invoice_id': invoice_id, 'payment_id': payment_id,
+                'external_reference': reference, 'ledger_status': 'open'}
