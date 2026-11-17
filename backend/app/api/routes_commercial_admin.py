@@ -140,3 +140,67 @@ def set_active(request: Request, organization_id: int, payload: Active):
                         details={'active':payload.active}))
         db.commit()
         return {'active':payload.active}
+
+
+from app.db.models import CommercialPlan
+
+
+class PlanIn(Input):
+    code: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{1,79}$')
+    name: str = Field(min_length=1, max_length=160)
+    monthly_price_cents: int = Field(strict=True, ge=0, le=100000000)
+    max_members: int = Field(strict=True, ge=1, le=1000000)
+    max_leads: int = Field(strict=True, ge=0, le=1000000)
+    max_contacts: int = Field(strict=True, ge=0, le=1000000)
+    max_tasks: int = Field(strict=True, ge=0, le=1000000)
+    max_portfolios: int = Field(strict=True, ge=0, le=1000000)
+    max_titles: int = Field(strict=True, ge=0, le=1000000)
+
+
+def plan_data(row):
+    return dict(id=row.id, code=row.code, name=row.name, currency='BRL',
+                monthly_price_cents=row.monthly_price_cents, active=row.active,
+                **{key:getattr(row,key) for key in ('max_members','max_leads','max_contacts',
+                                                    'max_tasks','max_portfolios','max_titles')})
+
+
+@router.get('/plans')
+def list_plans(request: Request, limit: int = Query(100,ge=1,le=250), offset: int = Query(0,ge=0)):
+    with SessionLocal() as db:
+        guard(request,db)
+        return [plan_data(row) for row in db.scalars(select(CommercialPlan)
+                .order_by(CommercialPlan.id.desc()).offset(offset).limit(limit))]
+
+
+@router.post('/plans',status_code=201)
+def create_plan(request: Request,payload: PlanIn):
+    with SessionLocal() as db:
+        guard(request,db,True)
+        if not payload.name.strip():
+            raise HTTPException(422,'Nome obrigatório.')
+        row=CommercialPlan(**(payload.model_dump() | {'name':payload.name.strip()}), active=False)
+        db.add(row)
+        try:
+            db.flush()
+            db.add(AuditLog(event='commercial_plan_created',entity_type='commercial_plan',
+                            entity_id=row.id,details=plan_data(row)))
+            result=plan_data(row)
+            db.commit()
+        except IntegrityError as exc:
+            raise HTTPException(409,'Código do plano já existente.') from exc
+        return result
+
+
+@router.patch('/plans/{plan_id}')
+def set_plan_active(request: Request,plan_id: int,payload: Active):
+    with SessionLocal() as db:
+        guard(request,db,True)
+        row=db.get(CommercialPlan,plan_id)
+        if row is None:
+            raise HTTPException(404,'Plano não encontrado.')
+        row.active=payload.active
+        db.add(AuditLog(event='commercial_plan_status',entity_type='commercial_plan',
+                        entity_id=row.id,details={'active':row.active}))
+        result=plan_data(row)
+        db.commit()
+        return result
