@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from app.db.database import SessionLocal
-from app.db.models import Company, Opportunity
+from app.db.models import BusinessContact, Company, Opportunity
 from app.main import app
 from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
 from app.services.lead_score import band, score_company
