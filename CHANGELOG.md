@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- API experimental de login comercial desativada por padrão (`COMMERCIAL_AUTH_ENABLED=false`); cookie separado do proprietário, origem obrigatória e tentativas limitadas. Ainda não liberar clientes.
 - Base interna de identidade comercial: organizações, usuários, vínculos com papéis e sessões separadas. Acesso de clientes permanece desabilitado até o isolamento do domínio legado.
 - Login: contador por conta informada e origem de conexão; tentativas em nome de outra conta não bloqueiam o proprietário. Proteção de borda ainda necessária.
 - Corrige eventos duplicados e respostas fora de ordem na busca de oportunidades.
