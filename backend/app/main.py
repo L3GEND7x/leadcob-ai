@@ -63,7 +63,7 @@ def seed():
     finally: db.close()
 def startup():
     validate_configuration()
-    if settings.app_env.lower() == 'production':
+    if settings.app_env.strip().lower() == 'production':
         check_schema_revision()
     else:
         ensure_schema()
