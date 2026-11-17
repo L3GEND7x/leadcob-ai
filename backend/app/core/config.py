@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     public_url: str = ""
     commercial_auth_enabled: bool = False
     asaas_sandbox_api_key: str = ""
+    asaas_sandbox_webhook_token: str = ""
     openai_api_key: str = ""
     openai_model: str = ""
     assistant_monthly_budget_usd: float = 0
