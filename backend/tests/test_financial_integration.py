@@ -1,11 +1,13 @@
 """Isolated HTTP regression tests; provider calls explicitly replaced by test doubles."""
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from threading import Barrier
 from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, func
+from sqlalchemy import create_engine, select, func, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.core import security
@@ -18,9 +20,32 @@ from app.services.asaas_reconciliation import PaymentUnavailable
 
 
 @pytest.fixture
-def billing(tmp_path, monkeypatch):
-    engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}",
-                           connect_args={"check_same_thread": False, "timeout": 30})
+def billing(tmp_path, monkeypatch, request):
+    url = os.environ.get("LEADCOB_TEST_POSTGRES_URL")
+    schema = None
+    if url:
+        parsed = make_url(url)
+        if parsed.get_backend_name() != "postgresql" or parsed.host not in {"localhost", "127.0.0.1"} or parsed.database != "leadcob_test":
+            raise RuntimeError("Use only a local dedicated leadcob_test PostgreSQL database")
+        schema = "test_" + uuid4().hex
+        maintenance = create_engine(url)
+        with maintenance.begin() as conn:
+            conn.execute(text(f"CREATE SCHEMA {schema}"))
+        maintenance.dispose()
+        engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+    else:
+        engine = create_engine(f"sqlite:///{tmp_path / 'billing.db'}",
+                               connect_args={"check_same_thread": False, "timeout": 30})
+    def cleanup():
+        engine.dispose()
+        if schema:
+            maintenance = create_engine(url)
+            try:
+                with maintenance.begin() as conn:
+                    conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+            finally:
+                maintenance.dispose()
+    request.addfinalizer(cleanup)
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)
     monkeypatch.setattr(admin, "SessionLocal", session)
@@ -59,7 +84,6 @@ def billing(tmp_path, monkeypatch):
         yield c, headers, path, payload, session, oid, other, end
     finally:
         c.close()
-        engine.dispose()
 
 
 def create_receivable(c, headers, path, payload):
