@@ -46,3 +46,14 @@ def test_hash_generator_refuses_short_or_mismatched_password():
     assert short.returncode == 1 and 'pbkdf2' not in short.stdout
     mismatch = _run_generator('Senha-Nova-Longa-2026!', 'Senha-Diferente-2026!!')
     assert mismatch.returncode == 1 and 'pbkdf2' not in mismatch.stdout
+
+
+def test_unknown_account_does_not_lock_owner(monkeypatch):
+    monkeypatch.setattr(settings, 'admin_username', 'owner-throttle-test')
+    monkeypatch.setattr(settings, 'admin_password_hash', password_hash('senha-segura-de-teste-1234'))
+    with TestClient(app) as client:
+        bad = {'username': 'unknown-throttle-test', 'password': 'wrong'}
+        for _ in range(5):
+            assert client.post('/api/auth/login', json=bad).status_code == 401
+        assert client.post('/api/auth/login', json=bad).status_code == 429
+        assert client.post('/api/auth/login', json={'username': 'owner-throttle-test', 'password': 'senha-segura-de-teste-1234'}).status_code == 200
