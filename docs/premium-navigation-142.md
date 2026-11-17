@@ -1,0 +1,3 @@
+# Navegação e experiência #142
+
+Falha observada na main após #141: assistant.js existia, mas index.html não carregava o script, o menu não tinha Assistente IA e ROUTES não registrava viewAssistente. Corrigidos os três pontos. Links de enriquecimento e administração adicionados. Menu mobile expansível, Escape, foco, aria-current, skip link, indicadores tabulares e superfícies refinadas; mantida a identidade violeta existente do painel principal. Teste Chromium owner desktop/mobile escrito com credenciais locais de CI e sem chave OpenAI; não executado nesta revisão. Não comprova resposta real da IA, acessibilidade integral, outros navegadores ou equivalência visual em produção. #141 mesclado e três workflows aprovados.
