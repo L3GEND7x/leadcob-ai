@@ -89,7 +89,11 @@ async def access_middleware(request, call_next):
     public = request.url.path in {'/', '/favicon.ico', '/api/health', '/api/auth/login', '/api/auth/session'} or request.url.path.startswith('/static/')
     token = actor.set('local-owner')
     try:
-        if auth_enabled():
+        if request.url.path in {'/api/commercial/auth/login', '/api/commercial/auth/session', '/api/commercial/auth/logout'}:
+            # Only these exact routes use independent commercial credentials.
+            # Each handler enforces the feature flag, authorization and origin policy.
+            pass
+        elif auth_enabled():
             with SessionLocal() as db:
                 session = current_session(request, db)
                 if not public and not session:
