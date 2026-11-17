@@ -356,3 +356,28 @@ def reject_action(action_id: str, request: Request, db: Session = Depends(get_db
     db.execute(update(AssistantAction).where(AssistantAction.id == action_id, AssistantAction.status == 'pending').values(status='rejected'))
     db.commit()
     return {'ok': True}
+
+
+@router.post('/provider-check')
+def provider_check(request: Request, db: Session = Depends(get_db)):
+    """Explicit metadata-only check: no generation, tool execution or customer payload."""
+    if not configured():
+        raise HTTPException(503, 'Complete a configuração local da Assistente IA.')
+    observed_at = datetime.now(timezone.utc).isoformat()
+    try:
+        from openai import OpenAI
+        with OpenAI(api_key=settings.openai_api_key, timeout=10, max_retries=0) as client:
+            model = client.models.retrieve(settings.openai_model.strip())
+        if model.id != settings.openai_model.strip():
+            raise ValueError('Unexpected model identifier')
+        result = {'model_accessible': True, 'failure_category': None}
+    except Exception as exc:
+        failure = failure_metadata(exc)
+        result = {'model_accessible': False, 'failure_category': failure_category(failure)}
+        logger.warning('assistant_provider_check_failed type=%s status=%s code=%s',
+                       failure['type'], failure['status'], failure['code'])
+    db.add(AuditLog(event='assistant_provider_check', entity_type='assistant', entity_id=None,
+                    details={**result, 'observed_at': observed_at}))
+    db.commit()
+    return {**result, 'observed_at': observed_at, 'generation_tested': False,
+            'note': 'Consulta de metadados do modelo. Não comprova geração, saldo ou funcionamento das ferramentas.'}
