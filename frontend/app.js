@@ -51,7 +51,7 @@ function coRow(s, extra = '') {
 const rows = (items, emptyMsg, extra) => items.length ? `<div class="rows">${items.map(s => coRow(s, extra ? esc(extra(s)) : '')).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`;
 
 // ------------------------------------------------------------------ rotas
-const ROUTES = { relatorios: viewRelatorios, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
+const ROUTES = { relatorios: viewRelatorios, assistente: viewAssistente, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
   empresa: viewEmpresa, contatos: viewContatos, cobranca: viewCobranca, negociacao: viewNegociacao, scripts: viewScripts, radar: viewRadar, fontes: viewFontes, config: viewConfig };
 let CUR = { v: 'inicio', arg: null };
 async function route() {
@@ -59,7 +59,7 @@ async function route() {
   const [v, arg] = location.hash.replace(/^#\/?/, '').split('/');
   CUR = { v: ROUTES[v] ? v : 'inicio', arg: arg ? decodeURIComponent(arg) : null };
   const navKey = CUR.v === 'empresa' ? 'crm' : CUR.v;
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.v === navKey));
+  document.querySelectorAll('#nav a').forEach(a => { const active=a.dataset.v === navKey; a.classList.toggle('active',active); if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current'); });
   try { await ROUTES[CUR.v](CUR.arg); }
   catch (e) { console.error(e); V().innerHTML = head('Erro', 'Não foi possível abrir esta tela', esc(errMsg(e, 'A API não respondeu.'))); }
 }
