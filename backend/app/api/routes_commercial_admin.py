@@ -281,3 +281,148 @@ def cancel_subscription(request: Request, organization_id: int):
         result=describe(db,organization_id)
         db.commit()
         return result
+
+
+from datetime import date
+from app.db.models import CommercialInvoice
+from sqlalchemy import update
+
+
+class InvoiceIn(Input):
+    plan_id: int = Field(gt=0, strict=True)
+    period_start: date
+    period_end: date
+    due_date: date
+
+
+class SettlementIn(Input):
+    amount_cents: int = Field(gt=0, strict=True)
+    payment_reference: str = Field(min_length=3,max_length=160)
+    paid_at: AwareDatetime
+
+
+def invoice_data(row):
+    return dict(id=row.id, organization_id=row.organization_id, plan_id=row.plan_id,
+        period_start=row.period_start, period_end=row.period_end, due_date=row.due_date,
+        currency='BRL', amount_cents=row.amount_cents, status=row.status,
+        payment_reference=row.payment_reference, paid_at=row.paid_at)
+
+
+def billing_lock(db, organization_id):
+    result=db.execute(update(Organization).where(Organization.id==organization_id)
+                      .values(active=Organization.active))
+    if result.rowcount!=1:
+        raise HTTPException(404,'Organização não encontrada.')
+
+
+@router.get('/organizations/{organization_id}/invoices')
+def list_invoices(request: Request, organization_id: int,
+                  limit: int = Query(100,ge=1,le=250), offset: int = Query(0,ge=0)):
+    with SessionLocal() as db:
+        guard(request,db)
+        if not db.get(Organization,organization_id):
+            raise HTTPException(404,'Organização não encontrada.')
+        return [invoice_data(row) for row in db.scalars(select(CommercialInvoice)
+                .where(CommercialInvoice.organization_id==organization_id)
+                .order_by(CommercialInvoice.id.desc()).offset(offset).limit(limit))]
+
+
+@router.post('/organizations/{organization_id}/invoices',status_code=201)
+def create_invoice(request: Request, organization_id: int, payload: InvoiceIn):
+    with SessionLocal() as db:
+        guard(request,db,True)
+        billing_lock(db,organization_id)
+        if payload.period_end<=payload.period_start:
+            raise HTTPException(422,'Período inválido.')
+        start,end=payload.period_start.isoformat(),payload.period_end.isoformat()
+        existing=db.scalar(select(CommercialInvoice).where(
+            CommercialInvoice.organization_id==organization_id,
+            CommercialInvoice.period_start==start,CommercialInvoice.period_end==end))
+        if existing:
+            if existing.plan_id!=payload.plan_id or existing.due_date!=payload.due_date.isoformat():
+                raise HTTPException(409,'Período já registrado com outros dados.')
+            return invoice_data(existing)
+        overlap=db.scalar(select(CommercialInvoice.id).where(
+            CommercialInvoice.organization_id==organization_id,
+            CommercialInvoice.period_start<end,CommercialInvoice.period_end>start,
+            CommercialInvoice.status!='void').limit(1))
+        if overlap:
+            raise HTTPException(409,'Existe recebível com período sobreposto.')
+        plan=db.get(CommercialPlan,payload.plan_id)
+        if not plan or not plan.active or plan.monthly_price_cents<=0:
+            raise HTTPException(422,'Plano ativo e pago obrigatório.')
+        # Only one calendar month, clamped to the last day of a shorter month.
+        from calendar import monthrange
+        from datetime import date as calendar_date
+        y,m=payload.period_start.year,payload.period_start.month
+        y,m=(y+1,1) if m==12 else (y,m+1)
+        expected=calendar_date(y,m,min(payload.period_start.day,monthrange(y,m)[1]))
+        if payload.period_end!=expected:
+            raise HTTPException(422,'Informe um período mensal.')
+        row=CommercialInvoice(organization_id=organization_id,plan_id=plan.id,
+            period_start=start,period_end=end,due_date=payload.due_date.isoformat(),
+            amount_cents=plan.monthly_price_cents,status='open')
+        db.add(row)
+        try:
+            db.flush()
+            result=invoice_data(row)
+            db.add(AuditLog(event='commercial_invoice_created',entity_type='commercial_invoice',
+                            entity_id=row.id,details={'organization_id':organization_id,
+                            'amount_cents':row.amount_cents,'period_start':start,'period_end':end}))
+            db.commit()
+        except IntegrityError as exc:
+            raise HTTPException(409,'Conflito de recebível.') from exc
+        return result
+
+
+@router.post('/organizations/{organization_id}/invoices/{invoice_id}/settle')
+def settle_invoice(request: Request,organization_id: int,invoice_id: int,payload: SettlementIn):
+    with SessionLocal() as db:
+        guard(request,db,True)
+        billing_lock(db,organization_id)
+        row=db.get(CommercialInvoice,invoice_id)
+        if not row or row.organization_id!=organization_id:
+            raise HTTPException(404,'Recebível não encontrado.')
+        reference=payload.payment_reference.strip()
+        if len(reference)<3 or payload.amount_cents!=row.amount_cents or payload.paid_at>datetime.now(timezone.utc):
+            raise HTTPException(422,'Valor, referência ou data de pagamento inválidos.')
+        if row.status=='paid':
+            from app.core.security import stamp
+            if row.payment_reference==reference and stamp(row.paid_at)==payload.paid_at:
+                return invoice_data(row)
+            raise HTTPException(409,'Recebível já baixado.')
+        if row.status!='open':
+            raise HTTPException(409,'Recebível indisponível para baixa.')
+        row.status='paid'
+        row.payment_reference=reference
+        row.paid_at=payload.paid_at.astimezone(timezone.utc)
+        db.add(AuditLog(event='commercial_invoice_settled_manually',entity_type='commercial_invoice',
+                        entity_id=row.id,details={'organization_id':organization_id,
+                        'amount_cents':row.amount_cents,'payment_reference':reference,
+                        'paid_at':row.paid_at.isoformat()}))
+        try:
+            db.flush()
+            result=invoice_data(row)
+            db.commit()
+        except IntegrityError as exc:
+            raise HTTPException(409,'Referência de pagamento já utilizada.') from exc
+        return result
+
+
+@router.post('/organizations/{organization_id}/invoices/{invoice_id}/void')
+def void_invoice(request: Request,organization_id: int,invoice_id: int):
+    with SessionLocal() as db:
+        guard(request,db,True)
+        billing_lock(db,organization_id)
+        row=db.get(CommercialInvoice,invoice_id)
+        if not row or row.organization_id!=organization_id:
+            raise HTTPException(404,'Recebível não encontrado.')
+        if row.status=='paid':
+            raise HTTPException(409,'Recebível pago requer processo de estorno.')
+        if row.status!='void':
+            row.status='void'
+            db.add(AuditLog(event='commercial_invoice_voided',entity_type='commercial_invoice',
+                entity_id=row.id,details={'organization_id':organization_id}))
+        result=invoice_data(row)
+        db.commit()
+        return result
