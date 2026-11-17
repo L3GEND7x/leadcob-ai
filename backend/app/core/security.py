@@ -164,8 +164,8 @@ def login(payload: Credentials, request: Request):
         raw, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
         db.add(LoginSession(token_hash=session_key(raw), csrf_token=csrf,
                             username=settings.admin_username, expires_at=now + timedelta(hours=8)))
-        db.query(LoginSession).filter(LoginSession.expires_at < now).delete()
-        db.query(LoginAttempt).filter(LoginAttempt.started_at < now - timedelta(days=1)).delete()
+        db.query(LoginSession).filter(LoginSession.expires_at < now).delete(synchronize_session=False)
+        db.query(LoginAttempt).filter(LoginAttempt.started_at < now - timedelta(days=1)).delete(synchronize_session=False)
         db.commit()
     response = JSONResponse({'authenticated': True, 'username': settings.admin_username, 'csrf_token': csrf})
     response.set_cookie(COOKIE, raw, httponly=True, secure=settings.app_env == 'production', samesite='strict', max_age=28800)
