@@ -459,3 +459,25 @@ class CommercialSubscription(Base):
         CheckConstraint("ends_at > starts_at", name="ck_subscription_period"),
         CheckConstraint("status IN ('active','cancelled')", name="ck_subscription_status"),
     )
+
+
+class CommercialInvoice(Base):
+    """Internal receivable, not a fiscal invoice or issued bank charge."""
+    __tablename__ = "commercial_invoices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("commercial_plans.id"))
+    period_start: Mapped[str] = mapped_column(String(10))
+    period_end: Mapped[str] = mapped_column(String(10))
+    due_date: Mapped[str] = mapped_column(String(10))
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    payment_reference: Mapped[str | None] = mapped_column(String(160), nullable=True, unique=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "period_start", "period_end", name="uq_commercial_invoice_period"),
+        CheckConstraint("amount_cents > 0", name="ck_commercial_invoice_amount"),
+        CheckConstraint("period_end > period_start", name="ck_commercial_invoice_dates"),
+        CheckConstraint("status IN ('open','paid','void')", name="ck_commercial_invoice_status"),
+    )
