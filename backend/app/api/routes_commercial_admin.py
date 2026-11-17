@@ -594,3 +594,69 @@ def issue_sandbox_payment(request: Request, organization_id: int, invoice_id: in
             raise HTTPException(409, 'Cobrança emitida; vínculo requer revisão manual.') from exc
         return {'environment': 'sandbox', 'invoice_id': invoice_id, 'payment_id': payment_id,
                 'external_reference': reference, 'ledger_status': 'open'}
+
+
+from app.services.asaas_sandbox_observations import event_binding, observe
+
+
+@router.post('/organizations/{organization_id}/invoices/{invoice_id}/asaas-sandbox/events/{event_id}/observe')
+def observe_sandbox_event(request: Request, organization_id: int, invoice_id: int, event_id: str):
+    with SessionLocal() as db:
+        guard(request, db, True)
+        binding = event_binding(db, organization_id, invoice_id, event_id)
+        if binding is None:
+            raise HTTPException(404, 'Evento sandbox vinculado não encontrado.')
+        def existing():
+            row = db.execute(text("""SELECT outcome, provider_status, gross_cents, net_cents, observed_at
+                FROM asaas_sandbox_observations WHERE event_id=:eid AND invoice_id=:iid"""),
+                {'eid': event_id, 'iid': invoice_id}).mappings().one_or_none()
+            return dict(row) if row else None
+        previous = existing()
+        if previous:
+            return {'environment': 'sandbox', 'event_id': event_id, **previous}
+        try:
+            result = observe(binding, settings.asaas_sandbox_api_key)
+        except PaymentUnavailable as exc:
+            raise HTTPException(503, 'Consulta sandbox indisponível; tente novamente.') from exc
+        billing_lock(db, organization_id)
+        current = event_binding(db, organization_id, invoice_id, event_id)
+        if current is None or dict(current) != dict(binding):
+            raise HTTPException(409, 'Vínculo alterado durante a consulta.')
+        previous = existing()
+        if previous:
+            return {'environment': 'sandbox', 'event_id': event_id, **previous}
+        observed_at = datetime.now(timezone.utc)
+        try:
+            db.execute(text("""INSERT INTO asaas_sandbox_observations
+                (event_id,invoice_id,outcome,provider_status,gross_cents,net_cents,observed_at)
+                VALUES (:eid,:iid,:outcome,:provider_status,:gross_cents,:net_cents,:observed_at)"""),
+                dict(eid=event_id, iid=invoice_id, observed_at=observed_at, **result))
+            db.add(AuditLog(event='asaas_sandbox_observed',entity_type='commercial_invoice',
+                            entity_id=invoice_id,details={'organization_id':organization_id,
+                            'event_id':event_id,'environment':'sandbox',**result}))
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            previous = existing()
+            if previous:
+                return {'environment':'sandbox','event_id':event_id,**previous}
+            raise HTTPException(409, 'Conflito de observação.') from exc
+        return {'environment':'sandbox','event_id':event_id,'observed_at':observed_at,**result}
+
+
+@router.get('/organizations/{organization_id}/invoices/{invoice_id}/asaas-sandbox/events')
+def list_sandbox_events(request: Request, organization_id: int, invoice_id: int,
+                        limit: int = Query(100,ge=1,le=250), offset: int = Query(0,ge=0)):
+    with SessionLocal() as db:
+        guard(request, db)
+        row = db.get(CommercialInvoice, invoice_id)
+        if not row or row.organization_id != organization_id:
+            raise HTTPException(404, 'Recebível não encontrado.')
+        rows = db.execute(text("""SELECT e.event_id,e.event_type,e.received_at,
+            o.outcome,o.provider_status,o.gross_cents,o.net_cents,o.observed_at
+            FROM asaas_sandbox_events e
+            JOIN asaas_sandbox_payments p ON p.payment_id=e.payment_id
+            LEFT JOIN asaas_sandbox_observations o ON o.event_id=e.event_id AND o.invoice_id=p.invoice_id
+            WHERE p.invoice_id=:iid ORDER BY e.received_at DESC,e.event_id DESC LIMIT :lim OFFSET :off"""),
+            {'iid':invoice_id,'lim':limit,'off':offset}).mappings()
+        return {'environment':'sandbox','invoice_id':invoice_id,'events':[dict(item) for item in rows]}
