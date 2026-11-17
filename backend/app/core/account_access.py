@@ -85,7 +85,7 @@ def authorize(db: Session, raw: str, organization_id: int, permission: str,
     principal = _membership(db, row.user_id, organization_id)
     if permission not in PERMISSIONS[principal.role]:
         raise AccessDenied()
-    if permission != 'read' and (not csrf or not hmac.compare_digest(csrf, row.csrf_token)):
+    if permission != 'read' and (not csrf or not hmac.compare_digest(csrf.encode('utf-8'), row.csrf_token.encode('utf-8'))):
         raise AccessDenied()
     return principal
 

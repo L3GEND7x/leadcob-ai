@@ -96,6 +96,8 @@ def session(request: Request, organization_id: int):
         except AccessDenied:
             return {'authenticated': False}
         row = db.get(AccountSession, hashlib.sha256(raw.encode()).hexdigest())
+        if row is None:
+            return {'authenticated': False}
         return dict(authenticated=True, organization_id=principal.organization_id,
                     role=principal.role, csrf_token=row.csrf_token)
 
@@ -112,7 +114,7 @@ def logout(payload: Scope, request: Request):
             raise HTTPException(401, 'Sessão inválida.')
         row = db.get(AccountSession, hashlib.sha256(raw.encode()).hexdigest())
         import hmac
-        if not hmac.compare_digest(request.headers.get('x-csrf-token', ''), row.csrf_token):
+        if row is None or not hmac.compare_digest(request.headers.get('x-csrf-token', '').encode('utf-8'), row.csrf_token.encode('utf-8')):
             raise HTTPException(403, 'CSRF inválido.')
         revoke_session(db, raw)
         db.commit()

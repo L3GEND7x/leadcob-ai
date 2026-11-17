@@ -26,14 +26,21 @@ def operation(request, organization_id, write=False, resource=None, subscription
     with SessionLocal() as db:
         try:
             authorize(db, token, organization_id, 'write' if write else 'read', csrf=csrf)
-            if write and settings.commercial_entitlements_enabled:
-                lock_organization(db, organization_id)
-                authorize(db, token, organization_id, 'write', csrf=csrf)
-                if not subscription_exempt:
-                    enforce(db, organization_id, resource, locked=True)
-            yield db, token, csrf
             if write:
-                db.commit()
+                lock_organization(db, organization_id)
+                principal = authorize(db, token, organization_id, 'write', csrf=csrf)
+                if settings.commercial_entitlements_enabled and not subscription_exempt:
+                    enforce(db, organization_id, resource, locked=True)
+            if write:
+                from app.core.security import actor
+                audit_token = actor.set(f'commercial:{principal.organization_id}:{principal.user_id}')
+                try:
+                    yield db, token, csrf
+                    db.commit()
+                finally:
+                    actor.reset(audit_token)
+            else:
+                yield db, token, csrf
         except AccessDenied as exc:
             raise HTTPException(403, 'Acesso não autorizado.') from exc
         except (leads.LeadNotFound, tasks.TaskNotFound, portfolios.PortfolioNotFound) as exc:
