@@ -319,3 +319,15 @@ class AccountSession(Base):
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
     csrf_token: Mapped[str] = mapped_column(String(80))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class WorkspaceLead(Base):
+    """Private prospect records, never populated from the owner's private CRM."""
+    __tablename__ = "workspace_leads"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
+    name: Mapped[str] = mapped_column(String(220))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    stage: Mapped[str] = mapped_column(String(30), default="identified")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (CheckConstraint("stage IN ('identified', 'contacted', 'negotiation', 'won', 'lost')", name="ck_workspace_lead_stage"),)
