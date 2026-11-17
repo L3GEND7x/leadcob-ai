@@ -38,7 +38,7 @@ async function load(){
  $('rows').replaceChildren();for(const org of rows){
  const r=el('article');r.className='record';r.append(el('strong',org.name),el('p','Código: '+org.id+' · '+org.slug+' · '+(org.active?'Ativa':'Suspensa')));
  const actions=el('div');actions.className='actions';const details=el('div');
- actions.append(btn('Gerenciar usuários',()=>showMembers(org,details)),btn(org.active?'Suspender':'Reativar',async()=>{
+ actions.append(btn('Gerenciar assinatura',()=>showSubscription(org,details)),btn('Gerenciar usuários',()=>showMembers(org,details)),btn(org.active?'Suspender':'Reativar',async()=>{
  if(!confirm(org.active?'Suspender e encerrar todas as sessões desta organização?':'Reativar esta organização?'))return;
  await api(base+'/'+org.id,'PATCH',{active:!org.active});await load();
  }));r.append(actions,details);$('rows').append(r);}
@@ -47,4 +47,39 @@ async function load(){
 }
 $('provision').addEventListener('submit',e=>{e.preventDefault();run(async()=>{let data;try{data=await api(base,'POST',Object.fromEntries(new FormData(e.target)));}finally{e.target.elements.password.value='';}e.target.reset();offset=0;await load();alert('Organização criada. Código de acesso: '+data.id);});});
 $('refresh').addEventListener('click',()=>run(load));$('prev').addEventListener('click',()=>run(async()=>{offset=Math.max(0,offset-limit);await load();}));$('next').addEventListener('click',()=>run(async()=>{offset+=limit;await load();}));
-run(async()=>{const s=await api('/api/auth/session');if(!s.authenticated||s.mode!=='cloud'||!s.csrf_token)throw Error('Entre no painel principal com a conta do proprietário.');csrf=s.csrf_token;await load();$('directory').hidden=false;$('admin-content').hidden=false;});
+run(async()=>{const s=await api('/api/auth/session');if(!s.authenticated||s.mode!=='cloud'||!s.csrf_token)throw Error('Entre no painel principal com a conta do proprietário.');csrf=s.csrf_token;await load();$('directory').hidden=false;$('admin-content').hidden=false;$('plans').hidden=false;await loadPlans();});
+
+const planBase='/api/owner/commercial/plans';
+const quotaLabels={members:'Usuários',leads:'Leads',contacts:'Contatos',tasks:'Tarefas',portfolios:'Carteiras',titles:'Títulos'};
+const subscriptionLabels={unassigned:'Sem assinatura',scheduled:'Agendada',active:'Ativa',expired:'Vencida',cancelled:'Cancelada'};
+let planOffset=0;
+function money(cents){return (cents/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+function planDescription(plan){return Object.entries(quotaLabels).map(([k,label])=>label+': '+plan['max_'+k].toLocaleString('pt-BR')).join(' · ');}
+async function loadPlans(){
+ const rows=await api(planBase+'?limit='+limit+'&offset='+planOffset);
+ $('plan-rows').replaceChildren();
+ for(const p of rows){const r=el('article');r.className='record';r.append(el('strong',p.name+' · '+money(p.monthly_price_cents)+'/mês'),el('p',p.code+' · '+(p.active?'Ativo':'Inativo')),el('p',planDescription(p)),btn(p.active?'Desativar plano':'Ativar plano',async()=>{if(!confirm('Confirmar alteração de disponibilidade do plano '+p.name+'?'))return;await api(planBase+'/'+p.id,'PATCH',{active:!p.active});await loadPlans();}));$('plan-rows').append(r);}
+ if(!rows.length)$('plan-rows').append(el('p','Nenhum plano nesta página.'));
+ $('plan-prev').disabled=planOffset===0;$('plan-next').disabled=rows.length<limit;$('plan-page').textContent='Página '+(planOffset/limit+1);
+}
+$('create-plan').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const f=e.target,v=Object.fromEntries(new FormData(f));if(!/^\d+(\.\d{1,2})?$/.test(v.price))throw Error('Informe uma mensalidade com até duas casas decimais.');const [reais,centavos='']=v.price.split('.');v.monthly_price_cents=Number(reais)*100+Number(centavos.padEnd(2,'0'));delete v.price;for(const k of Object.keys(quotaLabels))v['max_'+k]=Number(v['max_'+k]);await api(planBase,'POST',v);f.reset();planOffset=0;await loadPlans();});});
+$('refresh-plans').addEventListener('click',()=>run(loadPlans));$('plan-prev').addEventListener('click',()=>run(async()=>{planOffset=Math.max(0,planOffset-limit);await loadPlans();}));$('plan-next').addEventListener('click',()=>run(async()=>{planOffset+=limit;await loadPlans();}));
+function dateText(value){return value?new Date(value).toLocaleString('pt-BR',{timeZone:'America/Manaus'}):'—';}
+function localDateValue(value){if(!value)return '';const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Manaus',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value));const d=Object.fromEntries(parts.map(p=>[p.type,p.value]));return d.year+'-'+d.month+'-'+d.day+'T'+d.hour+':'+d.minute;}
+async function showSubscription(org,area){
+ const path=base+'/'+org.id+'/subscription';
+ const sub=await api(path);
+ area.replaceChildren(el('h3','Assinatura de '+org.name),el('p','Situação: '+(subscriptionLabels[sub.status]||sub.status)));
+ if(sub.plan)area.append(el('p',sub.plan.name+' · '+money(sub.plan.monthly_price_cents)+'/mês'),el('p','Vigência (Manaus): '+dateText(sub.starts_at)+' a '+dateText(sub.ends_at)),el('p',planDescription(sub.plan)));
+ area.append(el('p','Atribuição administrativa não confirma recebimento de pagamento.'));
+ const form=el('form'),label=el('label','Código numérico do plano ativo'),input=el('input');input.name='plan_id';input.type='number';input.min='1';input.required=true;if(sub.plan)input.value=sub.plan.id;label.append(input);form.append(label);
+ const plans=await api(planBase+'?limit=250&offset=0');
+ const active=plans.filter(p=>p.active);
+ if(active.length){const hint=el('p','Planos ativos nesta consulta: '+active.map(p=>p.id+' — '+p.name+' ('+money(p.monthly_price_cents)+')').join(' · '));form.append(hint);}
+ else form.append(el('p','Nenhum plano ativo na primeira página. Ative um plano no catálogo antes de atribuir.'));
+ for(const [name,title,value] of [['starts_at','Início (horário de Manaus)',sub.starts_at],['ends_at','Fim (horário de Manaus)',sub.ends_at]]){const l=el('label',title),i=el('input');i.type='datetime-local';i.name=name;i.required=true;i.value=localDateValue(value);l.append(i);form.append(l);}
+ form.append(el('button','Salvar vigência'));
+ form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{const v=Object.fromEntries(new FormData(form));v.plan_id=Number(v.plan_id);v.starts_at=new Date(v.starts_at+'-04:00').toISOString();v.ends_at=new Date(v.ends_at+'-04:00').toISOString();if(!confirm('Confirmar atribuição ou renovação da assinatura?'))return;await api(path,'PUT',v);await showSubscription(org,area);});});
+ area.append(form);
+ if(sub.plan&&sub.status!=='cancelled')area.append(btn('Cancelar assinatura',async()=>{if(!confirm('Cancelar a assinatura desta organização? Os dados serão preservados.'))return;await api(path+'/cancel','POST');await showSubscription(org,area);}));
+}

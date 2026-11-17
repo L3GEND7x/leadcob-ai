@@ -1,8 +1,7 @@
 # Changelog
 
 ## Não lançado
-- Recebíveis mensais internos por organização, valor congelado em centavos, prevenção de períodos duplicados ou sobrepostos, baixa manual auditável e cancelamento de recebíveis abertos. Não emite cobrança bancária ou nota fiscal e não renova assinaturas automaticamente.
-- Adaptador interno de consulta de cobranças Asaas em sandbox, com verificação conservadora de identificadores, valor e estado. Não conectado à baixa financeira nem à emissão de cobrança.
+
 - Assinaturas comerciais administrativas por organização, vigência, cancelamento e consulta privada. Migração inclui catálogo inicial inativo: Essential R$ 27, Professional R$ 117 e Enterprise R$ 397. Sem cobrança automática ou bloqueio por assinatura nesta etapa.
 - Catálogo administrativo de planos versionados em BRL, preços em centavos e limites configuráveis. Nenhum plano ou cobrança criado automaticamente; aplicação de limites depende da assinatura.
 - Central de enriquecimento: cobertura por canal, UF e município, com contagens distintas de registros elegíveis e separação de contatos verificados.
