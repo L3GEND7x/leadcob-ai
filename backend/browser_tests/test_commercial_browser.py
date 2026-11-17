@@ -35,3 +35,27 @@ def test_commercial_workspace(viewport):
         assert not errors, errors
         context.close()
         browser.close()
+
+
+@pytest.mark.parametrize("viewport", [{"width":1280,"height":800},{"width":390,"height":844}])
+def test_owner_assistant_navigation(viewport):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport=viewport)
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(URL + "/")
+        page.locator('#login-form [name="username"]').fill("admin")
+        page.locator('#login-form [name="password"]').fill("local-ci-owner-133")
+        page.get_by_role("button",name="Entrar",exact=True).click()
+        expect(page.get_by_role("heading",name="Central de comando",exact=True)).to_be_visible()
+        if viewport["width"] < 860:
+            page.locator("#nav-toggle").click()
+            expect(page.locator("#nav-toggle")).to_have_attribute("aria-expanded","true")
+        page.locator('#nav [data-v="assistente"]').click()
+        expect(page.get_by_role("heading",name="Assistente LeadCob",exact=True)).to_be_visible()
+        expect(page.locator("#ai-form")).to_be_visible()
+        expect(page.locator("#ai-form button")).to_be_disabled()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+        assert not errors, errors
+        browser.close()
