@@ -13,6 +13,7 @@ import re
 import time
 from app.services.safe_http import public_client, bounded_get, validate_url
 from html import unescape
+from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse, parse_qs, unquote
 from urllib.robotparser import RobotFileParser
 
@@ -47,11 +48,46 @@ SOCIAL_HOSTS = {
 }
 
 
+class PublishedHTML(HTMLParser):
+    """Read explicit links and visible text, not scripts, templates or comments."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links, self.text, self.hidden = [], [], []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style", "template", "noscript", "head"}:
+            self.hidden.append(tag)
+        if not self.hidden and tag == "a":
+            href = dict(attrs).get("href")
+            if href:
+                self.links.append(href)
+
+    def handle_endtag(self, tag):
+        if self.hidden and tag == self.hidden[-1]:
+            self.hidden.pop()
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.text.append(data)
+
+
+def parse_published(html):
+    parser = PublishedHTML()
+    parser.feed(html)
+    parser.close()
+    return parser
+
+
 def published_channels(html, source_url):
     """Extract explicit contact links published by the registered business site."""
     channels = {}
-    for href in HREF.findall(html):
-        link = urlparse(urljoin(source_url, href.strip()))
+    for href in parse_published(html).links:
+        try:
+            link = urlparse(urljoin(source_url, href.strip()))
+            if link.scheme in {"http", "https"} and link.port not in (None, 80, 443):
+                continue
+        except ValueError:
+            continue
         kind, value = None, None
         if link.scheme.lower() == "tel":
             kind, value = "phone", re.sub(r"\D", "", unquote(link.path).split(";")[0])
@@ -59,7 +95,11 @@ def published_channels(html, source_url):
             host = (link.hostname or "").lower()
             if host in {"wa.me", "api.whatsapp.com", "web.whatsapp.com"}:
                 number = link.path.strip("/") if host == "wa.me" else parse_qs(link.query).get("phone", [""])[0]
-                kind, value = "whatsapp", re.sub(r"\D", "", number)
+                if host != "wa.me" and link.path.rstrip("/") != "/send":
+                    continue
+                if not re.fullmatch(r"\+?[0-9]{10,13}", number):
+                    continue
+                kind, value = "whatsapp", number.lstrip("+")
             for platform, hosts in SOCIAL_HOSTS.items():
                 if host in hosts:
                     path = link.path.strip("/")
@@ -68,7 +108,7 @@ def published_channels(html, source_url):
                         valid = len(parts) == 2 and parts[0] == "company" and bool(parts[1])
                     else:
                         valid = len(parts) == 1 and bool(path) and path.lower() not in {
-                            "share", "sharer", "sharer.php", "login", "intent", "p", "reel", "stories", "dialog"}
+                            "share", "sharer", "sharer.php", "login", "intent", "p", "reel", "stories", "dialog", "accounts", "explore", "reels", "groups", "watch", "help", "marketplace", "plugins"}
                     if valid:
                         kind, value = platform, "https://www." + platform + ".com/" + path + "/"
         if kind in {"phone", "whatsapp"} and not (10 <= len(value or "") <= 13):
@@ -122,19 +162,27 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
             if _root(final_host) != domain:
                 notes.append(f"{url} redireciona para outro domínio ({final_host}); ignorado")
                 continue
-            html = unescape(resp.text[:MAX_BYTES])
+            html = resp.text[:MAX_BYTES]
+            parsed = parse_published(html)
             pages.append(str(resp.url))
             for item in published_channels(html, str(resp.url)):
                 channels.setdefault((item["kind"], item["value"]), item)
-            for email in EMAIL.findall(html):
+            mailboxes = EMAIL.findall(" ".join(parsed.text))
+            for href in parsed.links:
+                if href.lower().startswith("mailto:"):
+                    mailboxes.extend(EMAIL.findall(unquote(href[7:].split("?", 1)[0])))
+            for email in mailboxes:
                 email = email.lower().rstrip(".")
                 local, _, host = email.partition("@")
-                if _root(host) == domain and _role_box(local) and email not in found:
+                if (host == u.hostname.lower().removeprefix("www.") or host == u.hostname.lower()) and _role_box(local) and email not in found:
                     found[email] = str(resp.url)
             if len(pages) == 1:   # da página inicial, seguir só links de contato do mesmo domínio
-                for href in HREF.findall(html):
-                    link = urljoin(str(resp.url), href)
-                    lh = urlparse(link).hostname or ""
+                for href in parsed.links:
+                    try:
+                        link = urljoin(str(resp.url), href)
+                        lh = urlparse(link).hostname or ""
+                    except ValueError:
+                        continue
                     if _root(lh) == domain and CONTACT_HINT.search(urlparse(link).path or "") and link not in seen and len(queue) < 12:
                         queue.append(link)
     finally:
