@@ -1,0 +1,41 @@
+name: Browser comercial
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  chromium:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: sqlite:////tmp/leadcob-browser-133.db
+      APP_ENV: development
+      COMMERCIAL_AUTH_ENABLED: "true"
+      COMMERCIAL_ENTITLEMENTS_ENABLED: "true"
+      DEMO_SEED: "false"
+      PUBLIC_URL: http://127.0.0.1:8765
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt pytest playwright
+      - run: python -m playwright install --with-deps chromium
+      - name: Start isolated backend and exercise browser
+        shell: bash
+        run: |
+          export ADMIN_PASSWORD_HASH="$(python -c "from app.core.security import password_hash; print(password_hash('local-ci-owner-133'))")"
+          PYTHONPATH=. python browser_tests/seed.py
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 > /tmp/leadcob-browser.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; cat /tmp/leadcob-browser.log' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8765/commercial > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8765/commercial > /dev/null
+          python -m pytest -q browser_tests/test_commercial_browser.py
