@@ -38,7 +38,7 @@ async function load(){
  $('rows').replaceChildren();for(const org of rows){
  const r=el('article');r.className='record';r.append(el('strong',org.name),el('p','Código: '+org.id+' · '+org.slug+' · '+(org.active?'Ativa':'Suspensa')));
  const actions=el('div');actions.className='actions';const details=el('div');
- actions.append(btn('Gerenciar assinatura',()=>showSubscription(org,details)),btn('Gerenciar usuários',()=>showMembers(org,details)),btn(org.active?'Suspender':'Reativar',async()=>{
+ actions.append(btn('Financeiro',()=>showFinance(org,details)),btn('Gerenciar assinatura',()=>showSubscription(org,details)),btn('Gerenciar usuários',()=>showMembers(org,details)),btn(org.active?'Suspender':'Reativar',async()=>{
  if(!confirm(org.active?'Suspender e encerrar todas as sessões desta organização?':'Reativar esta organização?'))return;
  await api(base+'/'+org.id,'PATCH',{active:!org.active});await load();
  }));r.append(actions,details);$('rows').append(r);}
@@ -82,4 +82,66 @@ async function showSubscription(org,area){
  form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{const v=Object.fromEntries(new FormData(form));v.plan_id=Number(v.plan_id);v.starts_at=new Date(v.starts_at+'-04:00').toISOString();v.ends_at=new Date(v.ends_at+'-04:00').toISOString();if(!confirm('Confirmar atribuição ou renovação da assinatura?'))return;await api(path,'PUT',v);await showSubscription(org,area);});});
  area.append(form);
  if(sub.plan&&sub.status!=='cancelled')area.append(btn('Cancelar assinatura',async()=>{if(!confirm('Cancelar a assinatura desta organização? Os dados serão preservados.'))return;await api(path+'/cancel','POST');await showSubscription(org,area);}));
+}
+
+
+// Owner-only financial operations; all amounts and statuses originate from the API.
+const ledgerLabels={open:'Em aberto',paid:'Baixado',void:'Cancelado'};
+const outcomeLabels={sandbox_received:'Recebido em teste',not_received:'Não recebido',divergence:'Divergência',refund_review:'Revisar estorno',chargeback_review:'Revisar chargeback',deleted_review:'Revisar exclusão',financial_review:'Revisão financeira'};
+async function showFinance(org,area){
+ const root=base+'/'+org.id, path=root+'/invoices';
+ let pageOffset=0;
+ async function loadFinance(){
+  const rows=await api(path+'?limit='+limit+'&offset='+pageOffset);
+  area.replaceChildren(el('h3','Financeiro · '+org.name),el('p','Recebíveis internos em BRL. Sandbox não comprova pagamento real nem libera assinatura.'));
+  area.append(btn('Processar eventos sandbox',async()=>{
+   const result=await api(root+'/asaas-sandbox/process-pending?limit=5','POST');
+   const report=el('div');report.append(el('p','Selecionados: '+result.selected+' · Tentativas: '+result.attempted));
+   for(const x of result.results)report.append(el('p',x.event_id+' · '+(outcomeLabels[x.outcome]||x.status)));
+   if(!result.results.length)report.append(el('p','Nenhum evento vinculado pendente.'));
+   area.append(report);
+  }));
+  const form=el('form');
+  for(const [name,label,type] of [['plan_id','Código do plano ativo','number'],['period_start','Início do período','date'],['period_end','Fim do período','date'],['due_date','Vencimento','date']]){
+   const l=el('label',label),i=el('input');i.name=name;i.type=type;i.required=true;if(type==='number')i.min='1';l.append(i);form.append(l);
+  }
+  form.append(el('button','Registrar recebível'));
+  form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{const v=Object.fromEntries(new FormData(form));v.plan_id=Number(v.plan_id);await api(path,'POST',v);pageOffset=0;await loadFinance();});});
+  area.append(form);
+  if(!rows.length)area.append(el('p','Nenhum recebível nesta página.'));
+  for(const row of rows){
+   const card=el('article');card.className='record';
+   const invoicePath=path+'/'+row.id, detail=el('div');
+   card.append(el('strong','#'+row.id+' · '+money(row.amount_cents)),el('p',(ledgerLabels[row.status]||row.status)+' · '+row.period_start+' a '+row.period_end+' · Vencimento: '+row.due_date));
+   if(row.status==='open'){
+    card.append(btn('Registrar baixa real',async()=>{
+     const reference=prompt('Referência do comprovante bancário real (não utilize pagamentos sandbox):');
+     if(reference===null)return;
+     if(!reference.trim()||!confirm('Confirme que o valor integral '+money(row.amount_cents)+' foi recebido e conferido no banco.'))return;
+     const paidAt=prompt('Data e hora real do pagamento (ISO 8601 com fuso, ex.: 2026-11-17T10:00:00-04:00):');
+     if(paidAt===null)return;
+     if(!Number.isFinite(Date.parse(paidAt))||!/(Z|[+-][0-9]{2}:[0-9]{2})$/.test(paidAt))throw Error('Informe data válida com fuso horário.');
+     await api(invoicePath+'/settle','POST',{amount_cents:row.amount_cents,payment_reference:reference.trim(),paid_at:new Date(paidAt).toISOString()});await loadFinance();
+    }),btn('Cancelar recebível',async()=>{if(!confirm('Cancelar o recebível #'+row.id+'? Isso não cancela cobranças no Asaas.'))return;await api(invoicePath+'/void','POST');await loadFinance();}));
+   }
+   if(row.status==='paid')card.append(btn('Renovar assinatura',async()=>{if(!confirm('Aplicar este recebível à vigência contratual?'))return;const result=await api(invoicePath+'/renew','POST');await loadFinance();area.append(el('p',result.replayed?'Renovação já registrada.':'Renovação registrada.'));}));
+   card.append(btn('Consultar eventos sandbox',async()=>{
+    const result=await api(invoicePath+'/asaas-sandbox/events?limit=50&offset=0');
+    detail.replaceChildren(el('h4','Eventos sandbox (até 50 mais recentes)'));
+    for(const event of result.events)detail.append(el('p',event.event_type+' · '+(outcomeLabels[event.outcome]||'Pendente de observação')+' · '+event.event_id));
+    if(!result.events.length)detail.append(el('p','Nenhum evento vinculado.'));
+   }),detail);
+   area.append(card);
+  }
+  const prev=btn('Anterior',async()=>{pageOffset=Math.max(0,pageOffset-limit);await loadFinance();}),next=btn('Próxima',async()=>{pageOffset+=limit;await loadFinance();});
+  prev.disabled=pageOffset===0;next.disabled=rows.length<limit;area.append(prev,el('span',' Página '+(pageOffset/limit+1)+' '),next);
+  area.append(btn('Histórico de renovações',async()=>{
+   const records=await api(root+'/renewals?limit=50&offset=0'), history=el('div');
+   history.append(el('h4','Últimas 50 renovações'));
+   for(const x of records)history.append(el('p','Recebível #'+x.invoice_id+' · '+x.previous_end+' → '+x.new_end));
+   if(!records.length)history.append(el('p','Nenhuma renovação registrada.'));
+   area.append(history);
+  }));
+ }
+ await loadFinance();
 }
