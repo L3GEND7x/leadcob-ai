@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 let session=null, moduleName='leads', offset=0, epoch=0, busy=false;
 const size=50;
 const stages={identified:'Identificado',contacted:'Contatado',negotiation:'Negociação',won:'Ganho',lost:'Perdido'};
-const names={leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações'};
+const names={leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações',subscription:'Meu plano'};
 const channels={email:'E-mail',phone:'Telefone',whatsapp:'WhatsApp',website:'Site',linkedin:'LinkedIn',instagram:'Instagram',facebook:'Facebook'};
 function el(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function status(message){$('notice').textContent=message;}
@@ -51,6 +51,7 @@ function showContact(x){return record(channels[x.kind]||x.kind,[x.cnpj,x.value,'
 async function load(){if(!session)return;const version=++epoch;const current=moduleName;$('module-title').textContent=names[current];$('form-area').replaceChildren();$('results').replaceChildren(el('p','Carregando…'));$('pagination').hidden=true;
  for(const b of $('nav').querySelectorAll('button'))b.setAttribute('aria-current',String(b.dataset.module===current));
  try{
+ if(current==='subscription'){const x=await workspace('subscription');if(version!==epoch)return;showSubscription(x);return;}
  if(current==='settings'){const x=await workspace('settings');if(version!==epoch)return;$('results').replaceChildren(record('Preferências atuais',['Fuso: '+x.timezone,'Follow-up: '+x.followup_days.join(', ')+' dias','Registros por página: '+x.default_page_size]));
  if(session.role==='admin')$('form-area').append(form([field('timezone_name','Fuso horário','text',x.timezone),field('followup_days','Dias separados por vírgulas','text',x.followup_days.join(',')),field('default_page_size','Registros por página','number',x.default_page_size)],'Salvar preferências',async v=>{await workspace('settings','PUT',{timezone_name:v.timezone_name,followup_days:v.followup_days.split(',').map(Number),default_page_size:Number(v.default_page_size)});await load();}));return;}
  const rows=await workspace(current+'?limit='+size+'&offset='+offset);if(version!==epoch)return;
@@ -66,3 +67,18 @@ async function load(){if(!session)return;const version=++epoch;const current=mod
 $('nav').addEventListener('click',e=>{const b=e.target.closest('button[data-module]');if(b&&!busy){moduleName=b.dataset.module;offset=0;load();}});
 $('prev').addEventListener('click',()=>{if(offset>=size&&!busy){offset-=size;load();}});
 $('next').addEventListener('click',()=>{if(!busy){offset+=size;load();}});
+
+function showSubscription(x){
+ const labels={unassigned:'Sem assinatura',scheduled:'Agendada',active:'Ativa',expired:'Vencida',cancelled:'Cancelada'};
+ const root=$('results');
+ root.replaceChildren(record('Situação da assinatura',[labels[x.status]||x.status]));
+ if(!x.plan){root.append(el('p','Consulte o administrador para contratar um plano.'));return;}
+ const p=x.plan,fmt=v=>new Date(v).toLocaleString('pt-BR',{timeZone:'America/Manaus'});
+ root.append(record(p.name,[(p.monthly_price_cents/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})+' por mês','Início: '+fmt(x.starts_at),'Fim: '+fmt(x.ends_at),'Vigência em horário de Manaus. Não representa comprovante de pagamento.']));
+ if(x.enforcement_enabled===false)root.append(el('p','A aplicação automática dos limites está desativada neste ambiente.'));
+ if(x.enforcement_enabled===true&&x.status!=='active')root.append(el('p','Novas gravações estão bloqueadas. Seus dados continuam disponíveis para consulta.'));
+ const quotas={members:'Usuários',leads:'Leads',contacts:'Contatos',tasks:'Tarefas',portfolios:'Carteiras',titles:'Títulos'};
+ for(const [key,label] of Object.entries(quotas)){
+ const max=p['max_'+key],used=x.usage?.[key],r=record(label,[Number.isInteger(used)?used.toLocaleString('pt-BR')+' de '+max.toLocaleString('pt-BR')+' utilizados':'Limite contratado: '+max.toLocaleString('pt-BR')+' · consumo ainda indisponível']);
+ if(Number.isInteger(used)){const bar=el('progress');bar.max=Math.max(max,1);bar.value=Math.min(used,bar.max);bar.setAttribute('aria-label',label+' utilizados');r.append(bar);if(used>=max)r.append(el('p','Limite atingido ou excedido.'));}root.append(r);}
+}
