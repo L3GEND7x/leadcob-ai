@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Enriquecimento institucional manual em lotes de até cinco empresas no painel do proprietário, com supressão, fontes e resultados individuais; contatos permanecem a verificar.
 - Painel proprietário em `/owner/commercial` para cadastro de organizações, usuários e suspensão, integrado às APIs reais.
 - Proprietário pode provisionar organizações e usuários comerciais pela API protegida, listar membros e suspender organizações com revogação de sessões.
 - API comercial experimental inclui contatos institucionais, supressões e preferências privadas; fontes declaradas continuam a verificar.
