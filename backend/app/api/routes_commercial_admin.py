@@ -769,3 +769,11 @@ def process_pending_sandbox_events(request: Request, organization_id: int,
             if exc.status_code == 503:
                 break
     return {'environment':'sandbox','selected':len(pending),'attempted':len(results),'results':results}
+
+
+@router.get('/readiness')
+def commercial_readiness(request: Request):
+    from app.services.commercial_readiness import readiness
+    with SessionLocal() as db:
+        guard(request, db)
+        return readiness(db, settings)
