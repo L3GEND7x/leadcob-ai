@@ -410,3 +410,35 @@ def discover_batch(payload: BatchDiscoveryIn, db: Session = Depends(get_db)):
     return {'items': results, 'processed': len(results),
             'added': sum(r['added'] for r in results),
             'note': 'Somente sites cadastrados; contatos encontrados permanecem a verificar.'}
+
+
+class DiscoveryQueueIn(BaseModel):
+    company_ids: list[int] = Field(min_length=1,max_length=1000)
+
+
+@router.post('/discovery-jobs', status_code=201)
+def create_discovery_job(payload: DiscoveryQueueIn, db: Session = Depends(get_db)):
+    from app.services.contact_discovery_queue import enqueue
+    try:
+        return {'job_id':enqueue(db,payload.company_ids)}
+    except ValueError as exc:
+        raise HTTPException(422,'Lista de empresas inválida.') from exc
+
+
+@router.get('/discovery-jobs/{job_id}')
+def get_discovery_job(job_id: int, db: Session = Depends(get_db)):
+    from app.services.contact_discovery_queue import progress
+    result=progress(db,job_id)
+    if result is None:
+        raise HTTPException(404,'Lote não encontrado.')
+    return result
+
+
+@router.get('/discovery-jobs/{job_id}/items')
+def list_discovery_items(job_id: int, limit: int = Query(100,ge=1,le=250),
+                         offset: int = Query(0,ge=0), db: Session = Depends(get_db)):
+    from app.db.models import ContactDiscoveryItem, ContactDiscoveryJob
+    if not db.get(ContactDiscoveryJob,job_id):
+        raise HTTPException(404,'Lote não encontrado.')
+    rows=db.query(ContactDiscoveryItem).filter_by(job_id=job_id).order_by(ContactDiscoveryItem.id).offset(offset).limit(limit)
+    return [{'company_id':r.company_id,'status':r.status,'attempts':r.attempts,'result':r.result} for r in rows]
