@@ -36,21 +36,25 @@ def claim(db, now=None):
     now = now or datetime.now(timezone.utc)
     # Exhausted expired leases become terminal, rather than vanishing forever.
     db.execute(update(Item).where(Item.status=='running', Item.lease_until<=now,
-                                  Item.attempts>=MAX_ATTEMPTS).values(status='failed',
+                                  Item.attempts>=MAX_ATTEMPTS).execution_options(synchronize_session=False).values(status='failed',
                                   claim_token=None, lease_until=None, result={'status':'lease_expired'}))
     eligible = or_(Item.status=='queued', and_(Item.status=='running', Item.lease_until<=now))
-    candidate = db.scalar(select(Item.id).where(eligible, Item.attempts<MAX_ATTEMPTS).order_by(Item.id).limit(1))
+    selection = select(Item.id).where(eligible, Item.attempts<MAX_ATTEMPTS).order_by(Item.id).limit(1)
+    if db.get_bind().dialect.name == 'postgresql':
+        selection = selection.with_for_update(skip_locked=True)
+    candidate = db.scalar(selection)
     if candidate is None:
         db.commit()
         return None
     token = str(uuid4())
     changed = db.execute(update(Item).where(Item.id==candidate, eligible, Item.attempts<MAX_ATTEMPTS)
+                         .execution_options(synchronize_session=False)
                          .values(status='running', attempts=Item.attempts+1,
                                  claim_token=token, lease_until=now+LEASE))
     if changed.rowcount != 1:
         db.rollback()
         return None
-    item = db.get(Item,candidate)
+    item = db.get(Item,candidate, populate_existing=True)
     result = (item.id, item.company_id, token)
     db.commit()
     return result

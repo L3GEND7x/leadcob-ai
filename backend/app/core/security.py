@@ -46,16 +46,16 @@ def password_matches(password):
 
 
 def auth_enabled():
-    return bool(settings.admin_password_hash) or settings.app_env == 'production'
+    return bool(settings.admin_password_hash) or settings.app_env.strip().lower() == 'production'
 
 
 def validate_configuration():
-    if settings.app_env == 'production':
+    if settings.app_env.strip().lower() == 'production':
         parts = settings.admin_password_hash.split('.')
         if len(parts) != 3 or parts[0] != 'pbkdf2_sha256' or len(parts[1]) != 32 or len(parts[2]) != 64:
             raise RuntimeError('Produção exige ADMIN_PASSWORD_HASH. Execute python -m app.core.security.')
         parsed = urlparse(settings.public_url)
-        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ('', '/'):
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ('', '/') or parsed.query or parsed.fragment:
             raise RuntimeError('Produção exige PUBLIC_URL HTTPS.')
         from app.db.database import normalized_database_url
         db_url = make_url(normalized_database_url())
@@ -109,7 +109,7 @@ async def access_middleware(request, call_next):
                     expected = settings.public_url.rstrip('/') or str(request.base_url).rstrip('/')
                     if origin and origin != expected:
                         return JSONResponse({'detail': 'Origem não permitida.'}, status_code=403)
-                    if request.url.path != '/api/auth/login' and (not session or not hmac.compare_digest(request.headers.get('x-csrf-token', ''), session.csrf_token)):
+                    if request.url.path != '/api/auth/login' and (not session or not hmac.compare_digest(request.headers.get('x-csrf-token', '').encode('utf-8'), session.csrf_token.encode('utf-8'))):
                         return JSONResponse({'detail': 'Atualize a sessão antes de gravar.'}, status_code=403)
         else:
             host = request.client.host if request.client else ''
@@ -122,7 +122,7 @@ async def access_middleware(request, call_next):
         response.headers['Referrer-Policy'] = 'same-origin'
         response.headers['Content-Security-Policy'] = CONTENT_SECURITY_POLICY
         response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), payment=()'
-        if settings.app_env == 'production':
+        if settings.app_env.strip().lower() == 'production':
             response.headers['Strict-Transport-Security'] = 'max-age=31536000'
         if request.url.path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store'
@@ -158,7 +158,7 @@ def login(payload: Credentials, request: Request):
         attempt.count += 1
         db.commit()
         valid = password_matches(payload.password)
-        if not valid or not hmac.compare_digest(payload.username, settings.admin_username):
+        if not valid or not hmac.compare_digest(payload.username.encode('utf-8'), settings.admin_username.encode('utf-8')):
             raise HTTPException(401, 'Credenciais inválidas.')
         attempt.count = 0
         raw, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
@@ -168,7 +168,7 @@ def login(payload: Credentials, request: Request):
         db.query(LoginAttempt).filter(LoginAttempt.started_at < now - timedelta(days=1)).delete(synchronize_session=False)
         db.commit()
     response = JSONResponse({'authenticated': True, 'username': settings.admin_username, 'csrf_token': csrf})
-    response.set_cookie(COOKIE, raw, httponly=True, secure=settings.app_env == 'production', samesite='strict', max_age=28800)
+    response.set_cookie(COOKIE, raw, httponly=True, secure=settings.app_env.strip().lower() == 'production', samesite='strict', max_age=28800)
     return response
 
 
