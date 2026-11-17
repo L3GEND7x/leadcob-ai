@@ -22,6 +22,8 @@ app.middleware("http")(access_middleware)
 app.include_router(auth_router)
 from app.api.routes_commercial_auth import router as commercial_auth_router
 app.include_router(commercial_auth_router)
+from app.api.routes_commercial_workspace import router as commercial_workspace_router
+app.include_router(commercial_workspace_router)
 from app.api.routes_assistant import router as assistant_router
 app.include_router(assistant_router)
 app.include_router(contacts_router)
