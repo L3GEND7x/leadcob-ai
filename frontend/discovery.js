@@ -36,4 +36,24 @@ $('prev').addEventListener('click',()=>run(async()=>{offset=Math.max(0,offset-si
 $('next').addEventListener('click',()=>run(async()=>{offset+=size;await history();}));
 $('item-prev').addEventListener('click',()=>run(async()=>{itemOffset=Math.max(0,itemOffset-size);await detail();}));
 $('item-next').addEventListener('click',()=>run(async()=>{itemOffset+=size;await detail();}));
-run(async()=>{const s=await api('/api/auth/session');if(!s.authenticated||s.mode!=='cloud'||!s.csrf_token)throw Error('Sessão do proprietário obrigatória.');csrf=s.csrf_token;await history();$('content').hidden=false;});
+run(async()=>{const s=await api('/api/auth/session');if(!s.authenticated||s.mode!=='cloud'||!s.csrf_token)throw Error('Sessão do proprietário obrigatória.');csrf=s.csrf_token;await history();$('content').hidden=false;await coverage();});
+
+
+const channelNames={email:'E-mail',phone:'Telefone',whatsapp:'WhatsApp',linkedin:'LinkedIn',instagram:'Instagram',facebook:'Facebook',website:'Site'};
+async function coverage(){
+ const qs=new URLSearchParams(new FormData($('coverage-form')));
+ const root=$('coverage');root.replaceChildren(el('p','Consultando diretório…'));
+ try{
+ const r=await api('/api/contacts/coverage?'+qs);
+ const grid=el('div',undefined,'metrics');
+ for(const [label,value] of [['Empresas elegíveis',r.eligible_company_records],['Com canal cadastrado',r.with_any_channel],['Sem canal cadastrado',r.without_registered_channel],['Com canal verificado',r.with_any_verified_channel]]){
+ const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(value).toLocaleString('pt-BR')));grid.append(card);}
+ root.replaceChildren(grid);
+ for(const [kind,label] of Object.entries(channelNames)){
+ const c=r.channels[kind],row=el('article',undefined,'record');
+ const pct=r.eligible_company_records?100*c.available/r.eligible_company_records:0;
+ row.append(el('strong',label),el('p',c.available.toLocaleString('pt-BR')+' empresas · '+pct.toFixed(1).replace('.',',')+'% da base · '+c.verified.toLocaleString('pt-BR')+' verificadas'));
+ const bar=el('progress');bar.max=Math.max(r.eligible_company_records,1);bar.value=c.available;bar.setAttribute('aria-label',label+' — cobertura');row.append(bar);root.append(row);}
+ }catch(e){root.replaceChildren(el('p','Cobertura indisponível: '+e.message));throw e;}
+}
+$('coverage-form').addEventListener('submit',e=>{e.preventDefault();run(coverage);});
