@@ -426,3 +426,102 @@ def void_invoice(request: Request,organization_id: int,invoice_id: int):
         result=invoice_data(row)
         db.commit()
         return result
+
+
+# Sandbox-only administrative binding of an existing provider charge.
+from decimal import Decimal, InvalidOperation
+from sqlalchemy import text
+from app.core.config import settings
+from app.services.asaas_reconciliation import fetch_payment, PaymentUnavailable
+from app.services.asaas_sandbox_bindings import verify_bound_invoice
+
+
+class SandboxBindingIn(Input):
+    customer_id: str = Field(pattern=r'^cus_[A-Za-z0-9_-]{1,100}$')
+    payment_id: str = Field(pattern=r'^pay_[A-Za-z0-9_-]{1,100}$')
+
+
+def sandbox_reference(organization_id, invoice_id):
+    return f'leadcob-sandbox-org-{organization_id}-invoice-{invoice_id}'
+
+
+def sandbox_match(data, payload, reference, amount_cents):
+    try:
+        amount = Decimal(str(data['value']))
+        return (amount.is_finite() and amount * 100 == amount_cents
+                and data['id'] == payload.payment_id
+                and data['customer'] == payload.customer_id
+                and data['externalReference'] == reference
+                and data.get('deleted') is False
+                and not data.get('refunds')
+                and data.get('billingType') in {'PIX', 'BOLETO'}
+                and data.get('status') in {'PENDING', 'OVERDUE', 'CONFIRMED', 'RECEIVED'})
+    except (KeyError, TypeError, ValueError, InvalidOperation):
+        return False
+
+
+@router.put('/organizations/{organization_id}/invoices/{invoice_id}/asaas-sandbox')
+def bind_sandbox_payment(request: Request, organization_id: int, invoice_id: int,
+                         payload: SandboxBindingIn):
+    with SessionLocal() as db:
+        guard(request, db, True)
+        row = db.get(CommercialInvoice, invoice_id)
+        if not row or row.organization_id != organization_id:
+            raise HTTPException(404, 'Recebível não encontrado.')
+        if row.status != 'open':
+            raise HTTPException(409, 'Recebível não está aberto.')
+        reference = sandbox_reference(organization_id, invoice_id)
+        try:
+            data = fetch_payment(payload.payment_id, settings.asaas_sandbox_api_key)
+        except PaymentUnavailable as exc:
+            raise HTTPException(503, 'Consulta sandbox indisponível.') from exc
+        if not sandbox_match(data, payload, reference, row.amount_cents):
+            raise HTTPException(422, 'Cobrança sandbox incompatível com o recebível.')
+        # Serialize local mutations only after the network request returns.
+        billing_lock(db, organization_id)
+        db.refresh(row)
+        if row.status != 'open' or row.organization_id != organization_id or not sandbox_match(data, payload, reference, row.amount_cents):
+            raise HTTPException(409, 'Recebível alterado durante a consulta.')
+        customer = db.execute(text('SELECT customer_id FROM asaas_sandbox_customers WHERE organization_id=:oid'),
+                              {'oid': organization_id}).scalar_one_or_none()
+        binding = db.execute(text('SELECT payment_id, external_reference FROM asaas_sandbox_payments WHERE invoice_id=:iid'),
+                             {'iid': invoice_id}).mappings().one_or_none()
+        if customer is not None and customer != payload.customer_id:
+            raise HTTPException(409, 'Cliente sandbox já vinculado.')
+        if binding is not None:
+            if binding['payment_id'] != payload.payment_id or binding['external_reference'] != reference or customer != payload.customer_id:
+                raise HTTPException(409, 'Vínculo sandbox já existente.')
+            return {'environment': 'sandbox', 'bound': True, 'invoice_id': invoice_id}
+        try:
+            if customer is None:
+                db.execute(text('INSERT INTO asaas_sandbox_customers (organization_id, customer_id) VALUES (:oid, :cid)'),
+                           {'oid': organization_id, 'cid': payload.customer_id})
+            db.execute(text('INSERT INTO asaas_sandbox_payments (invoice_id, payment_id, external_reference) VALUES (:iid, :pid, :ref)'),
+                       {'iid': invoice_id, 'pid': payload.payment_id, 'ref': reference})
+            db.add(AuditLog(event='asaas_sandbox_binding_created', entity_type='commercial_invoice',
+                            entity_id=invoice_id, details={'organization_id': organization_id, 'environment': 'sandbox',
+                            'payment_id': payload.payment_id, 'customer_id': payload.customer_id, 'external_reference': reference}))
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(409, 'Identificador sandbox já vinculado.') from exc
+        return {'environment': 'sandbox', 'bound': True, 'invoice_id': invoice_id}
+
+
+@router.get('/organizations/{organization_id}/invoices/{invoice_id}/asaas-sandbox')
+def sandbox_payment_status(request: Request, organization_id: int, invoice_id: int):
+    with SessionLocal() as db:
+        guard(request, db)
+        row = db.get(CommercialInvoice, invoice_id)
+        if not row or row.organization_id != organization_id:
+            raise HTTPException(404, 'Recebível não encontrado.')
+        reference = sandbox_reference(organization_id, invoice_id)
+        bound = db.execute(text('SELECT payment_id FROM asaas_sandbox_payments WHERE invoice_id=:iid'),
+                           {'iid': invoice_id}).scalar_one_or_none() is not None
+        try:
+            verified = verify_bound_invoice(db, organization_id, invoice_id, settings.asaas_sandbox_api_key) if bound else False
+        except PaymentUnavailable as exc:
+            raise HTTPException(503, 'Consulta sandbox indisponível.') from exc
+        return {'environment': 'sandbox', 'bound': bound, 'verified': verified,
+                'external_reference': reference, 'invoice_id': invoice_id,
+                'ledger_status': row.status}
