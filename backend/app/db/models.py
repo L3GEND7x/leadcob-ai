@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, Integer, Float, ForeignKey, Boolean, JSON, UniqueConstraint, Numeric
+from sqlalchemy import String, Text, DateTime, Integer, Float, ForeignKey, Boolean, JSON, UniqueConstraint, Numeric, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 def now(): return datetime.now(timezone.utc)
@@ -282,3 +282,40 @@ class DomainCandidate(Base):
     status: Mapped[str] = mapped_column(String(20), default='a_verificar')
     checked_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
     __table_args__ = (UniqueConstraint('company_id', 'website', name='uq_domain_company_site'),)
+
+
+class Organization(Base):
+    """Commercial account. No legacy data is exposed through this model."""
+    __tablename__ = "organizations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    slug: Mapped[str] = mapped_column(String(80), unique=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AccountUser(Base):
+    __tablename__ = "account_users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(200))
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Membership(Base):
+    __tablename__ = "memberships"
+    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id"), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20))
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    __table_args__ = (CheckConstraint("role IN ('admin', 'member', 'viewer')", name="ck_membership_role"),)
+
+
+class AccountSession(Base):
+    __tablename__ = "account_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id"), index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    csrf_token: Mapped[str] = mapped_column(String(80))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
