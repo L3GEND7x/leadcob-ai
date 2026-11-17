@@ -731,3 +731,41 @@ def list_commercial_renewals(request: Request, organization_id: int,
             ORDER BY created_at DESC,invoice_id DESC LIMIT :lim OFFSET :off"""),
             {'oid':organization_id,'lim':limit,'off':offset}).mappings()
         return [dict(row) for row in rows]
+
+
+@router.post('/organizations/{organization_id}/asaas-sandbox/process-pending')
+def process_pending_sandbox_events(request: Request, organization_id: int,
+                                   limit: int = Query(5, ge=1, le=10)):
+    """Bounded, operator-triggered batch; no settlement or subscription mutations."""
+    with SessionLocal() as db:
+        guard(request, db, True)
+        if not db.get(Organization, organization_id):
+            raise HTTPException(404, 'Organização não encontrada.')
+        if not settings.asaas_sandbox_api_key:
+            raise HTTPException(503, 'Sandbox não configurado.')
+        pending = [dict(row) for row in db.execute(text("""
+            SELECT e.event_id, i.id AS invoice_id
+            FROM asaas_sandbox_events e
+            JOIN asaas_sandbox_payments p ON p.payment_id=e.payment_id
+            JOIN commercial_invoices i ON i.id=p.invoice_id
+            JOIN asaas_sandbox_customers c ON c.organization_id=i.organization_id
+            LEFT JOIN asaas_sandbox_observations o ON o.event_id=e.event_id
+            WHERE i.organization_id=:oid AND o.event_id IS NULL
+            ORDER BY e.received_at, e.event_id LIMIT :lim
+        """), {'oid':organization_id,'lim':limit}).mappings()]
+    results = []
+    for item in pending:
+        try:
+            result = observe_sandbox_event(request, organization_id, item['invoice_id'], item['event_id'])
+            results.append({'event_id':item['event_id'],'invoice_id':item['invoice_id'],
+                            'status':'observed','outcome':result['outcome']})
+        except HTTPException as exc:
+            if exc.status_code not in (404,409,503):
+                raise
+            results.append({'event_id':item['event_id'],'invoice_id':item['invoice_id'],
+                            'status':'retry_pending' if exc.status_code == 503 else 'review_required',
+                            'http_status':exc.status_code})
+            # Stop on provider outage; keep unprocessed events in the inbox.
+            if exc.status_code == 503:
+                break
+    return {'environment':'sandbox','selected':len(pending),'attempted':len(results),'results':results}
