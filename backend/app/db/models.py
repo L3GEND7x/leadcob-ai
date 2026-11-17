@@ -401,3 +401,25 @@ class WorkspaceSettings(Base):
     updated_by: Mapped[int] = mapped_column(ForeignKey("account_users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     __table_args__ = (CheckConstraint("default_page_size BETWEEN 10 AND 250", name="ck_workspace_page_size"),)
+
+
+class ContactDiscoveryJob(Base):
+    __tablename__ = "contact_discovery_jobs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ContactDiscoveryItem(Base):
+    __tablename__ = "contact_discovery_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("contact_discovery_jobs.id"), index=True)
+    company_id: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    claim_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    __table_args__ = (
+        UniqueConstraint("job_id", "company_id", name="uq_contact_discovery_job_company"),
+        CheckConstraint("status IN ('queued','running','completed','failed','skipped')", name="ck_contact_discovery_status"),
+    )
