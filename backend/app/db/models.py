@@ -423,3 +423,24 @@ class ContactDiscoveryItem(Base):
         UniqueConstraint("job_id", "company_id", name="uq_contact_discovery_job_company"),
         CheckConstraint("status IN ('queued','running','completed','failed','skipped')", name="ck_contact_discovery_status"),
     )
+
+
+class CommercialPlan(Base):
+    """Versioned BRL monthly plan. Existing rows are never repriced in place."""
+    __tablename__ = "commercial_plans"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(160))
+    monthly_price_cents: Mapped[int] = mapped_column(Integer)
+    max_members: Mapped[int] = mapped_column(Integer)
+    max_leads: Mapped[int] = mapped_column(Integer)
+    max_contacts: Mapped[int] = mapped_column(Integer)
+    max_tasks: Mapped[int] = mapped_column(Integer)
+    max_portfolios: Mapped[int] = mapped_column(Integer)
+    max_titles: Mapped[int] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (
+        CheckConstraint("monthly_price_cents >= 0", name="ck_commercial_plan_price"),
+        CheckConstraint("max_members >= 1 AND max_leads >= 0 AND max_contacts >= 0 AND max_tasks >= 0 AND max_portfolios >= 0 AND max_titles >= 0", name="ck_commercial_plan_limits"),
+    )
