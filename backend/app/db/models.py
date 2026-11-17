@@ -356,3 +356,13 @@ class WorkspacePortfolioTitle(Base):
         UniqueConstraint("portfolio_id", "reference", name="uq_workspace_title_reference"),
         CheckConstraint("amount > 0", name="ck_workspace_title_positive"),
     )
+
+
+class WorkspaceTask(Base):
+    __tablename__ = "workspace_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
+    title: Mapped[str] = mapped_column(String(250))
+    due_date: Mapped[str] = mapped_column(String(10))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
