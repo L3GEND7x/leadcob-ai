@@ -54,7 +54,7 @@ def claim(db, now=None):
     if changed.rowcount != 1:
         db.rollback()
         return None
-    item = db.get(Item,candidate)
+    item = db.get(Item,candidate, populate_existing=True)
     result = (item.id, item.company_id, token)
     db.commit()
     return result
