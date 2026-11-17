@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Proprietário pode provisionar organizações e usuários comerciais pela API protegida, listar membros e suspender organizações com revogação de sessões.
 - API comercial experimental inclui contatos institucionais, supressões e preferências privadas; fontes declaradas continuam a verificar.
 - API experimental de ambiente comercial: leads, agenda e carteiras privadas com autorização por organização, origem e CSRF nas gravações. Valores decimais retornados como texto; flag comercial continua desativada por padrão.
 - API experimental de login comercial desativada por padrão (`COMMERCIAL_AUTH_ENABLED=false`); cookie separado do proprietário, origem obrigatória e tentativas limitadas. Ainda não liberar clientes.
