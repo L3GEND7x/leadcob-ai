@@ -1,0 +1,175 @@
+"""Commercial workspace HTTP boundary; never use the legacy session or tables."""
+from contextlib import contextmanager
+from decimal import Decimal
+from typing import Literal
+from fastapi import APIRouter, HTTPException, Request, Query
+from pydantic import BaseModel, Field, ConfigDict
+from sqlalchemy.exc import IntegrityError
+
+from app.api.routes_commercial_auth import COOKIE, _enabled, _origin
+from app.core.account_access import AccessDenied, authorize
+from app.db.database import SessionLocal
+from app.services import workspace_leads as leads, workspace_tasks as tasks, workspace_portfolios as portfolios
+
+router = APIRouter(prefix='/api/commercial/workspace/{organization_id}', tags=['Commercial workspace'])
+
+
+@contextmanager
+def operation(request, organization_id, write=False):
+    _enabled()
+    if write:
+        _origin(request)
+    token = request.cookies.get(COOKIE, '')
+    csrf = request.headers.get('x-csrf-token', '')
+    with SessionLocal() as db:
+        try:
+            authorize(db, token, organization_id, 'write' if write else 'read', csrf=csrf)
+            yield db, token, csrf
+            if write:
+                db.commit()
+        except AccessDenied as exc:
+            raise HTTPException(403, 'Acesso não autorizado.') from exc
+        except (leads.LeadNotFound, tasks.TaskNotFound, portfolios.PortfolioNotFound) as exc:
+            raise HTTPException(404, 'Registro não encontrado.') from exc
+        except ValueError as exc:
+            raise HTTPException(422, 'Dados inválidos ou referência duplicada.') from exc
+        except IntegrityError as exc:
+            raise HTTPException(409, 'Conflito de registro.') from exc
+
+
+class Input(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
+class LeadIn(Input):
+    name: str = Field(min_length=1, max_length=220)
+    notes: str = Field(default='', max_length=8000)
+    stage: Literal['identified', 'contacted', 'negotiation', 'won', 'lost'] = 'identified'
+
+
+class TaskIn(Input):
+    title: str = Field(min_length=1, max_length=250)
+    due_date: str = Field(min_length=10, max_length=10)
+
+
+class Completion(Input):
+    completed: bool
+
+
+class PortfolioIn(Input):
+    name: str = Field(min_length=1, max_length=160)
+    reference_date: str = Field(min_length=10, max_length=10)
+
+
+class TitleIn(Input):
+    reference: str = Field(min_length=1, max_length=80)
+    amount: str = Field(min_length=1, max_length=32, pattern=r'^\d{1,14}(\.\d{1,2})?$')
+    due_date: str = Field(min_length=10, max_length=10)
+
+
+def _lead(x):
+    return dict(id=x.id, name=x.name, notes=x.notes, stage=x.stage)
+
+
+def _task(x):
+    return dict(id=x.id, title=x.title, due_date=x.due_date, completed_at=x.completed_at)
+
+
+def _portfolio(x):
+    return dict(id=x.id, name=x.name, reference_date=x.reference_date)
+
+
+def _title(x):
+    return dict(id=x.id, reference=x.reference, amount=format(x.amount, '.2f'),
+                due_date=x.due_date, paid_date=x.paid_date)
+
+
+@router.get('/leads')
+def list_leads(request: Request, organization_id: int, limit: int = Query(100, ge=1, le=250),
+               offset: int = Query(0, ge=0)):
+    with operation(request, organization_id) as (db, token, _):
+        return [_lead(x) for x in leads.list_leads(db, token, organization_id, limit=limit, offset=offset)]
+
+
+@router.post('/leads', status_code=201)
+def create_lead(request: Request, organization_id: int, payload: LeadIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return _lead(leads.create_lead(db, token, organization_id, csrf, **payload.model_dump()))
+
+
+@router.get('/leads/{lead_id}')
+def get_lead(request: Request, organization_id: int, lead_id: int):
+    with operation(request, organization_id) as (db, token, _):
+        return _lead(leads.get_lead(db, token, organization_id, lead_id))
+
+
+@router.put('/leads/{lead_id}')
+def update_lead(request: Request, organization_id: int, lead_id: int, payload: LeadIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return _lead(leads.update_lead(db, token, organization_id, csrf, lead_id, **payload.model_dump()))
+
+
+@router.delete('/leads/{lead_id}')
+def delete_lead(request: Request, organization_id: int, lead_id: int):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        leads.delete_lead(db, token, organization_id, csrf, lead_id)
+        return {'ok': True}
+
+
+@router.get('/tasks')
+def list_tasks(request: Request, organization_id: int, completed: bool | None = None,
+               limit: int = Query(100, ge=1, le=250), offset: int = Query(0, ge=0)):
+    with operation(request, organization_id) as (db, token, _):
+        return [_task(x) for x in tasks.list_tasks(db, token, organization_id, completed=completed, limit=limit, offset=offset)]
+
+
+@router.post('/tasks', status_code=201)
+def create_task(request: Request, organization_id: int, payload: TaskIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return _task(tasks.create_task(db, token, organization_id, csrf, **payload.model_dump()))
+
+
+@router.patch('/tasks/{task_id}')
+def complete_task(request: Request, organization_id: int, task_id: int, payload: Completion):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return _task(tasks.set_completed(db, token, organization_id, csrf, task_id, completed=payload.completed))
+
+
+@router.delete('/tasks/{task_id}')
+def delete_task(request: Request, organization_id: int, task_id: int):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        tasks.delete_task(db, token, organization_id, csrf, task_id)
+        return {'ok': True}
+
+
+@router.get('/portfolios')
+def list_portfolios(request: Request, organization_id: int, limit: int = Query(100, ge=1, le=250),
+                    offset: int = Query(0, ge=0)):
+    with operation(request, organization_id) as (db, token, _):
+        return [_portfolio(x) for x in portfolios.list_portfolios(db, token, organization_id, limit=limit, offset=offset)]
+
+
+@router.post('/portfolios', status_code=201)
+def create_portfolio(request: Request, organization_id: int, payload: PortfolioIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return _portfolio(portfolios.create_portfolio(db, token, organization_id, csrf, **payload.model_dump()))
+
+
+@router.get('/portfolios/{portfolio_id}/titles')
+def list_titles(request: Request, organization_id: int, portfolio_id: int,
+                limit: int = Query(100, ge=1, le=250), offset: int = Query(0, ge=0)):
+    with operation(request, organization_id) as (db, token, _):
+        return [_title(x) for x in portfolios.list_titles(db, token, organization_id, portfolio_id, limit=limit, offset=offset)]
+
+
+@router.post('/portfolios/{portfolio_id}/titles', status_code=201)
+def add_title(request: Request, organization_id: int, portfolio_id: int, payload: TitleIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return _title(portfolios.add_title(db, token, organization_id, csrf, portfolio_id, **payload.model_dump()))
+
+
+@router.get('/portfolios/{portfolio_id}/summary')
+def portfolio_summary(request: Request, organization_id: int, portfolio_id: int, as_of: str = Query(min_length=10, max_length=10)):
+    with operation(request, organization_id) as (db, token, _):
+        summary = portfolios.summarize_portfolio(db, token, organization_id, portfolio_id, as_of=as_of)
+        return {k: format(v, '.2f') if isinstance(v, Decimal) else v for k, v in summary.items()}
