@@ -134,6 +134,7 @@ def add_member(request: Request, organization_id: int, payload: MemberIn):
 def set_active(request: Request, organization_id: int, payload: Active):
     with SessionLocal() as db:
         guard(request, db, True)
+        lock_organization(db, organization_id)
         org = db.get(Organization, organization_id)
         if not org:
             raise HTTPException(404, 'Organização não encontrada.')
