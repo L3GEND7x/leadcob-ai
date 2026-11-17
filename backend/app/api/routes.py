@@ -628,3 +628,13 @@ def market_datajud_latest(uf: str = Query(..., min_length=2, max_length=2), db: 
     if not snap:
         raise HTTPException(404, f"Ainda não há dados do DataJud para {uf.upper()}.")
     return {"snapshot_id": snap.id, "created_at": iso(snap.created_at), **snap.payload}
+
+
+@router.get("/registry/coverage")
+def local_registry_coverage(uf: str = Query("AM", min_length=2, max_length=2, pattern="^[A-Za-z]{2}$"),
+                            city: str = Query("Manaus", min_length=1, max_length=100),
+                            db: Session = Depends(get_db)):
+    from app.services.registry_coverage import registry_coverage
+    if not city.strip():
+        raise HTTPException(422, "Município obrigatório.")
+    return registry_coverage(db, uf, city)

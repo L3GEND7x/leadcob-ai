@@ -1,0 +1,3 @@
+# Inventário cadastral municipal
+
+A seção Enriquecimento permite consultar a base local por município e UF, inicialmente Manaus/AM. Distingue registros, CNPJs válidos únicos, duplicidades, ausência de CNPJ, situações conflitantes e origem/data cadastral. Exclui supressões por ID e CNPJ armazenado. Não realiza importação, coleta externa nem verifica atividade atual. Contagem de perfis-alvo não equivale a oportunidades qualificadas. Não calcula cobertura de mercado sem denominador oficial comparável. Nenhum número de produção foi consultado. A consulta agrega em memória os registros do município; medir desempenho com a base real. Revisar normalização das supressões e variações de nomes antes de ampliar a cobertura. Testes escritos, CI pendente.

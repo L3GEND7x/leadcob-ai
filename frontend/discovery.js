@@ -57,3 +57,19 @@ async function coverage(){
  }catch(e){root.replaceChildren(el('p','Cobertura indisponível: '+e.message));throw e;}
 }
 $('coverage-form').addEventListener('submit',e=>{e.preventDefault();run(coverage);});
+
+
+async function registryCoverage(){
+ const root=$('registry');root.replaceChildren(el('p','Consultando base local…'));
+ try{
+  const r=await api('/api/registry/coverage?'+new URLSearchParams(new FormData($('registry-form'))));
+  const grid=el('div',undefined,'metrics');
+  for(const [label,key] of Object.entries({'Registros empresariais':'company_records','CNPJs válidos únicos':'unique_valid_cnpjs','Registros duplicados':'duplicate_valid_records','Sem CNPJ':'missing_cnpj_records','CNPJ inválido':'invalid_cnpj_records','Situação ativa registrada':'active_cnpjs','Não ativos':'inactive_cnpjs','Situação desconhecida':'unknown_status_cnpjs','Situação conflitante':'conflicting_status_cnpjs','Com fonte e data cadastral':'with_registry_source_and_date','Com perfil-alvo':'with_target_profile'})){
+   const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(r[key]).toLocaleString('pt-BR')));grid.append(card);
+  }
+  root.replaceChildren(grid,el('p',r.note),el('h3','Fontes por registro válido'));
+  for(const [source,count] of Object.entries(r.sources_by_valid_record))root.append(el('p',source+' · '+count.toLocaleString('pt-BR')));
+  root.append(el('p','Cobertura do mercado: não calculada (sem denominador oficial comparável).'));
+ }catch(e){root.replaceChildren(el('p','Inventário indisponível: '+e.message));throw e;}
+}
+$('registry-form').addEventListener('submit',e=>{e.preventDefault();run(registryCoverage);});
