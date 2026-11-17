@@ -233,3 +233,10 @@ def get_preferences(request: Request, organization_id: int):
 def update_preferences(request: Request, organization_id: int, payload: PreferencesIn):
     with operation(request, organization_id, True) as (db, token, csrf):
         return preferences.update_settings(db, token, organization_id, csrf, **payload.model_dump())
+
+
+@router.get('/subscription')
+def get_workspace_subscription(request: Request, organization_id: int):
+    from app.services.commercial_subscriptions import describe
+    with operation(request,organization_id) as (db,token,_):
+        return describe(db,organization_id)

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Assinaturas comerciais administrativas por organização, vigência, cancelamento e consulta privada. Migração inclui catálogo inicial inativo: Essential R$ 27, Professional R$ 117 e Enterprise R$ 397. Sem cobrança automática ou bloqueio por assinatura nesta etapa.
 - Catálogo administrativo de planos versionados em BRL, preços em centavos e limites configuráveis. Nenhum plano ou cobrança criado automaticamente; aplicação de limites depende da assinatura.
 - Central de enriquecimento: cobertura por canal, UF e município, com contagens distintas de registros elegíveis e separação de contatos verificados.
 - Central visual de enriquecimento em `/owner/discovery`: criação de lotes, histórico, progresso real e detalhes por empresa. Worker ainda requer execução explícita.

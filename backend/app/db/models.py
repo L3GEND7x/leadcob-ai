@@ -444,3 +444,18 @@ class CommercialPlan(Base):
         CheckConstraint("monthly_price_cents >= 0", name="ck_commercial_plan_price"),
         CheckConstraint("max_members >= 1 AND max_leads >= 0 AND max_contacts >= 0 AND max_tasks >= 0 AND max_portfolios >= 0 AND max_titles >= 0", name="ck_commercial_plan_limits"),
     )
+
+
+class CommercialSubscription(Base):
+    """Explicit owner-managed access period; not evidence of payment."""
+    __tablename__ = "commercial_subscriptions"
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("commercial_plans.id"), index=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_subscription_period"),
+        CheckConstraint("status IN ('active','cancelled')", name="ck_subscription_status"),
+    )
