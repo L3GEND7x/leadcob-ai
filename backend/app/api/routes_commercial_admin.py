@@ -1,5 +1,7 @@
 """Owner-only provisioning. Never accepts commercial cookies as credentials."""
 from typing import Literal
+from app.services.commercial_entitlements import enforce, lock_organization
+from app.core.config import settings
 import re
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel, Field, ConfigDict
@@ -114,6 +116,9 @@ def add_member(request: Request, organization_id: int, payload: MemberIn):
         guard(request, db, True)
         if not db.get(Organization, organization_id):
             raise HTTPException(404, 'Organização não encontrada.')
+        if settings.commercial_entitlements_enabled:
+            lock_organization(db, organization_id)
+            enforce(db, organization_id, 'members', locked=True)
         try:
             user = _user(db, payload.email, payload.password)
             db.add(Membership(user_id=user.id, organization_id=organization_id, role=payload.role, active=True))
@@ -231,7 +236,8 @@ def get_subscription(request: Request, organization_id: int):
 def assign_subscription(request: Request, organization_id: int, payload: SubscriptionIn):
     with SessionLocal() as db:
         guard(request,db,True)
-        org=db.scalar(select(Organization).where(Organization.id==organization_id).with_for_update())
+        lock_organization(db,organization_id)
+        org=db.get(Organization,organization_id)
         if not org:
             raise HTTPException(404,'Organização não encontrada.')
         plan=db.get(CommercialPlan,payload.plan_id)
@@ -269,7 +275,8 @@ def assign_subscription(request: Request, organization_id: int, payload: Subscri
 def cancel_subscription(request: Request, organization_id: int):
     with SessionLocal() as db:
         guard(request,db,True)
-        org=db.scalar(select(Organization).where(Organization.id==organization_id).with_for_update())
+        lock_organization(db,organization_id)
+        org=db.get(Organization,organization_id)
         row=db.get(CommercialSubscription,organization_id) if org else None
         if row is None:
             raise HTTPException(404,'Assinatura não encontrada.')
