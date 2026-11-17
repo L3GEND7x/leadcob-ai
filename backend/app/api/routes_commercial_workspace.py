@@ -173,3 +173,63 @@ def portfolio_summary(request: Request, organization_id: int, portfolio_id: int,
     with operation(request, organization_id) as (db, token, _):
         summary = portfolios.summarize_portfolio(db, token, organization_id, portfolio_id, as_of=as_of)
         return {k: format(v, '.2f') if isinstance(v, Decimal) else v for k, v in summary.items()}
+
+
+from app.services import workspace_contacts as contacts, workspace_settings as preferences
+
+
+class ContactIn(Input):
+    cnpj: str = Field(min_length=14, max_length=18)
+    kind: Literal['email', 'website', 'phone', 'whatsapp', 'linkedin', 'instagram', 'facebook']
+    value: str = Field(min_length=3, max_length=500)
+    source_url: str = Field(min_length=8, max_length=1000)
+    institutional: bool
+
+
+class SuppressionIn(Input):
+    cnpj: str = Field(min_length=14, max_length=18)
+    reason: str = Field(min_length=1, max_length=250)
+
+
+class PreferencesIn(Input):
+    timezone_name: str = Field(min_length=1, max_length=80)
+    followup_days: list[int] = Field(min_length=1, max_length=10)
+    default_page_size: int = Field(ge=10, le=250)
+
+
+def _contact(x):
+    return dict(id=x.id, cnpj=x.cnpj, kind=x.kind, value=x.value,
+                source_url=x.source_url, status='a_verificar')
+
+
+@router.get('/contacts')
+def list_contacts(request: Request, organization_id: int, cnpj: str | None = Query(None, max_length=18),
+                  limit: int = Query(100, ge=1, le=250), offset: int = Query(0, ge=0)):
+    with operation(request, organization_id) as (db, token, _):
+        return [_contact(x) for x in contacts.list_contacts(db, token, organization_id,
+                cnpj=cnpj, limit=limit, offset=offset)]
+
+
+@router.post('/contacts', status_code=201)
+def add_contact(request: Request, organization_id: int, payload: ContactIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return _contact(contacts.add_contact(db, token, organization_id, csrf, **payload.model_dump()))
+
+
+@router.post('/suppressions', status_code=201)
+def suppress_company(request: Request, organization_id: int, payload: SuppressionIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        row = contacts.suppress_company(db, token, organization_id, csrf, **payload.model_dump())
+        return dict(cnpj=row.cnpj, reason=row.reason)
+
+
+@router.get('/settings')
+def get_preferences(request: Request, organization_id: int):
+    with operation(request, organization_id) as (db, token, _):
+        return preferences.get_settings(db, token, organization_id)
+
+
+@router.put('/settings')
+def update_preferences(request: Request, organization_id: int, payload: PreferencesIn):
+    with operation(request, organization_id, True) as (db, token, csrf):
+        return preferences.update_settings(db, token, organization_id, csrf, **payload.model_dump())
