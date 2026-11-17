@@ -660,3 +660,67 @@ def list_sandbox_events(request: Request, organization_id: int, invoice_id: int,
             WHERE p.invoice_id=:iid ORDER BY e.received_at DESC,e.event_id DESC LIMIT :lim OFFSET :off"""),
             {'iid':invoice_id,'lim':limit,'off':offset}).mappings()
         return {'environment':'sandbox','invoice_id':invoice_id,'events':[dict(item) for item in rows]}
+
+
+from app.services.commercial_renewals import renewal_end, RenewalRejected
+from app.core.security import stamp
+
+
+@router.post('/organizations/{organization_id}/invoices/{invoice_id}/renew')
+def renew_commercial_subscription(request: Request, organization_id: int, invoice_id: int):
+    with SessionLocal() as db:
+        guard(request, db, True)
+        billing_lock(db, organization_id)
+        organization = db.get(Organization, organization_id)
+        invoice = db.get(CommercialInvoice, invoice_id)
+        if not invoice or invoice.organization_id != organization_id:
+            raise HTTPException(404, 'Recebível não encontrado.')
+        previous = db.execute(text("""SELECT invoice_id, organization_id, previous_end, new_end, created_at
+            FROM commercial_renewals WHERE invoice_id=:iid AND organization_id=:oid"""),
+            {'iid':invoice_id,'oid':organization_id}).mappings().one_or_none()
+        if previous:
+            return {'renewal':dict(previous),'replayed':True}
+        if not organization or not organization.active:
+            raise HTTPException(409, 'Organização suspensa.')
+        for table in ('asaas_sandbox_payments', 'asaas_sandbox_issue_reservations'):
+            if db.execute(text(f'SELECT 1 FROM {table} WHERE invoice_id=:iid'),
+                          {'iid':invoice_id}).first():
+                raise HTTPException(409, 'Recebível sandbox não habilita acesso comercial.')
+        subscription = db.get(CommercialSubscription, organization_id)
+        plan = db.get(CommercialPlan, invoice.plan_id)
+        now = datetime.now(timezone.utc)
+        try:
+            end = renewal_end(subscription, invoice, plan, now)
+        except RenewalRejected as exc:
+            raise HTTPException(409, str(exc)) from exc
+        old_end = stamp(subscription.ends_at)
+        try:
+            db.execute(text("""INSERT INTO commercial_renewals
+                (invoice_id,organization_id,previous_end,new_end,created_at)
+                VALUES (:iid,:oid,:old,:new,:now)"""),
+                {'iid':invoice_id,'oid':organization_id,'old':old_end,'new':end,'now':now})
+            subscription.ends_at = end
+            subscription.updated_at = now
+            db.add(AuditLog(event='commercial_subscription_renewed',entity_type='commercial_invoice',
+                            entity_id=invoice_id,details={'organization_id':organization_id,
+                            'previous_end':old_end.isoformat(),'new_end':end.isoformat()}))
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(409, 'Conflito de renovação; consulte o histórico.') from exc
+        return {'renewal':{'invoice_id':invoice_id,'organization_id':organization_id,
+                'previous_end':old_end,'new_end':end,'created_at':now},'replayed':False}
+
+
+@router.get('/organizations/{organization_id}/renewals')
+def list_commercial_renewals(request: Request, organization_id: int,
+                             limit: int = Query(100,ge=1,le=250), offset: int = Query(0,ge=0)):
+    with SessionLocal() as db:
+        guard(request, db)
+        if not db.get(Organization, organization_id):
+            raise HTTPException(404, 'Organização não encontrada.')
+        rows = db.execute(text("""SELECT invoice_id,organization_id,previous_end,new_end,created_at
+            FROM commercial_renewals WHERE organization_id=:oid
+            ORDER BY created_at DESC,invoice_id DESC LIMIT :lim OFFSET :off"""),
+            {'oid':organization_id,'lim':limit,'off':offset}).mappings()
+        return [dict(row) for row in rows]
