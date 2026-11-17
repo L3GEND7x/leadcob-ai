@@ -77,7 +77,7 @@ def login(payload: Login, request: Request):
         except AccessDenied:
             raise HTTPException(401, 'Credenciais inválidas.')
         principal = authorize(db, raw, payload.organization_id, 'read')
-        db.query(AccountSession).filter(AccountSession.expires_at <= now).delete()
+        db.query(AccountSession).filter(AccountSession.expires_at <= now).delete(synchronize_session=False)
         db.commit()
     response = JSONResponse(dict(authenticated=True, organization_id=principal.organization_id,
                                  role=principal.role, csrf_token=csrf))
