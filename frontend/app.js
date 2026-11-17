@@ -86,7 +86,7 @@ async function viewInicio() {
     + `<section class="kpis">${[
       kp('Empresas na base', fmt(k.empresas_total), `${fmt(k.empresas_novas_hoje)} nova(s) hoje`),
       kp('Sinais novos hoje', fmt(k.oportunidades_novas_hoje), 'editais, vagas e cadastros'),
-      kp('Leads qualificados', fmt(k.leads_qualificados), 'de “Qualificada” em diante'),
+      kp('Empresas no funil qualificado', fmt(k.leads_qualificados), 'etapas registradas no CRM'),
       kp('Não abordados', fmt(k.leads_nao_abordados), 'qualificados ou prontos'),
       kp('Contatos realizados', fmt(k.contatos_realizados), 'empresas contatadas'),
       kp('Respostas', fmt(k.respostas), 'empresas que responderam'),
@@ -96,6 +96,7 @@ async function viewInicio() {
       kp('Conversão', k.taxa_conversao == null ? '—' : k.taxa_conversao.toLocaleString('pt-BR') + '%', 'contratos ÷ contatadas'),
       kp('Valor potencial', k.valor_potencial ? money(k.valor_potencial) : '—', 'soma do que você informou'),
     ].join('')}</section>`
+    + '<section class="panel" id="municipal-command"><h2>Inteligência municipal</h2><p class="note">CNPJs únicos da base local; não representa censo ou demanda confirmada.</p><form id="municipal-command-form" class="form"><label class="f">UF<input name="uf" value="AM" maxlength="2" required></label><label class="f">Município<input name="city" value="Manaus" maxlength="100" required></label><button class="primary">Consultar indicadores</button></form><div id="municipal-command-results" aria-live="polite"></div><a class="btn" href="/owner/discovery">Abrir enriquecimento</a></section>'
     + `<h2>Funil comercial</h2><div class="funnel">${d.pipeline.map(p => `<a href="#/crm" class="${['perdido', 'nao_contatar', 'acompanhar_futuramente'].includes(p.key) ? 'closed' : ''}"><b>${fmt(p.count)}</b><span>${esc(p.label)}</span></a>`).join('')}</div>`
     + `<div class="grid2">
       ${panel('Precisam de abordagem', 'Qualificadas ou prontas, ainda sem contato', rows(d.precisam_abordagem, 'Nenhuma empresa marcada como qualificada ou pronta. Comece pela Inteligência do dia.'))}
@@ -106,6 +107,23 @@ async function viewInicio() {
       ${panel('Tarefas pendentes', 'Em dia', tasks)}
     </div>
     <p class="note">Listas calculadas sobre ${fmt(d.base_avaliada)} empresas (com sinal, no funil ou de maior capital). ${esc(k.notas.valor_potencial)} ${esc(k.notas.taxa_conversao)}</p>`;
+  const municipalForm = document.getElementById('municipal-command-form');
+  municipalForm.addEventListener('submit', e => {e.preventDefault(); loadMunicipalCommand(municipalForm);});
+}
+
+async function loadMunicipalCommand(form){
+  const root=document.getElementById('municipal-command-results'), button=form.querySelector('button');
+  button.disabled=true;root.textContent='Consultando base local…';
+  try{
+    const qs=new URLSearchParams(new FormData(form));qs.set('limit','10');
+    const d=await api('/registry/qualification?'+qs), c=d.contact_coverage;
+    if(!root.isConnected)return;
+    const labels={priority_review:'Prioridade de revisão',evidence_contact_needed:'Evidência sem canal verificado',contactable_prospect:'Prospect com canal',prospect_research:'Pesquisar prospect',registry_review:'Revisar cadastro',special_route:'Tratamento específico'};
+    const metrics=[['CNPJs válidos únicos',d.unique_cnpjs],['Ativos com fonte e data',c.active_sourced_cnpjs],['Com canal direto',c.with_any_channel],['Com canal verificado',c.with_verified_channel],['Sem canal direto',c.without_any_channel],...Object.entries(labels).map(([key,label])=>[label,d.counts[key]||0])];
+    root.innerHTML='<section class="kpis">'+metrics.map(([label,value])=>'<article><small>'+esc(label)+'</small><strong>'+fmt(value)+'</strong></article>').join('')+'</section><h3>Canal por CNPJ ativo com fonte e data</h3><div class="rows">'+Object.entries(c.channels).map(([kind,x])=>'<div class="row"><div class="main"><strong>'+esc(contactKindLabel(kind))+'</strong><small>'+fmt(x.available)+' disponíveis · '+fmt(x.verified)+' verificados</small></div></div>').join('')+'</div><h3>Primeiros registros por prioridade</h3><div class="rows">'+d.items.map(x=>'<a class="row" href="#/empresa/'+Number(x.company_id)+'"><div class="main"><strong>'+esc(x.name)+'</strong><small>'+esc(x.cnpj)+' · '+esc(labels[x.tier])+'</small></div></a>').join('')+'</div><p class="note">'+esc(d.note)+' Consulta: '+esc(d.observed_at)+'</p>';
+    if(!d.items.length){const p=document.createElement('p');p.textContent='Nenhum registro neste município.';root.append(p);}
+  }catch(e){if(root.isConnected)root.textContent=errMsg(e,'Não foi possível consultar os indicadores.');}
+  finally{button.disabled=false;}
 }
 
 // ------------------------------------------------------------------ inteligência do dia
