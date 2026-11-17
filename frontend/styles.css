@@ -274,3 +274,47 @@ aside{background:#0d0a12}
 .ai-message p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}
 [hidden]{display:none!important}
 @media(max-width:760px){.assistant-layout{grid-template-columns:1fr}}
+
+
+/* Premium refinement: preserve existing violet brand, neutral surfaces and functional contrast. */
+:root{--bg:#09090c;--panel:#141318;--panel2:#1b1921;--line:#302d38;--line2:#494451;--muted:#aaa7b3;--faint:#a19eaa}
+body{font-size:14px;line-height:1.55}
+.brand>b,button.primary,.btn.primary{background:#713bb0;box-shadow:none}
+.panel.hl{background:var(--panel);border-color:var(--redline)}
+.pagehead{margin-bottom:24px}
+h1{font-size:clamp(24px,3vw,32px);letter-spacing:-.7px}
+.panel,.card,.kpis article{border-radius:14px}
+.kpis strong,.funnel b,.kpi{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpis article{min-width:0}
+#municipal-command{margin-bottom:24px}
+#municipal-command-form{grid-template-columns:minmax(70px,110px) minmax(0,1fr) auto;align-items:end;margin:16px 0}
+#municipal-command-results:empty{display:none}
+#municipal-command-results:not(:empty){margin:16px 0}
+#nav-toggle{display:none}
+.skip-link{position:fixed;top:8px;left:8px;transform:translateY(-150%);z-index:100;background:var(--panel);padding:12px;border:2px solid var(--red);border-radius:8px}
+.skip-link:focus{transform:none}
+nav a[aria-current=page]{border-left:3px solid var(--red)}
+button,.btn{min-height:38px}
+button.small,.btn.small{min-height:32px}
+input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--red)}
+#ai-messages{min-height:120px}
+#login-box{background:var(--panel);border:1px solid var(--line);border-radius:16px}
+#login-box .form{grid-template-columns:1fr}
+@media(max-width:860px){
+ aside{flex-wrap:wrap;justify-content:space-between}
+ #nav-toggle{display:inline-flex;min-height:44px}
+ #nav{display:none;flex:1 0 100%;max-height:65vh;overflow-y:auto;overflow-x:hidden;flex-direction:column;padding:6px 0}
+ #nav.menu-open{display:flex}
+ #nav label{display:block}
+ #nav a{white-space:normal;min-height:44px}
+ #nav a span{display:inline}
+ #municipal-command-form{grid-template-columns:1fr}
+ button,.btn{min-height:44px}
+ .actions>*{max-width:100%}
+ .task{flex-wrap:wrap}
+ .task .main{flex:1 1 100%}
+ .row{flex-wrap:wrap}
+ .row .main{flex:1 1 180px}
+}
+@media(max-width:380px){main{padding:14px 12px}.panel,.card{padding:14px}.kpis{gap:8px}.kpis article{padding:12px}.kpis strong{font-size:20px}.filters{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
