@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LeadCob AI | Administração</title><link rel="stylesheet" href="/static/commercial.css"><script src="/static/commercial-admin.js" defer></script></head>
+<body><header><strong>LeadCob<span> AI</span></strong><a href="/" style="color:#f5f5f7">Voltar ao painel principal</a></header>
+<main><p class="eyebrow">ADMINISTRAÇÃO EXCLUSIVA</p><h1>Organizações e usuários</h1><p>Crie ambientes privados, gerencie acessos e suspenda organizações. O acesso comercial depende da configuração do servidor.</p>
+<section class="panel" id="admin-content" hidden><h2>Nova organização</h2><form id="provision"><label>Nome da empresa<input name="name" maxlength="160" required></label><label>Identificador único<input name="slug" pattern="[a-z0-9][a-z0-9-]{1,79}" required></label><label>E-mail do administrador<input name="email" type="email" maxlength="254" required></label><label>Senha inicial<input name="password" type="password" minlength="14" maxlength="1024" autocomplete="new-password" required></label><button>Cadastrar organização</button></form>
+<p>Entregue as credenciais por canal seguro. Não há envio automático de senha.</p></section>
+<section class="panel" id="directory" hidden><div class="toolbar"><h2>Organizações cadastradas</h2><button id="refresh" class="secondary">Atualizar</button></div><div id="rows"></div><div class="toolbar"><button id="prev" class="secondary">Anterior</button><span id="page"></span><button id="next" class="secondary">Próxima</button></div></section>
+<p id="notice" role="status" aria-live="polite">Validando acesso…</p></main></body></html>
