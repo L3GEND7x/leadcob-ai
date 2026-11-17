@@ -70,3 +70,10 @@ def startup():
 def dashboard(): return FileResponse(frontend/"index.html")
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon(): return FileResponse(frontend/"favicon.svg", media_type="image/svg+xml")
+
+
+@app.get("/commercial", include_in_schema=False)
+def commercial_dashboard():
+    from app.api.routes_commercial_auth import _enabled
+    _enabled()
+    return FileResponse(frontend/"commercial.html", headers={"Cache-Control":"no-store"})
