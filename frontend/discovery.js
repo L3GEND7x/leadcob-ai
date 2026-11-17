@@ -73,3 +73,30 @@ async function registryCoverage(){
  }catch(e){root.replaceChildren(el('p','Inventário indisponível: '+e.message));throw e;}
 }
 $('registry-form').addEventListener('submit',e=>{e.preventDefault();run(registryCoverage);});
+
+
+const qualificationLabels={priority_review:'Prioridade de revisão',evidence_contact_needed:'Evidência — verificar contato',contactable_prospect:'Prospect com canal',prospect_research:'Pesquisar prospect',registry_review:'Revisar cadastro',special_route:'Tratamento específico'};
+let qualificationOffset=0,qualificationQuery=null;
+async function loadQualification(){
+ const root=$('qualification');
+ $('qualification-prev').disabled=$('qualification-next').disabled=true;
+ root.replaceChildren(el('p','Classificando registros locais…'));
+ try{
+  const qs=new URLSearchParams(qualificationQuery);qs.set('limit','50');qs.set('offset',String(qualificationOffset));
+  const r=await api('/api/registry/qualification?'+qs);
+  const grid=el('div',undefined,'metrics');
+  for(const [key,label] of Object.entries(qualificationLabels)){const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(r.counts[key]||0).toLocaleString('pt-BR')));grid.append(card);}
+  root.replaceChildren(grid,el('p',r.note),el('p','Resultados do filtro: '+r.total.toLocaleString('pt-BR')));
+  for(const x of r.items){
+   const row=el('article',undefined,'record'),link=el('a','Abrir ficha empresarial');link.href='/#/empresa/'+encodeURIComponent(x.company_id);
+   row.append(el('strong',x.name),el('p',x.cnpj+' · '+(x.profile_label||'Perfil não definido')),el('p',qualificationLabels[x.tier]),el('p','Canais: '+(x.channels.map(k=>channelNames[k]||k).join(', ')||'Nenhum')),el('p','Verificados: '+(x.verified_channels.map(k=>channelNames[k]||k).join(', ')||'Nenhum')),el('p','Evidências registradas: '+x.evidence_ids.length),link);root.append(row);
+  }
+  if(!r.items.length)root.append(el('p','Nenhum registro neste filtro.'));
+  $('qualification-prev').disabled=qualificationOffset===0;
+  $('qualification-next').disabled=qualificationOffset+50>=r.total;
+  $('qualification-page').textContent='Página '+(qualificationOffset/50+1);
+ }catch(e){root.replaceChildren(el('p',e.message));throw e;}
+}
+$('qualification-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{qualificationQuery=new URLSearchParams(new FormData(e.target));if(!qualificationQuery.get('tier'))qualificationQuery.delete('tier');qualificationOffset=0;await loadQualification();});});
+$('qualification-prev').addEventListener('click',()=>run(async()=>{qualificationOffset=Math.max(0,qualificationOffset-50);await loadQualification();}));
+$('qualification-next').addEventListener('click',()=>run(async()=>{qualificationOffset+=50;await loadQualification();}));

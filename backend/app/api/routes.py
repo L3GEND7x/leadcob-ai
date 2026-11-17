@@ -638,3 +638,15 @@ def local_registry_coverage(uf: str = Query("AM", min_length=2, max_length=2, pa
     if not city.strip():
         raise HTTPException(422, "Município obrigatório.")
     return registry_coverage(db, uf, city)
+
+
+@router.get("/registry/qualification")
+def local_lead_qualification(uf: str = Query("AM", pattern="^[A-Za-z]{2}$"),
+                             city: str = Query("Manaus", min_length=1, max_length=100),
+                             tier: str | None = Query(None, pattern="^(priority_review|evidence_contact_needed|contactable_prospect|prospect_research|registry_review|special_route)$"),
+                             limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
+                             db: Session = Depends(get_db)):
+    from app.services.lead_qualification import qualification
+    if not city.strip():
+        raise HTTPException(422, "Município obrigatório.")
+    return qualification(db, uf.upper(), city.strip(), limit, offset, tier)
