@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from sqlalchemy import String, Text, DateTime, Integer, Float, ForeignKey, Boolean, JSON, UniqueConstraint, Numeric, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
@@ -331,3 +332,27 @@ class WorkspaceLead(Base):
     stage: Mapped[str] = mapped_column(String(30), default="identified")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     __table_args__ = (CheckConstraint("stage IN ('identified', 'contacted', 'negotiation', 'won', 'lost')", name="ck_workspace_lead_stage"),)
+
+
+class WorkspacePortfolio(Base):
+    """Private financial portfolio; independent of the legacy owner's portfolio."""
+    __tablename__ = "workspace_portfolios"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    reference_date: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspacePortfolioTitle(Base):
+    __tablename__ = "workspace_portfolio_titles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("workspace_portfolios.id"), index=True)
+    reference: Mapped[str] = mapped_column(String(80))
+    amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
+    due_date: Mapped[str] = mapped_column(String(10))
+    paid_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("portfolio_id", "reference", name="uq_workspace_title_reference"),
+        CheckConstraint("amount > 0", name="ck_workspace_title_positive"),
+    )
