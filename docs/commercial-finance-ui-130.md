@@ -1,0 +1,3 @@
+# Financeiro administrativo
+
+Ações por organização na tela /owner/commercial. Listagem paginada de recebíveis, cadastro, baixa manual com confirmação e data informada, cancelamento local, renovação, histórico e eventos sandbox, processamento em lote. Todas as mutações usam API autenticada e CSRF existentes. Dados exibidos via textContent; não há cobrança real automática. Baixa manual depende de confirmação bancária do proprietário. Cancelamento local não cancela cobrança no provedor. Histórico e eventos exibem até 50 itens recentes. O processamento continua manual, limitado a cinco eventos por ação. Validação visual/mobile, testes E2E de navegador, homologação Asaas e concorrência PostgreSQL pendentes. CI do #129 aprovado; teste online ainda em andamento na consulta.
