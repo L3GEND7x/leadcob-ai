@@ -491,3 +491,15 @@ def contact_coverage(uf: str = Query('', max_length=2), city: str = Query('', ma
             'channels':{kind:{'available':available.get(kind,0),'verified':verified.get(kind,0)}
                         for kind in sorted(KINDS)},
             'note':'Contagem de registros de empresas não suprimidos; apenas diretório cadastrado, não comprova ausência de contatos externos.'}
+
+
+@router.get('/discovery-targets')
+def discovery_targets(uf: str = Query('AM',pattern='^[A-Za-z]{2}$'),
+                      city: str = Query('Manaus',min_length=1,max_length=100),
+                      kind: str = Query('email',pattern='^(email|phone|whatsapp|linkedin|instagram|facebook|website)$'),
+                      limit: int = Query(50,ge=1,le=100), offset: int = Query(0,ge=0),
+                      db: Session = Depends(get_db)):
+    from app.services.contact_targets import targets
+    if not city.strip():
+        raise HTTPException(422,'Município obrigatório.')
+    return targets(db,uf.upper(),city.strip(),kind,limit,offset)
