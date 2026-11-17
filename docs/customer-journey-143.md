@@ -1,0 +1,5 @@
+# Aceite da jornada comercial
+
+#142 merge confirmado. Chromium 4 aprovados (incluindo navegação owner desktop/mobile), PostgreSQL aprovado, implantação online aprovada. Backend 251 aprovados, 1 falha, 8 avisos: contrato estático antigo exigia esconder a assistente. #143 atualiza o contrato para menu proprietário e mantém ausência no portal comercial; adiciona teste de isolamento e jornada HTTP com dois contextos autenticados, lead, tarefa, carteira, título, saldo decimal, contato, CSRF, logout e negação de rotas legadas. Fixture apenas em SQLite descartável do browser CI. Teste escrito, execução pendente.
+
+O ciclo #136–143 não certifica lançamento. Pendências: conexão real OpenAI, enriquecimento/worker e contagens na base produtiva, benchmark, Asaas sandbox externo, backup/restauração, privacidade/termos, pagamentos de produção, assistente e prospecção isoladas para assinantes (módulos legados são do proprietário). Não foram realizadas chamadas pagas, coleta externa, configuração de produção ou movimentações reais. A jornada HTTP não substitui testes visuais completos.
