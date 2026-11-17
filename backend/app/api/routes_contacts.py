@@ -458,3 +458,36 @@ def list_discovery_jobs(limit: int = Query(50,ge=1,le=100), offset: int = Query(
     return [{'job_id':j.id,'created_at':j.created_at.isoformat(),
              'total':sum(counts.get(j.id,{}).values()),
              **{k:counts.get(j.id,{}).get(k,0) for k in ('queued','running','completed','failed','skipped')}} for j in jobs]
+
+
+@router.get('/coverage')
+def contact_coverage(uf: str = Query('', max_length=2), city: str = Query('', max_length=100),
+                     db: Session = Depends(get_db)):
+    """Company-record coverage, not contact count or lead qualification."""
+    from sqlalchemy import exists, and_
+    blocked = exists().where(or_(Suppression.company_id == Company.id,
+                                 and_(Company.cnpj.isnot(None), Suppression.cnpj == Company.cnpj)))
+    scope = db.query(Company.id).filter(~blocked)
+    if uf.strip():
+        scope = scope.filter(func.upper(Company.state) == uf.strip().upper())
+    if city.strip():
+        scope = scope.filter(func.lower(Company.city) == city.strip().lower())
+    eligible = scope.subquery()
+    total = db.query(func.count()).select_from(eligible).scalar() or 0
+    contacts = db.query(BusinessContact).join(eligible, BusinessContact.company_id == eligible.c.id).filter(
+        BusinessContact.kind.in_(KINDS), BusinessContact.status.in_(['a_verificar', 'verificado']),
+        func.length(func.trim(BusinessContact.value)) > 0,
+        ~BusinessContact.value.like('anon:%'))
+    available = dict(contacts.with_entities(BusinessContact.kind,func.count(func.distinct(BusinessContact.company_id)))
+                     .group_by(BusinessContact.kind).all())
+    verified = dict(contacts.filter(BusinessContact.status=='verificado')
+                    .with_entities(BusinessContact.kind,func.count(func.distinct(BusinessContact.company_id)))
+                    .group_by(BusinessContact.kind).all())
+    any_channel = contacts.with_entities(func.count(func.distinct(BusinessContact.company_id))).scalar() or 0
+    any_verified = contacts.filter(BusinessContact.status=='verificado').with_entities(
+        func.count(func.distinct(BusinessContact.company_id))).scalar() or 0
+    return {'eligible_company_records':total,'with_any_channel':any_channel,
+            'without_registered_channel':total-any_channel,'with_any_verified_channel':any_verified,
+            'channels':{kind:{'available':available.get(kind,0),'verified':verified.get(kind,0)}
+                        for kind in sorted(KINDS)},
+            'note':'Contagem de registros de empresas não suprimidos; apenas diretório cadastrado, não comprova ausência de contatos externos.'}
