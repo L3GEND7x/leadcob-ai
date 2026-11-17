@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Central visual de enriquecimento em `/owner/discovery`: criação de lotes, histórico, progresso real e detalhes por empresa. Worker ainda requer execução explícita.
 - Fila persistente de pesquisa institucional por empresa, até 1.000 IDs por lote, progresso consultável, três tentativas e recuperação de itens interrompidos. Worker CLI requer execução explícita; nenhuma mensagem automática.
 - Enriquecimento institucional manual em lotes de até cinco empresas no painel do proprietário, com supressão, fontes e resultados individuais; contatos permanecem a verificar.
 - Painel proprietário em `/owner/commercial` para cadastro de organizações, usuários e suspensão, integrado às APIs reais.

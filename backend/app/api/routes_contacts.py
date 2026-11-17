@@ -442,3 +442,19 @@ def list_discovery_items(job_id: int, limit: int = Query(100,ge=1,le=250),
         raise HTTPException(404,'Lote não encontrado.')
     rows=db.query(ContactDiscoveryItem).filter_by(job_id=job_id).order_by(ContactDiscoveryItem.id).offset(offset).limit(limit)
     return [{'company_id':r.company_id,'status':r.status,'attempts':r.attempts,'result':r.result} for r in rows]
+
+
+@router.get('/discovery-jobs')
+def list_discovery_jobs(limit: int = Query(50,ge=1,le=100), offset: int = Query(0,ge=0),
+                        db: Session = Depends(get_db)):
+    from app.db.models import ContactDiscoveryJob, ContactDiscoveryItem
+    jobs=db.query(ContactDiscoveryJob).order_by(ContactDiscoveryJob.id.desc()).offset(offset).limit(limit).all()
+    if not jobs:
+        return []
+    counts={}
+    for jid,status,count in db.query(ContactDiscoveryItem.job_id,ContactDiscoveryItem.status,func.count(ContactDiscoveryItem.id)).filter(
+            ContactDiscoveryItem.job_id.in_([j.id for j in jobs])).group_by(ContactDiscoveryItem.job_id,ContactDiscoveryItem.status):
+        counts.setdefault(jid,{})[status]=count
+    return [{'job_id':j.id,'created_at':j.created_at.isoformat(),
+             'total':sum(counts.get(j.id,{}).values()),
+             **{k:counts.get(j.id,{}).get(k,0) for k in ('queued','running','completed','failed','skipped')}} for j in jobs]

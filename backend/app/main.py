@@ -85,3 +85,11 @@ def commercial_admin_dashboard(request: Request):
     with SessionLocal() as db:
         guard(request, db)
     return FileResponse(frontend/"commercial-admin.html", headers={"Cache-Control":"no-store"})
+
+
+@app.get("/owner/discovery", include_in_schema=False)
+def discovery_dashboard(request: Request):
+    from app.api.routes_commercial_admin import guard
+    with SessionLocal() as db:
+        guard(request, db)
+    return FileResponse(frontend/"discovery.html", headers={"Cache-Control":"no-store"})
