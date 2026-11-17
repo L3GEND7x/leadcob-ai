@@ -77,9 +77,34 @@ def owned_conversation(db, cid, username):
     return conversation
 
 
+def configuration_checks():
+    return {
+        'api_key': bool(settings.openai_api_key.strip()),
+        'model': bool(settings.openai_model.strip()),
+        'monthly_budget': math.isfinite(settings.assistant_monthly_budget_usd) and settings.assistant_monthly_budget_usd > 0,
+        'input_price': math.isfinite(settings.openai_input_usd_per_million) and settings.openai_input_usd_per_million > 0,
+        'output_price': math.isfinite(settings.openai_output_usd_per_million) and settings.openai_output_usd_per_million > 0,
+    }
+
+
 def configured():
-    return bool(settings.openai_api_key and settings.openai_model and settings.assistant_monthly_budget_usd > 0
-                and settings.openai_input_usd_per_million > 0 and settings.openai_output_usd_per_million > 0)
+    return all(configuration_checks().values())
+
+
+def failure_category(metadata):
+    code, status = metadata.get('code'), metadata.get('status')
+    if code in {'insufficient_quota', 'billing_hard_limit_reached', 'project_spend_limit_exceeded',
+                'organization_spend_limit_exceeded', 'organization_usage_limit_exceeded', 'credit_balance_exhausted'}:
+        return 'provider_quota'
+    if code == 'model_not_found' or status == 404:
+        return 'provider_model'
+    if status in (401, 403) or code in {'invalid_api_key', 'permission_denied'}:
+        return 'provider_auth'
+    if status == 429:
+        return 'provider_rate_limit'
+    if metadata.get('type') in {'APITimeoutError', 'APIConnectionError'}:
+        return 'provider_connection'
+    return 'request_failed'
 
 
 def failure_metadata(exc):
@@ -101,8 +126,9 @@ def failure_metadata(exc):
 def assistant_status(db: Session = Depends(get_db)):
     month = datetime.now(timezone.utc).strftime('%Y-%m')
     usage = db.get(AssistantUsage, month)
-    return {'configured': configured(), 'model': settings.openai_model, 'month': month,
-            'budget_usd': settings.assistant_monthly_budget_usd,
+    return {'configured': configured(), 'configuration_checks': configuration_checks(),
+            'provider_verified': False, 'model': settings.openai_model, 'month': month,
+            'budget_usd': settings.assistant_monthly_budget_usd if math.isfinite(settings.assistant_monthly_budget_usd) else 0,
             'estimated_and_reserved_usd': (usage.charged_micro_usd if usage else 0) / 1000000,
             'note': 'Estimativa e reservas de solicitações em curso. Confira a cobrança efetiva no provedor.',
             'setup': 'Configure OPENAI_API_KEY, OPENAI_MODEL, orçamento e preços por milhão de tokens no servidor.'}
@@ -229,6 +255,7 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
         instructions += f'\nTela atual: empresa ID {payload.company_id}. Consulte a ficha antes de usar seus dados.'
     input_tokens = output_tokens = 0
     success = False
+    failure_reason = None
     provider_started = False
     try:
         from openai import OpenAI
@@ -269,6 +296,7 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
         db.rollback()
         # Do not return provider details or secrets. On uncertain failures retain reservation.
         failure = failure_metadata(exc)
+        failure_reason = failure_category(failure)
         logger.warning('assistant_failed type=%s status=%s code=%s provider_type=%s',
                        failure['type'], failure['status'], failure['code'], failure['provider_type'])
         db.add(AssistantMessage(conversation_id=cid, role='assistant', text='Não foi possível concluir. O pedido está registrado; consulte as ações pendentes antes de tentar novamente.'))
@@ -286,6 +314,7 @@ def send_message(payload: MessageIn, request: Request, db: Session = Depends(get
         db.commit()
     result = conversation(cid, request, db)
     result['request_status'] = run.status
+    result['failure_category'] = failure_reason
     return result
 
 
