@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     admin_password_hash: str = ""
     public_url: str = ""
     commercial_auth_enabled: bool = False
+    commercial_entitlements_enabled: bool = False
     asaas_sandbox_api_key: str = ""
     asaas_sandbox_webhook_token: str = ""
     openai_api_key: str = ""

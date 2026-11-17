@@ -1,0 +1,3 @@
+# Cotas e vigência comerciais
+
+Substitui a implementação conflitante do #115 sobre a main atual. COMMERCIAL_ENTITLEMENTS_ENABLED permanece false por padrão. Quando ativado, gravações exigem assinatura vigente e criações respeitam cotas de armazenamento por organização; leitura e supressão permanecem acessíveis a usuários autorizados. Cotas não representam franquias mensais. Não altera preços, não exclui dados, não configura credenciais. Provisionamento inicial do administrador é exceção; membros adicionais respeitam cotas. Validação de concorrência PostgreSQL e testes de rotas ainda necessários. Após merge e CI aprovado, encerrar #115 como substituído. Ativar somente após homologação e atribuição de planos.

@@ -1,5 +1,7 @@
 """Commercial workspace HTTP boundary; never use the legacy session or tables."""
 from contextlib import contextmanager
+from app.core.config import settings
+from app.services.commercial_entitlements import enforce, lock_organization, usage
 from decimal import Decimal
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, Query
@@ -15,7 +17,7 @@ router = APIRouter(prefix='/api/commercial/workspace/{organization_id}', tags=['
 
 
 @contextmanager
-def operation(request, organization_id, write=False):
+def operation(request, organization_id, write=False, resource=None, subscription_exempt=False):
     _enabled()
     if write:
         _origin(request)
@@ -24,6 +26,11 @@ def operation(request, organization_id, write=False):
     with SessionLocal() as db:
         try:
             authorize(db, token, organization_id, 'write' if write else 'read', csrf=csrf)
+            if write and settings.commercial_entitlements_enabled:
+                lock_organization(db, organization_id)
+                authorize(db, token, organization_id, 'write', csrf=csrf)
+                if not subscription_exempt:
+                    enforce(db, organization_id, resource, locked=True)
             yield db, token, csrf
             if write:
                 db.commit()
@@ -93,7 +100,7 @@ def list_leads(request: Request, organization_id: int, limit: int = Query(100, g
 
 @router.post('/leads', status_code=201)
 def create_lead(request: Request, organization_id: int, payload: LeadIn):
-    with operation(request, organization_id, True) as (db, token, csrf):
+    with operation(request, organization_id, True, resource='leads') as (db, token, csrf):
         return _lead(leads.create_lead(db, token, organization_id, csrf, **payload.model_dump()))
 
 
@@ -125,7 +132,7 @@ def list_tasks(request: Request, organization_id: int, completed: bool | None = 
 
 @router.post('/tasks', status_code=201)
 def create_task(request: Request, organization_id: int, payload: TaskIn):
-    with operation(request, organization_id, True) as (db, token, csrf):
+    with operation(request, organization_id, True, resource='tasks') as (db, token, csrf):
         return _task(tasks.create_task(db, token, organization_id, csrf, **payload.model_dump()))
 
 
@@ -151,7 +158,7 @@ def list_portfolios(request: Request, organization_id: int, limit: int = Query(1
 
 @router.post('/portfolios', status_code=201)
 def create_portfolio(request: Request, organization_id: int, payload: PortfolioIn):
-    with operation(request, organization_id, True) as (db, token, csrf):
+    with operation(request, organization_id, True, resource='portfolios') as (db, token, csrf):
         return _portfolio(portfolios.create_portfolio(db, token, organization_id, csrf, **payload.model_dump()))
 
 
@@ -164,7 +171,7 @@ def list_titles(request: Request, organization_id: int, portfolio_id: int,
 
 @router.post('/portfolios/{portfolio_id}/titles', status_code=201)
 def add_title(request: Request, organization_id: int, portfolio_id: int, payload: TitleIn):
-    with operation(request, organization_id, True) as (db, token, csrf):
+    with operation(request, organization_id, True, resource='titles') as (db, token, csrf):
         return _title(portfolios.add_title(db, token, organization_id, csrf, portfolio_id, **payload.model_dump()))
 
 
@@ -212,13 +219,13 @@ def list_contacts(request: Request, organization_id: int, cnpj: str | None = Que
 
 @router.post('/contacts', status_code=201)
 def add_contact(request: Request, organization_id: int, payload: ContactIn):
-    with operation(request, organization_id, True) as (db, token, csrf):
+    with operation(request, organization_id, True, resource='contacts') as (db, token, csrf):
         return _contact(contacts.add_contact(db, token, organization_id, csrf, **payload.model_dump()))
 
 
 @router.post('/suppressions', status_code=201)
 def suppress_company(request: Request, organization_id: int, payload: SuppressionIn):
-    with operation(request, organization_id, True) as (db, token, csrf):
+    with operation(request, organization_id, True, subscription_exempt=True) as (db, token, csrf):
         row = contacts.suppress_company(db, token, organization_id, csrf, **payload.model_dump())
         return dict(cnpj=row.cnpj, reason=row.reason)
 
@@ -239,4 +246,5 @@ def update_preferences(request: Request, organization_id: int, payload: Preferen
 def get_workspace_subscription(request: Request, organization_id: int):
     from app.services.commercial_subscriptions import describe
     with operation(request,organization_id) as (db,token,_):
-        return describe(db,organization_id)
+        return {**describe(db,organization_id), 'usage':usage(db,organization_id),
+                'enforcement_enabled':settings.commercial_entitlements_enabled}
