@@ -1,0 +1,3 @@
+ # Revisão de segurança comercial
+
+Análise estática encontrou serialização de gravações dependente da flag de cotas, suspensão sem aquisição explícita do mesmo lock e comparação CSRF textual que pode lançar TypeError com caracteres não ASCII. Corrige esses pontos, trata sessão revogada entre consultas e identifica o ator comercial no contexto de gravação. Teste de regressão cobre organização, papel, identificador de lead, CSRF e suspensão. Não altera preços, credenciais nem ativa flags. Ainda exige testes HTTP integrados, concorrência PostgreSQL, revisão de todas as rotas legadas e homologação; não é certificação de segurança. CI do #126 aprovado. #115 substituído pelo #126; não mesclar a implementação antiga.
