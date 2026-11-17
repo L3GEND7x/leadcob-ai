@@ -60,3 +60,29 @@ def test_published_business_channels_and_share_links():
     assert len(rows) == 5
     assert all(x["source_url"] == "https://empresa.com.br/contato" for x in rows)
     assert next(x["value"] for x in rows if x["kind"] == "phone") == "559232324040"
+
+
+def test_published_mailto_and_hidden_content():
+    html = """<html><head><script>var email='vendas@empresa.com.br';</script></head>
+    <body><!-- sac@empresa.com.br -->
+    <a href=mailto:financeiro%40empresa.com.br?subject=Oi>Financeiro</a>
+    <p>contato&#64;empresa.com.br</p>
+    <template>compras@empresa.com.br</template>
+    <a href='mailto:joao.silva@empresa.com.br'>Pessoa</a>
+    <a href='mailto:info@outro.empresa.com.br'>Outro host</a>
+    <a href='https://wa.me/abc5592999999999'>Inválido</a>
+    <a href='https://api.whatsapp.com/send?phone=5592999999999&amp;text=Oi'>WhatsApp</a>
+    <a href='https://instagram.com/accounts/'>Login</a>
+    <a href='https://linkedin.com/company/empresa/'>LinkedIn</a>
+    <a href='http://[invalid'>URL inválida</a>
+    </body></html>"""
+    def response(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200,text=html,headers={"content-type":"text/html"})
+    with httpx.Client(transport=httpx.MockTransport(response)) as client:
+        r=discover("https://www.empresa.com.br/",client=client)
+    assert {e["email"] for e in r["emails"]}=={"financeiro@empresa.com.br","contato@empresa.com.br"}
+    assert {(e["kind"],e["value"]) for e in r["channels"]}=={
+        ("whatsapp","5592999999999"),("linkedin","https://www.linkedin.com/company/empresa/")}
+    assert all(e["source_url"]=="https://www.empresa.com.br/" for e in r["emails"]+r["channels"])
