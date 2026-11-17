@@ -43,7 +43,7 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
     for cid,kind,status,value in db.execute(select(BusinessContact.company_id,BusinessContact.kind,
         BusinessContact.status,BusinessContact.value).join(Company,Company.id==BusinessContact.company_id)
         .where(*city_filter,BusinessContact.status.in_(["verificado","a_verificar"]))):
-        if kind in DIRECT_CHANNELS and value and not value.startswith("anon:"):
+        if kind in DIRECT_CHANNELS and value and value.strip() and not value.strip().lower().startswith("anon:"):
             contacts[cid].add(kind)
             if status=="verificado":
                 verified[cid].add(kind)
@@ -55,6 +55,8 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
         Opportunity.source_name!="Demonstração", Opportunity.kind.in_(["hiring","outsourcing","public_procurement"]))):
         evidence[cid].append((oid,kind))
     counts = Counter()
+    channel_counts = {k: {'available': 0, 'verified': 0} for k in sorted(DIRECT_CHANNELS)}
+    any_channel = any_verified = active_sourced = 0
     items = []
     for cnpj,rows in groups.items():
         rows.sort(key=lambda x:x.id)
@@ -70,6 +72,14 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
         ev=[e for i in ids for e in evidence[i]]
         category=tier(active,sourced,profile,ev,ch,v)
         counts[category]+=1
+        if active and sourced:
+            active_sourced += 1
+            any_channel += int(bool(ch))
+            any_verified += int(bool(v))
+            for k in ch:
+                channel_counts[k]['available'] += 1
+            for k in v:
+                channel_counts[k]['verified'] += 1
         if selected_tier and selected_tier!=category:
             continue
         items.append(dict(company_id=r.id,cnpj=cnpj,name=r.name,profile=profile,
@@ -81,4 +91,7 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
     items.sort(key=lambda x:(order[x["tier"]],-len(x["verified_channels"]),x["company_id"]))
     return dict(uf=uf,city=city,observed_at=datetime.now(timezone.utc).isoformat(),counts=dict(counts),
         unique_cnpjs=len(groups),total=len(items),items=items[offset:offset+limit],
+        contact_coverage=dict(active_sourced_cnpjs=active_sourced, with_any_channel=any_channel,
+          with_verified_channel=any_verified, without_any_channel=active_sourced-any_channel,
+          channels=channel_counts),
         note="Prioridade de revisão, não confirmação de demanda, dívida ou intenção de contratar. Evidências qualificadas já registradas podem estar desatualizadas.")
