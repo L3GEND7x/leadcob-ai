@@ -26,6 +26,8 @@ from app.api.routes_commercial_workspace import router as commercial_workspace_r
 app.include_router(commercial_workspace_router)
 from app.api.routes_commercial_admin import router as commercial_admin_router
 app.include_router(commercial_admin_router)
+from app.api.routes_asaas_sandbox import router as asaas_sandbox_router
+app.include_router(asaas_sandbox_router)
 from app.api.routes_assistant import router as assistant_router
 app.include_router(assistant_router)
 app.include_router(contacts_router)
