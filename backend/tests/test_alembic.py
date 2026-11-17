@@ -14,7 +14,7 @@ def test_initial_revision_and_upgrade_idempotence(tmp_path):
     db = tmp_path / 'new.db'
     env = {**os.environ, 'PYTHONPATH': str(ROOT / 'backend'), 'DATABASE_URL': f'sqlite:///{db}'}
     command = [sys.executable, '-m', 'alembic', '-c', str(ROOT / 'alembic.ini')]
-    subprocess.run([*command, 'upgrade', 'head'], cwd=ROOT, env=env, check=True)
+    subprocess.run([*command, 'upgrade', '2b3f641847d9'], cwd=ROOT, env=env, check=True)
     engine = create_engine(env['DATABASE_URL'])
     assert {'companies', 'portfolio_items', 'assistant_conversations', 'alembic_version'} <= set(inspect(engine).get_table_names())
     with engine.begin() as connection:
