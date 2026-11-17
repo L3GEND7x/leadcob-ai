@@ -6,7 +6,8 @@ from app.core.security import password_hash
 from app.core.account_access import issue_session
 from app.db.database import SessionLocal
 from app.db.models import (AccountUser, AccountSession, Membership, Organization,
-    WorkspaceLead, WorkspaceTask, WorkspacePortfolio, WorkspacePortfolioTitle)
+    WorkspaceLead, WorkspaceTask, WorkspacePortfolio, WorkspacePortfolioTitle,
+    WorkspaceContact, WorkspaceSuppression, WorkspaceSettings)
 
 
 def test_workspace_http_boundary(monkeypatch):
@@ -67,6 +68,20 @@ def test_workspace_http_boundary(monkeypatch):
                 response = b.post(pb+path,json={'reference':ref,'amount':amount,'due_date':'2026-11-01'},headers=hb)
                 assert response.status_code == 201, response.text
             assert b.get(pb+f'/portfolios/{pid}/summary',params={'as_of':'2026-11-17'}).json()['total'] == '0.30'
+            contact = dict(cnpj='12.345.678/0001-95', kind='email', value='financeiro@example.org',
+                           source_url='https://example.org/contato', institutional=True)
+            assert b.post(pb+'/contacts', json=contact, headers=hb).status_code == 201
+            assert a.get(pa+'/contacts').json() == []
+            assert a.get(pb+'/contacts').status_code == 403
+            assert b.post(pb+'/contacts', json=contact, headers=hb).status_code == 422
+            assert b.get(pb+'/contacts').json()[0]['status'] == 'a_verificar'
+            assert b.post(pb+'/suppressions', json={'cnpj':contact['cnpj'],'reason':'Opt-out'}, headers=hb).status_code == 201
+            assert b.get(pb+'/contacts').json() == []
+            prefs = dict(timezone_name='UTC', followup_days=[2,5], default_page_size=100)
+            assert a.put(pa+'/settings', json=prefs, headers=ha).status_code == 403
+            assert b.put(pb+'/settings', json=prefs, headers=hb).status_code == 200
+            assert a.get(pa+'/settings').json()['timezone'] == 'America/Manaus'
+            assert b.get(pb+'/settings').json()['timezone'] == 'UTC'
             with SessionLocal() as db:
                 db.get(Membership,(ub,ob)).role = 'viewer'
                 db.commit()
@@ -79,7 +94,7 @@ def test_workspace_http_boundary(monkeypatch):
                 ids = [oa, ob]
                 portfolio_ids = [p.id for p in db.query(WorkspacePortfolio).filter(WorkspacePortfolio.organization_id.in_(ids))]
                 db.query(WorkspacePortfolioTitle).filter(WorkspacePortfolioTitle.portfolio_id.in_(portfolio_ids)).delete(synchronize_session=False)
-                for model in (WorkspacePortfolio, WorkspaceTask, WorkspaceLead, AccountSession, Membership):
+                for model in (WorkspaceSettings, WorkspaceSuppression, WorkspaceContact, WorkspacePortfolio, WorkspaceTask, WorkspaceLead, AccountSession, Membership):
                     db.query(model).filter(model.organization_id.in_(ids)).delete(synchronize_session=False)
                 db.query(AccountUser).filter(AccountUser.id.in_([ua,ub])).delete(synchronize_session=False)
                 db.query(Organization).filter(Organization.id.in_(ids)).delete(synchronize_session=False)

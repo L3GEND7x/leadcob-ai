@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- API comercial experimental inclui contatos institucionais, supressões e preferências privadas; fontes declaradas continuam a verificar.
 - API experimental de ambiente comercial: leads, agenda e carteiras privadas com autorização por organização, origem e CSRF nas gravações. Valores decimais retornados como texto; flag comercial continua desativada por padrão.
 - API experimental de login comercial desativada por padrão (`COMMERCIAL_AUTH_ENABLED=false`); cookie separado do proprietário, origem obrigatória e tentativas limitadas. Ainda não liberar clientes.
 - Base interna de identidade comercial: organizações, usuários, vínculos com papéis e sessões separadas. Acesso de clientes permanece desabilitado até o isolamento do domínio legado.
