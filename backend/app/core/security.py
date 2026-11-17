@@ -134,10 +134,11 @@ def login(payload: Credentials, request: Request):
     if not auth_enabled():
         raise HTTPException(400, 'Acesso local ativo; configure autenticação para publicar.')
     now = datetime.now(timezone.utc)
-    # Shared database counter works across API processes. The account counter also
-    # prevents spreading attempts over IPs. Reset only after the lock window.
+    # Partition attempts by submitted account and transport peer; do not trust arbitrary forwarded headers.
+    # This is a first layer, not a substitute for a trusted edge rate limiter.
     with SessionLocal() as db:
-        key = 'owner'
+        peer = request.client.host if request.client else 'unknown'
+        key = 'login:' + hashlib.sha256((peer + '\0' + payload.username.casefold()).encode()).hexdigest()
         attempt = db.get(LoginAttempt, key)
         if attempt and stamp(attempt.started_at) < now - timedelta(minutes=15):
             attempt.count = 0
@@ -157,6 +158,7 @@ def login(payload: Credentials, request: Request):
         db.add(LoginSession(token_hash=session_key(raw), csrf_token=csrf,
                             username=settings.admin_username, expires_at=now + timedelta(hours=8)))
         db.query(LoginSession).filter(LoginSession.expires_at < now).delete()
+        db.query(LoginAttempt).filter(LoginAttempt.started_at < now - timedelta(days=1)).delete()
         db.commit()
     response = JSONResponse({'authenticated': True, 'username': settings.admin_username, 'csrf_token': csrf})
     response.set_cookie(COOKIE, raw, httponly=True, secure=settings.app_env == 'production', samesite='strict', max_age=28800)
