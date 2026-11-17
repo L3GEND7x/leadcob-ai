@@ -1,5 +1,6 @@
 """Prioritization, not a prediction of debt or hiring intent."""
 from collections import Counter, defaultdict
+from heapq import nsmallest
 from datetime import datetime, timezone
 from sqlalchemy import select, func
 from app.db.models import Company, Opportunity, BusinessContact, Suppression
@@ -57,40 +58,43 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
     counts = Counter()
     channel_counts = {k: {'available': 0, 'verified': 0} for k in sorted(DIRECT_CHANNELS)}
     any_channel = any_verified = active_sourced = 0
-    items = []
-    for cnpj,rows in groups.items():
-        rows.sort(key=lambda x:x.id)
-        r=rows[0]
-        profiles={profile_for(x.cnae_main) for x in rows}
-        profile=next(iter(profiles)) if len(profiles)==1 else None
-        active=all(str(x.registration_status or "").strip().upper()=="ATIVA" for x in rows)
-        sourced=all(x.registry_source and x.registry_updated_at for x in rows)
-        # Do not combine inconsistent duplicates into a qualified prospect.
-        ids=[x.id for x in rows]
-        ch=set().union(*(contacts[i] for i in ids))
-        v=set().union(*(verified[i] for i in ids))
-        ev=[e for i in ids for e in evidence[i]]
-        category=tier(active,sourced,profile,ev,ch,v)
-        counts[category]+=1
-        if active and sourced:
-            active_sourced += 1
-            any_channel += int(bool(ch))
-            any_verified += int(bool(v))
-            for k in ch:
-                channel_counts[k]['available'] += 1
-            for k in v:
-                channel_counts[k]['verified'] += 1
-        if selected_tier and selected_tier!=category:
-            continue
-        items.append(dict(company_id=r.id,cnpj=cnpj,name=r.name,profile=profile,
-            profile_label=SEGMENTS.get(profile,{}).get("label"),tier=category,
-            channels=sorted(ch),verified_channels=sorted(v),
-            evidence_ids=sorted({e[0] for e in ev}),evidence_kinds=sorted({e[1] for e in ev})))
-    order={k:i for i,k in enumerate(("priority_review","evidence_contact_needed","contactable_prospect",
-        "prospect_research","registry_review","special_route"))}
-    items.sort(key=lambda x:(order[x["tier"]],-len(x["verified_channels"]),x["company_id"]))
+    order={k:i for i,k in enumerate(('priority_review','evidence_contact_needed','contactable_prospect',
+        'prospect_research','registry_review','special_route'))}
+    total = 0
+    def candidates():
+        nonlocal total, any_channel, any_verified, active_sourced
+        for cnpj,rows in groups.items():
+            rows.sort(key=lambda x:x.id)
+            r=rows[0]
+            profiles={profile_for(x.cnae_main) for x in rows}
+            profile=next(iter(profiles)) if len(profiles)==1 else None
+            active=all(str(x.registration_status or "").strip().upper()=="ATIVA" for x in rows)
+            sourced=all(x.registry_source and x.registry_updated_at for x in rows)
+            # Do not combine inconsistent duplicates into a qualified prospect.
+            ids=[x.id for x in rows]
+            ch=set().union(*(contacts[i] for i in ids))
+            v=set().union(*(verified[i] for i in ids))
+            ev=[e for i in ids for e in evidence[i]]
+            category=tier(active,sourced,profile,ev,ch,v)
+            counts[category]+=1
+            if active and sourced:
+                active_sourced += 1
+                any_channel += int(bool(ch))
+                any_verified += int(bool(v))
+                for k in ch:
+                    channel_counts[k]['available'] += 1
+                for k in v:
+                    channel_counts[k]['verified'] += 1
+            if selected_tier and selected_tier!=category:
+                continue
+            total += 1
+            yield dict(company_id=r.id,cnpj=cnpj,name=r.name,profile=profile,
+                profile_label=SEGMENTS.get(profile,{}).get("label"),tier=category,
+                channels=sorted(ch),verified_channels=sorted(v),
+                evidence_ids=sorted({e[0] for e in ev}),evidence_kinds=sorted({e[1] for e in ev}))
+    items = nsmallest(offset+limit, candidates(), key=lambda x:(order[x["tier"]],-len(x["verified_channels"]),x["company_id"]))
     return dict(uf=uf,city=city,observed_at=datetime.now(timezone.utc).isoformat(),counts=dict(counts),
-        unique_cnpjs=len(groups),total=len(items),items=items[offset:offset+limit],
+        unique_cnpjs=len(groups),total=total,items=items[offset:offset+limit],
         contact_coverage=dict(active_sourced_cnpjs=active_sourced, with_any_channel=any_channel,
           with_verified_channel=any_verified, without_any_channel=active_sourced-any_channel,
           channels=channel_counts),
