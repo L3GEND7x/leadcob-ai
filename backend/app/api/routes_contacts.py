@@ -342,3 +342,71 @@ def confirm_domain(candidate_id: int, db: Session = Depends(get_db)):
                              'evidence': candidate.evidence}))
     db.commit()
     return {'website': candidate.website}
+
+
+class BatchDiscoveryIn(BaseModel):
+    company_ids: list[int] = Field(min_length=1, max_length=5)
+
+
+@router.post('/discover-batch')
+def discover_batch(payload: BatchDiscoveryIn, db: Session = Depends(get_db)):
+    """Bounded manual batch of official sites. Each company commits independently."""
+    from app.collectors import site_contacts
+    from app.services.safe_http import validate_url
+    from app.services.cnpj import is_valid_cnpj
+    import httpx
+    results = []
+    for company_id in dict.fromkeys(payload.company_ids):
+        row = {'company_id': company_id, 'added': 0, 'pages_read': 0}
+        try:
+            company = db.get(Company, company_id)
+            if company is None:
+                row['status'] = 'not_found'
+            elif is_blocked(db, company):
+                row['status'] = 'suppressed'
+            elif not is_valid_cnpj(company.cnpj):
+                row['status'] = 'invalid_cnpj'
+            elif not company.website:
+                row['status'] = 'missing_website'
+            else:
+                website = company.website
+                validate_url(website if '://' in website else 'https://' + website)
+                result = site_contacts.discover(website, max_pages=2)
+                # Recheck opt-out after network work, before any insertion.
+                db.expire_all()
+                company = db.get(Company, company_id)
+                if not company or is_blocked(db, company) or company.website != website:
+                    row['status'] = 'changed_or_suppressed'
+                else:
+                    candidates = [('email', x['email'], x['source_url']) for x in result['emails']]
+                    candidates += [(x['kind'], x['value'], x['source_url']) for x in result.get('channels', [])]
+                    seen = set()
+                    for kind, value, source in candidates[:100]:
+                        try:
+                            value = clean(kind, value)
+                            validate_url(source)
+                            key = (kind, value)
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            if insert(db, company, kind, value, 'Site institucional (lote)', source):
+                                db.flush()
+                                row['added'] += 1
+                        except (HTTPException, ValueError):
+                            continue
+                    row['pages_read'] = len(result['pages_read'])
+                    row['status'] = 'completed' if row['pages_read'] else 'unavailable'
+                    db.add(AuditLog(event='contacts_batch_discovery', entity_type='company',
+                                    entity_id=company_id, details=dict(row)))
+                    db.commit()
+        except (ValueError, httpx.HTTPError):
+            db.rollback()
+            row.update(status='unavailable', added=0)
+        except Exception:
+            db.rollback()
+            row.update(status='error', added=0)
+        results.append(row)
+        db.rollback()
+    return {'items': results, 'processed': len(results),
+            'added': sum(r['added'] for r in results),
+            'note': 'Somente sites cadastrados; contatos encontrados permanecem a verificar.'}
