@@ -77,3 +77,11 @@ def commercial_dashboard():
     from app.api.routes_commercial_auth import _enabled
     _enabled()
     return FileResponse(frontend/"commercial.html", headers={"Cache-Control":"no-store"})
+
+
+@app.get("/owner/commercial", include_in_schema=False)
+def commercial_admin_dashboard(request: Request):
+    from app.api.routes_commercial_admin import guard
+    with SessionLocal() as db:
+        guard(request, db)
+    return FileResponse(frontend/"commercial-admin.html", headers={"Cache-Control":"no-store"})
