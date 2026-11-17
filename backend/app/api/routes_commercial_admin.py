@@ -204,3 +204,80 @@ def set_plan_active(request: Request,plan_id: int,payload: Active):
         result=plan_data(row)
         db.commit()
         return result
+
+
+from datetime import datetime, timezone
+from pydantic import AwareDatetime
+from app.db.models import CommercialSubscription
+from app.services.commercial_subscriptions import describe
+
+
+class SubscriptionIn(Input):
+    plan_id: int = Field(gt=0, strict=True)
+    starts_at: AwareDatetime
+    ends_at: AwareDatetime
+
+
+@router.get('/organizations/{organization_id}/subscription')
+def get_subscription(request: Request, organization_id: int):
+    with SessionLocal() as db:
+        guard(request,db)
+        if not db.get(Organization,organization_id):
+            raise HTTPException(404,'Organização não encontrada.')
+        return describe(db,organization_id)
+
+
+@router.put('/organizations/{organization_id}/subscription')
+def assign_subscription(request: Request, organization_id: int, payload: SubscriptionIn):
+    with SessionLocal() as db:
+        guard(request,db,True)
+        org=db.scalar(select(Organization).where(Organization.id==organization_id).with_for_update())
+        if not org:
+            raise HTTPException(404,'Organização não encontrada.')
+        plan=db.get(CommercialPlan,payload.plan_id)
+        if not plan or not plan.active:
+            raise HTTPException(422,'Selecione um plano ativo.')
+        now=datetime.now(timezone.utc)
+        if payload.ends_at <= payload.starts_at or payload.ends_at <= now:
+            raise HTTPException(422,'Vigência inválida.')
+        previous=describe(db,organization_id)
+        row=db.get(CommercialSubscription,organization_id)
+        if row is None:
+            row=CommercialSubscription(organization_id=organization_id)
+            db.add(row)
+        row.plan_id=plan.id
+        row.starts_at=payload.starts_at.astimezone(timezone.utc)
+        row.ends_at=payload.ends_at.astimezone(timezone.utc)
+        row.status='active'
+        row.updated_at=now
+        try:
+            db.flush()
+            result=describe(db,organization_id)
+            db.add(AuditLog(event='commercial_subscription_assigned',entity_type='organization',
+                entity_id=organization_id,details={'previous_status':previous['status'],
+                'previous_plan_id':previous['plan']['id'] if previous['plan'] else None,
+                'previous_starts_at':previous['starts_at'].isoformat() if 'starts_at' in previous else None,
+                'previous_ends_at':previous['ends_at'].isoformat() if 'ends_at' in previous else None,
+                'plan_id':plan.id,'starts_at':row.starts_at.isoformat(),'ends_at':row.ends_at.isoformat()}))
+            db.commit()
+        except IntegrityError as exc:
+            raise HTTPException(409,'Conflito de assinatura.') from exc
+        return result
+
+
+@router.post('/organizations/{organization_id}/subscription/cancel')
+def cancel_subscription(request: Request, organization_id: int):
+    with SessionLocal() as db:
+        guard(request,db,True)
+        org=db.scalar(select(Organization).where(Organization.id==organization_id).with_for_update())
+        row=db.get(CommercialSubscription,organization_id) if org else None
+        if row is None:
+            raise HTTPException(404,'Assinatura não encontrada.')
+        if row.status!='cancelled':
+            row.status='cancelled'
+            row.updated_at=datetime.now(timezone.utc)
+            db.add(AuditLog(event='commercial_subscription_cancelled',entity_type='organization',
+                            entity_id=organization_id,details={'plan_id':row.plan_id}))
+        result=describe(db,organization_id)
+        db.commit()
+        return result
