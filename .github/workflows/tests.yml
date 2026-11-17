@@ -20,7 +20,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt pytest
       - run: python -m compileall -q app
-      - run: python -m pytest -q
+      - run: python -m pytest -q tests
 
 
   financial-postgres:
