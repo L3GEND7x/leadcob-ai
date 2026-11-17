@@ -89,7 +89,10 @@ async def access_middleware(request, call_next):
     public = request.url.path in {'/', '/favicon.ico', '/api/health', '/api/auth/login', '/api/auth/session'} or request.url.path.startswith('/static/')
     token = actor.set('local-owner')
     try:
-        if request.url.path in {'/commercial', '/api/commercial/auth/login', '/api/commercial/auth/session', '/api/commercial/auth/logout'} or request.url.path.startswith('/api/commercial/workspace/'):
+        if request.method == 'POST' and request.url.path == '/api/webhooks/asaas/sandbox':
+            # Exact webhook route authenticates independently of browser sessions.
+            actor.set('asaas-sandbox-webhook')
+        elif request.url.path in {'/commercial', '/api/commercial/auth/login', '/api/commercial/auth/session', '/api/commercial/auth/logout'} or request.url.path.startswith('/api/commercial/workspace/'):
             # Only this dedicated namespace and the exact auth routes use commercial credentials.
             # Each handler enforces the feature flag, authorization and origin policy.
             pass
