@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Corrige eventos duplicados e respostas fora de ordem na busca de oportunidades.
 - **Contatos**: pesquisa pública usa termos naturais, páginas de secretarias/licitações entram na descoberta, caixas funcionais públicas são aceitas e falhas externas são explicitadas. Mapa respeita supressão.
 - **Navegação comercial**: Assistente LeadCob é retirado da interface e deixa de carregar no navegador; menu passa a priorizar Operação diária → Prospecção → Relacionamento → Resultados.
 - **Filtro de vagas**: Sinais/Vagas ganha pesquisa por palavras-chave em título, descrição e evidência, além da opção `Somente freelance`; múltiplas palavras são cumulativas e vagas freelance recebem identificação visual.
