@@ -389,3 +389,15 @@ class WorkspaceSuppression(Base):
     cnpj: Mapped[str] = mapped_column(String(14), primary_key=True)
     reason: Mapped[str] = mapped_column(String(250))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspaceSettings(Base):
+    """Validated operational preferences; never grants billing entitlements."""
+    __tablename__ = "workspace_settings"
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    timezone: Mapped[str] = mapped_column(String(80), default="America/Manaus")
+    followup_days: Mapped[list] = mapped_column(JSON, default=lambda: [3, 7, 14])
+    default_page_size: Mapped[int] = mapped_column(Integer, default=50)
+    updated_by: Mapped[int] = mapped_column(ForeignKey("account_users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (CheckConstraint("default_page_size BETWEEN 10 AND 250", name="ck_workspace_page_size"),)
