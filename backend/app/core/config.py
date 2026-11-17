@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     admin_password_hash: str = ""
     public_url: str = ""
     commercial_auth_enabled: bool = False
+    commercial_entitlements_enabled: bool = False
     openai_api_key: str = ""
     openai_model: str = ""
     assistant_monthly_budget_usd: float = 0
