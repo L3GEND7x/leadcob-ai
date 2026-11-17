@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import String, Text, DateTime, Integer, Float, ForeignKey, Boolean, JSON, UniqueConstraint, Numeric, CheckConstraint
+from sqlalchemy import String, Text, DateTime, Integer, Float, ForeignKey, Boolean, JSON, UniqueConstraint, Numeric, CheckConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 def now(): return datetime.now(timezone.utc)
@@ -481,3 +481,59 @@ class CommercialInvoice(Base):
         CheckConstraint("period_end > period_start", name="ck_commercial_invoice_dates"),
         CheckConstraint("status IN ('open','paid','void')", name="ck_commercial_invoice_status"),
     )
+
+
+# Keep financial migration tables in the shared metadata. No migration is rewritten.
+class AsaasSandboxCustomer(Base):
+    __tablename__ = "asaas_sandbox_customers"
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(String(120), unique=True)
+
+
+class AsaasSandboxPayment(Base):
+    __tablename__ = "asaas_sandbox_payments"
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("commercial_invoices.id"), primary_key=True)
+    payment_id: Mapped[str] = mapped_column(String(120), unique=True)
+    external_reference: Mapped[str] = mapped_column(String(160), unique=True)
+
+
+class AsaasSandboxIssueReservation(Base):
+    __tablename__ = "asaas_sandbox_issue_reservations"
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("commercial_invoices.id"), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(String(120))
+    external_reference: Mapped[str] = mapped_column(String(160), unique=True)
+    billing_type: Mapped[str] = mapped_column(String(10))
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    due_date: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (CheckConstraint("billing_type IN ('PIX','BOLETO')"), CheckConstraint("amount_cents > 0"))
+
+
+class AsaasSandboxEvent(Base):
+    __tablename__ = "asaas_sandbox_events"
+    event_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(80))
+    payment_id: Mapped[str] = mapped_column(String(120))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (Index("ix_asaas_sandbox_events_payment", "payment_id"),)
+
+
+class AsaasSandboxObservation(Base):
+    __tablename__ = "asaas_sandbox_observations"
+    event_id: Mapped[str] = mapped_column(ForeignKey("asaas_sandbox_events.event_id"), primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("commercial_invoices.id"))
+    outcome: Mapped[str] = mapped_column(String(32))
+    provider_status: Mapped[str] = mapped_column(String(80))
+    gross_cents: Mapped[int | None] = mapped_column(Integer)
+    net_cents: Mapped[int | None] = mapped_column(Integer)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class CommercialRenewal(Base):
+    __tablename__ = "commercial_renewals"
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("commercial_invoices.id"), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    previous_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    new_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (CheckConstraint("new_end > previous_end"),)
