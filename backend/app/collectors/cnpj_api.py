@@ -47,9 +47,17 @@ def lookup(cnpj: str, http: httpx.Client | None = None, attempts: int = 2, pause
                     errors.append(f"{name}: {type(exc).__name__}")
                     time.sleep(pause * (i + 1)); continue
                 if r.status_code == 200:
-                    return normalize_api(r.json(), source=name)
+                    try:
+                        data = normalize_api(r.json(), source=name)
+                        if data["cnpj"] != c or not data.get("razao_social"):
+                            raise ValueError("Unexpected registry identity")
+                    except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+                        errors.append(f"{name}: resposta cadastral inválida")
+                        break
+                    return data
                 if r.status_code == 404:
-                    raise CNPJNotFound(f"CNPJ {c} não encontrado na base pública ({name}).")
+                    errors.append(f"{name}: HTTP 404")
+                    break
                 if r.status_code == 400:
                     raise CNPJInvalid(r.json().get("message", "CNPJ inválido"))
                 errors.append(f"{name}: HTTP {r.status_code}")
@@ -59,4 +67,6 @@ def lookup(cnpj: str, http: httpx.Client | None = None, attempts: int = 2, pause
     finally:
         if own:
             http.close()
+    if len(errors) == len(PROVIDERS) and all(e.endswith("HTTP 404") for e in errors):
+        raise CNPJNotFound("CNPJ não encontrado nas fontes consultadas.")
     raise CNPJUnavailable("; ".join(errors) or "sem resposta")

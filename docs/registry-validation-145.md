@@ -1,0 +1,7 @@
+# Validação cadastral #145
+
+A consulta individual anteriormente aceitava HTTP 200 sem confirmar se o CNPJ retornado era o solicitado. Agora exige correspondência e razão social, com fallback em resposta inválida ou 404. O inventário municipal agora aplica supressões normalizadas inclusive por duplicidade e apresenta idade da última atualização local com fonte (até 90 dias, acima de 90, ausente ou futura). O prazo de 90 dias é uma regra operacional, não garantia de atualidade oficial. Não há comparação com universo de mercado.
+
+Importador existente: por padrão importa matrizes ativas e exclui empresário individual/MEI e determinados CNAEs; aceita filtros, partições e limites. Logo não se deve interpretar a base como todos os CNPJs de Manaus. A leitura estática também identificou que a importação de filiais precisa revisar a junção por CNPJ básico (dicionário mantém somente um registro por raiz) e que o filtro somente ativos não atualiza baixas posteriores por si só. Não execute importação em produção sem revisar esses pontos e a política de privacidade.
+
+Aceite operacional: consultar o inventário na central de enriquecimento, registrar data, total, duplicidades, fontes e idade; conferir amostra autorizada de CNPJs em fonte cadastral, reconciliar com a competência e filtros da importação, sem presumir cobertura total. Nenhum dado de produção ou fonte externa foi consultado nesta revisão. Testes simulados escritos, CI pendente. #144 mesclado, backend e browser aprovados; implantação online em andamento na primeira consulta.

@@ -69,7 +69,10 @@ async function registryCoverage(){
   }
   root.replaceChildren(grid,el('p',r.note),el('h3','Fontes por registro válido'));
   for(const [source,count] of Object.entries(r.sources_by_valid_record))root.append(el('p',source+' · '+count.toLocaleString('pt-BR')));
-  root.append(el('p','Cobertura do mercado: não calculada (sem denominador oficial comparável).'));
+  root.append(el('h3','Idade da atualização cadastral local'));
+  const ages={within_90_days:'Atualização local até 90 dias',older_than_90_days:'Atualização local acima de 90 dias',missing:'Sem fonte e data',future_date:'Data futura inconsistente'};
+  for(const [key,label] of Object.entries(ages))root.append(el('p',label+' · '+Number(r.registry_update_age[key]).toLocaleString('pt-BR')));
+  root.append(el('p','Data da atualização local não comprova competência ou atualidade da publicação da Receita.'),el('p','Cobertura do mercado: não calculada (sem denominador oficial comparável).'));
  }catch(e){root.replaceChildren(el('p','Inventário indisponível: '+e.message));throw e;}
 }
 $('registry-form').addEventListener('submit',e=>{e.preventDefault();run(registryCoverage);});
