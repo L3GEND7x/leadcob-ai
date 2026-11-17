@@ -366,3 +366,38 @@ class WorkspaceTask(Base):
     due_date: Mapped[str] = mapped_column(String(10))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspaceContact(Base):
+    __tablename__ = "workspace_contacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
+    cnpj: Mapped[str] = mapped_column(String(14))
+    kind: Mapped[str] = mapped_column(String(20))
+    value: Mapped[str] = mapped_column(String(500))
+    source_url: Mapped[str] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "cnpj", "kind", "value", name="uq_workspace_contact"),
+        CheckConstraint("kind IN ('email', 'website', 'phone', 'whatsapp', 'linkedin', 'instagram', 'facebook')", name="ck_workspace_contact_kind"),
+    )
+
+
+class WorkspaceSuppression(Base):
+    __tablename__ = "workspace_suppressions"
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    cnpj: Mapped[str] = mapped_column(String(14), primary_key=True)
+    reason: Mapped[str] = mapped_column(String(250))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspaceSettings(Base):
+    """Validated operational preferences; never grants billing entitlements."""
+    __tablename__ = "workspace_settings"
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    timezone: Mapped[str] = mapped_column(String(80), default="America/Manaus")
+    followup_days: Mapped[list] = mapped_column(JSON, default=lambda: [3, 7, 14])
+    default_page_size: Mapped[int] = mapped_column(Integer, default=50)
+    updated_by: Mapped[int] = mapped_column(ForeignKey("account_users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (CheckConstraint("default_page_size BETWEEN 10 AND 250", name="ck_workspace_page_size"),)
