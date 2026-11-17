@@ -47,7 +47,7 @@ async function load(){
 }
 $('provision').addEventListener('submit',e=>{e.preventDefault();run(async()=>{let data;try{data=await api(base,'POST',Object.fromEntries(new FormData(e.target)));}finally{e.target.elements.password.value='';}e.target.reset();offset=0;await load();alert('Organização criada. Código de acesso: '+data.id);});});
 $('refresh').addEventListener('click',()=>run(load));$('prev').addEventListener('click',()=>run(async()=>{offset=Math.max(0,offset-limit);await load();}));$('next').addEventListener('click',()=>run(async()=>{offset+=limit;await load();}));
-run(async()=>{const s=await api('/api/auth/session');if(!s.authenticated||s.mode!=='cloud'||!s.csrf_token)throw Error('Entre no painel principal com a conta do proprietário.');csrf=s.csrf_token;await load();$('directory').hidden=false;$('admin-content').hidden=false;$('plans').hidden=false;await loadPlans();});
+run(async()=>{const s=await api('/api/auth/session');if(!s.authenticated||s.mode!=='cloud'||!s.csrf_token)throw Error('Entre no painel principal com a conta do proprietário.');csrf=s.csrf_token;await load();$('directory').hidden=false;$('admin-content').hidden=false;$('plans').hidden=false;$('release-diagnostics').hidden=false;await loadPlans();});
 
 const planBase='/api/owner/commercial/plans';
 const quotaLabels={members:'Usuários',leads:'Leads',contacts:'Contatos',tasks:'Tarefas',portfolios:'Carteiras',titles:'Títulos'};
@@ -145,3 +145,25 @@ async function showFinance(org,area){
  }
  await loadFinance();
 }
+
+
+const readinessLabels={production_mode:'Ambiente de produção',postgresql:'Banco PostgreSQL',https_origin:'Origem HTTPS',owner_auth_configured:'Autenticação do proprietário configurada',commercial_auth_enabled:'Autenticação comercial ativa',entitlements_enabled:'Cotas e vigência ativas',demo_disabled:'Demonstração desativada',schema_tables_present:'Tabelas esperadas presentes',expected_active_catalog:'Catálogo ativo com preços esperados'};
+const manualGateLabels={postgresql_concurrency:'Concorrência PostgreSQL — validar cenários de aceite',browser_e2e:'Fluxos completos de navegador',sandbox_provider_homologation:'Homologação externa Asaas',backup_restore_drill:'Ensaio de backup e restauração',privacy_and_terms_review:'Revisão de privacidade e termos',production_payment_integration:'Integração de pagamentos em produção'};
+async function loadReadiness(){
+ const area=$('readiness-results');
+ area.replaceChildren(el('p','Verificando ambiente…'));
+ try{
+  const x=await api('/api/owner/commercial/readiness');
+  area.replaceChildren(el('strong',x.configuration_checks_passed?'Configuração verificada — aceite manual necessário':'Configuração com pendências'));
+  for(const [key,value] of Object.entries(x.configuration_checks))area.append(el('p',(readinessLabels[key]||key)+': '+(value===true?'Verificado':'Pendente')));
+  if(x.missing_tables.length)area.append(el('p','Tabelas ausentes: '+x.missing_tables.join(', ')));
+  area.append(el('h3','Catálogo observado'));
+  for(const p of x.plans)area.append(el('p',p.code+' · '+money(p.amount_cents)+' · '+(p.active?'Ativo':'Inativo')));
+  if(!x.plans.length)area.append(el('p','Nenhum plano cadastrado.'));
+  area.append(el('h3','Sandbox'),el('p','Chave configurada: '+(x.sandbox.api_configured?'Sim':'Não')+' · Token configurado: '+(x.sandbox.webhook_token_configured?'Sim':'Não')+'. Configuração não comprova conexão.'));
+  area.append(el('h3','Aceite manual obrigatório'));
+  for(const key of x.manual_gates)area.append(el('p',manualGateLabels[key]||key));
+  area.append(el('p','Lançamento não certificado. Nenhuma configuração foi alterada.'));
+ }catch(e){area.replaceChildren(el('p',e.message));throw e;}
+}
+$('refresh-readiness').addEventListener('click',()=>run(loadReadiness));
