@@ -1,13 +1,18 @@
 let assistantConversation = null;
 let assistantBusy = false;
+const assistantFailureMessages = {provider_quota:'Limite ou saldo da API atingido. Confira o faturamento no provedor.', provider_model:'Modelo indisponível. Confira o modelo configurado e as permissões do projeto.', provider_auth:'Credenciais ou permissões da API recusadas. Confira a configuração do servidor.', provider_rate_limit:'Limite de requisições da API atingido. Confira o histórico antes de tentar novamente.', provider_connection:'Falha de comunicação com o provedor. Confira o histórico antes de reenviar.', request_failed:'Não foi possível concluir. Confira o histórico e as ações pendentes.'};
+const assistantConfigLabels = {api_key:'Chave da API',model:'Modelo',monthly_budget:'Orçamento mensal',input_price:'Preço de entrada',output_price:'Preço de saída'};
 async function viewAssistente() {
   const [status, history] = await Promise.all([api('/assistant/status'), api('/assistant/conversations')]);
+  if (assistantBusy) return;
+  const missing = Object.entries(status.configuration_checks || {}).filter(([,ok]) => !ok).map(([k]) => assistantConfigLabels[k] || k);
   V().innerHTML = head('SEU AMBIENTE DE TRABALHO', 'Assistente LeadCob', 'Consulte dados, prepare abordagens e organize sua próxima ação.')
-    + `<div class="assistant-layout"><section class="panel"><button id="ai-new">Nova conversa</button><div class="rows">${history.map(c => `<button class="row" data-conversation="${esc(c.id)}">${esc(c.title)}</button>`).join('')}</div><p class="note">${esc(status.model || 'Modelo não configurado')}<br>Consumo estimado e reservado US$ ${Number(status.estimated_and_reserved_usd).toFixed(4)} / ${Number(status.budget_usd).toFixed(2)}</p>${!status.configured ? `<p class="warnbox">${esc(status.setup)}</p>` : ''}</section>
+    + `<div class="assistant-layout"><section class="panel"><button id="ai-new">Nova conversa</button><div class="rows">${history.map(c => `<button class="row" data-conversation="${esc(c.id)}">${esc(c.title)}</button>`).join('')}</div><p class="note">${esc(status.model || 'Modelo não configurado')}<br>Consumo estimado e reservado US$ ${Number(status.estimated_and_reserved_usd).toFixed(4)} / ${Number(status.budget_usd).toFixed(2)}</p>${!status.configured ? `<p class="warnbox">${esc(status.setup)} ${esc(missing.join(' · '))}</p>` : '<p class="note">Configuração local presente; conexão ainda não verificada nesta consulta.</p>'}</section>
     <section class="panel"><div id="ai-messages" aria-live="polite"></div><div id="ai-actions"></div><form id="ai-form" class="form"><label class="f full">Como posso ajudar?<textarea name="message" maxlength="6000" required placeholder="O que preciso fazer hoje?"></textarea></label><button class="primary" ${status.configured ? '' : 'disabled'}>Enviar</button><p id="ai-state" role="status"></p></form><button id="ai-delete" class="small">Excluir conversa</button></section></div>`;
   document.querySelectorAll('[data-conversation]').forEach(b => b.onclick = () => openAssistantConversation(b.dataset.conversation));
-  $('ai-new').onclick = () => { assistantConversation = null; $('ai-messages').replaceChildren(); $('ai-actions').replaceChildren(); };
+  $('ai-new').onclick = () => { if (assistantBusy) return; assistantConversation = null; $('ai-messages').replaceChildren(); $('ai-actions').replaceChildren(); };
   $('ai-delete').onclick = async () => {
+    if (assistantBusy) return;
     if (assistantConversation && confirm('Excluir esta conversa e suas ações pendentes?')) {
       await send('/assistant/conversations/' + assistantConversation, 'DELETE'); assistantConversation = null; viewAssistente();
     }
@@ -17,20 +22,26 @@ async function viewAssistente() {
     const form = event.target, text = form.message.value.trim();
     if (!text) return;
     assistantBusy = true; form.querySelector('button').disabled = true; $('ai-state').textContent = 'Consultando seus dados…';
-    const requestId = crypto.randomUUID();
     try {
+      const requestId = crypto.randomUUID();
       const data = await send('/assistant/messages', 'POST', {conversation_id: assistantConversation, request_id: requestId, message: text});
-      assistantConversation = data.id; form.message.value = ''; renderAssistantConversation(data);
+      assistantConversation = data.id;
+      if ($('ai-form') !== form) return;
+      form.message.value = ''; renderAssistantConversation(data);
       $('ai-state').textContent = data.request_status === 'failed'
-        ? 'A resposta falhou. O pedido foi registrado; confira o histórico antes de tentar novamente.'
+        ? (assistantFailureMessages[data.failure_category] || assistantFailureMessages.request_failed)
         : 'Resposta salva.';
-    } catch (error) { $('ai-state').textContent = errMsg(error, 'Falha de conexão. Confira o histórico antes de reenviar.'); }
+    } catch (error) { if ($('ai-form') === form) $('ai-state').textContent = errMsg(error, 'Falha de conexão. Confira o histórico antes de reenviar.'); }
     finally { assistantBusy = false; form.querySelector('button').disabled = false; }
   };
   if (assistantConversation) await openAssistantConversation(assistantConversation);
 }
 async function openAssistantConversation(id) {
-  assistantConversation = id; renderAssistantConversation(await api('/assistant/conversations/' + id));
+  if (assistantBusy) return;
+  assistantConversation = id;
+  const container = $('ai-messages');
+  try { const data = await api('/assistant/conversations/' + id); if (assistantConversation === id && $('ai-messages') === container && container) renderAssistantConversation(data); }
+  catch (error) { if ($('ai-state')) $('ai-state').textContent = errMsg(error, 'Não foi possível carregar a conversa.'); }
 }
 function renderAssistantConversation(data) {
   $('ai-messages').innerHTML = data.messages.map(m => `<article class="ai-message"><small>${m.role === 'user' ? 'Você' : 'Assistente LeadCob'}</small><p>${esc(m.text).replace(/#\/(empresa|cobranca)\/(\d+)/g, '<a href="#/$1/$2">Abrir registro $2</a>')}</p></article>`).join('');
