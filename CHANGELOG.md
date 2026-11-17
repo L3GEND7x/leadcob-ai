@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Regras comerciais opt-in: cotas de armazenamento por organização, vigência obrigatória para gravações e consulta de consumo. Leitura e supressão permanecem disponíveis após vencimento; dados preservados. Serialização de gravações no banco. Flag inicialmente desativada.
 - Assinaturas comerciais administrativas por organização, vigência, cancelamento e consulta privada. Migração inclui catálogo inicial inativo: Essential R$ 27, Professional R$ 117 e Enterprise R$ 397. Sem cobrança automática ou bloqueio por assinatura nesta etapa.
 - Catálogo administrativo de planos versionados em BRL, preços em centavos e limites configuráveis. Nenhum plano ou cobrança criado automaticamente; aplicação de limites depende da assinatura.
 - Central de enriquecimento: cobertura por canal, UF e município, com contagens distintas de registros elegíveis e separação de contatos verificados.
