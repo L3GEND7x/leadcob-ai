@@ -781,3 +781,26 @@ def commercial_readiness(request: Request):
     with SessionLocal() as db:
         guard(request, db)
         return readiness(db, settings)
+
+
+@router.get('/organizations/{organization_id}/asaas-sandbox/diagnostics')
+def sandbox_diagnostics(request: Request, organization_id: int):
+    """Local evidence only: no provider request, payment or ledger mutation."""
+    with SessionLocal() as db:
+        guard(request, db)
+        if not db.get(Organization, organization_id):
+            raise HTTPException(404, 'Organização não encontrada.')
+        row = db.execute(text("""
+            SELECT COUNT(*) AS associated,
+                COALESCE(SUM(CASE WHEN p.invoice_id IS NOT NULL THEN 1 ELSE 0 END),0) AS bound,
+                COALESCE(SUM(CASE WHEN r.invoice_id IS NOT NULL AND p.invoice_id IS NULL THEN 1 ELSE 0 END),0) AS unresolved,
+                COALESCE(SUM(CASE WHEN i.status='paid' THEN 1 ELSE 0 END),0) AS paid_conflicts,
+                COALESCE(SUM(CASE WHEN i.status='void' THEN 1 ELSE 0 END),0) AS void_conflicts
+            FROM commercial_invoices i
+            LEFT JOIN asaas_sandbox_payments p ON p.invoice_id=i.id
+            LEFT JOIN asaas_sandbox_issue_reservations r ON r.invoice_id=i.id
+            WHERE i.organization_id=:oid AND (p.invoice_id IS NOT NULL OR r.invoice_id IS NOT NULL)
+        """), {'oid':organization_id}).mappings().one()
+        return {'environment':'sandbox', 'organization_id':organization_id,
+                **dict(row), 'provider_verified':False, 'production_ready':False,
+                'note':'Evidência local. Reservas sem vínculo e conflitos exigem revisão manual; não reenviar emissão.'}
