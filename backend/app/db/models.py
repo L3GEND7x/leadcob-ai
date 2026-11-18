@@ -545,3 +545,22 @@ class CommercialRenewal(Base):
     new_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     __table_args__ = (CheckConstraint("new_end > previous_end"),)
+
+
+class WorkspaceAssistantExchange(Base):
+    __tablename__ = "workspace_assistant_exchanges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("account_users.id"))
+    month: Mapped[str] = mapped_column(String(7), index=True)
+    prompt: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20))
+    reserved_micro_usd: Mapped[int] = mapped_column(Integer)
+    charged_micro_usd: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspaceAssistantBudgetLock(Base):
+    __tablename__ = "workspace_assistant_budget_locks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
