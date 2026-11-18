@@ -11,7 +11,7 @@ def readiness(db, settings):
     present = set(inspect(db.connection()).get_table_names())
     missing = sorted(set(Base.metadata.tables) - present)
     checks = {
-        "production_mode": settings.app_env == "production",
+        "production_mode": settings.app_env.strip().lower() == "production",
         "postgresql": bind.dialect.name == "postgresql",
         "https_origin": parsed.scheme == "https" and bool(parsed.hostname)
             and not parsed.username and not parsed.password and parsed.path in ("", "/")
@@ -39,5 +39,9 @@ def readiness(db, settings):
                     "webhook_token_configured": len(settings.asaas_sandbox_webhook_token) >= 32},
         "release_ready": False,
         "manual_gates": ["postgresql_concurrency", "browser_e2e", "sandbox_provider_homologation",
-                         "backup_restore_drill", "privacy_and_terms_review", "production_payment_integration"],
+                         "backup_restore_drill", "privacy_and_terms_review", "production_payment_integration",
+                         "owner_ai_live_acceptance", "tenant_ai_generation_and_budget",
+                         "registry_import_reconciliation", "contact_capture_live_acceptance",
+                         "worker_liveness_and_concurrency", "tenant_prospect_rate_limits",
+                         "production_backup_retention", "security_review"],
     }
