@@ -171,3 +171,21 @@ def test_bound_sandbox_cannot_settle_or_void(billing, monkeypatch):
     assert c.post(f"{path}/{iid}/renew",headers=h).status_code==409
     with session() as db:
         assert db.get(CommercialInvoice,iid).status=="open"
+
+
+def test_sandbox_diagnostics_is_scoped_and_read_only(billing, monkeypatch):
+    c,h,path,payload,session,oid,other,end = billing
+    iid=create_receivable(c,h,path,payload)
+    def uncertain(**kwargs):
+        raise PaymentUnavailable("fixture")
+    monkeypatch.setattr(admin,"issue_charge",uncertain)
+    assert c.post(f"{path}/{iid}/asaas-sandbox/issue",headers=h,json={"billing_type":"PIX"}).status_code==503
+    url=f"/api/owner/commercial/organizations/{oid}/asaas-sandbox/diagnostics"
+    result=c.get(url)
+    assert result.status_code==200,result.text
+    assert result.json()["unresolved"]==1
+    assert result.json()["bound"]==0
+    assert result.json()["provider_verified"] is False
+    assert c.get(url.replace(f"/organizations/{oid}/",f"/organizations/{other}/")).json()["associated"]==0
+    with session() as db:
+        assert db.get(CommercialInvoice,iid).status=="open"
