@@ -11,7 +11,12 @@ from app.collectors import rfb_files as R
 from app.jobs import import_cnpj as J
 
 
-def est(basico, cnae, uf="AM", situacao="02", matriz="1", fantasia="", ordem="0001", dv="00", mun="0255"):
+def est(basico, cnae, uf="AM", situacao="02", matriz="1", fantasia="", ordem="0001", dv=None, mun="0255"):
+    from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
+    if dv is None:
+        base = basico + ordem
+        first = _dv(base, WEIGHTS_1)
+        dv = first + _dv(base + first, WEIGHTS_2)
     row = [""] * 30
     row[0], row[1], row[2], row[3], row[4], row[5] = basico, ordem, dv, matriz, fantasia, situacao
     row[10], row[11], row[12], row[19], row[20] = "20100115", cnae, "4639701,4637199", uf, mun
@@ -43,7 +48,7 @@ def test_filter_establishments():
     stats = {}
     out = list(J.filter_establishments(rows, ["credito_fomento", "educacao_privada"], {"AM"}, stats=stats))
     assert [r["cnpj_basico"] for r in out] == ["11111111", "66666666"]
-    assert out[0]["target_profile"] == "credito_fomento" and out[0]["cnpj"] == "11111111000100"
+    assert out[0]["target_profile"] == "credito_fomento" and out[0]["cnpj"] == "".join(est("11111111", "6491300")[:3])
     assert stats["bad_layout"] == 1
     assert "pessoa@exemplo.com" not in str(out) and "33334444" not in str(out)
 
@@ -81,7 +86,7 @@ def fake_rfb(monkeypatch):
         "Estabelecimentos0.zip": zipped([est("11111111", "6491300", fantasia="FOMENTO A"), est("55555555", "4711302")]),
         "Estabelecimentos1.zip": zipped([est("66666666", "8513900", fantasia="ESCOLA Ç")]),
         "Empresas1.zip": zipped([emp("00000001", "X"), emp("11111111", "FOMENTO A LTDA", porte="05"), emp("12000000", "Y")]),
-        "Empresas0.zip": zipped([emp("50000000", "Z"), emp("66666666", "ESCOLA ÇÃO LTDA", porte="01")]),
+        "Empresas0.zip": zipped([emp("50000000", "Z"), emp("55555555", "VAREJO LTDA"), emp("66666666", "ESCOLA ÇÃO LTDA", porte="01")]),
     }
     for i in range(2, 10):
         files[f"Empresas{i}.zip"] = zipped([emp(f"{90000000 + i}", "VAZIO")])
@@ -124,7 +129,7 @@ def test_job_end_to_end(fake_rfb):
     from app.db.database import SessionLocal
     from app.db.models import Company
     db = SessionLocal()
-    c = db.query(Company).filter_by(cnpj="11111111000100").one()
+    c = db.query(Company).filter_by(cnpj="".join(est("11111111", "6491300")[:3])).one()
     assert c.target_profile == "credito_fomento" and c.registry_source.startswith("Receita Federal")
     assert c.institutional_email is None
     db.close()
@@ -200,3 +205,32 @@ def test_checkpoint_resumes_without_rereading_parts(tmp_path, fake_rfb):
     again = J.main(args)   # simula a retomada: os dois arquivos já constam do checkpoint
     reads_after = sum(1 for n, *_ in fake_rfb if n.startswith("Estabelecimentos"))
     assert reads_after == reads_before and {r["cnpj_basico"] for r in again} == {r["cnpj_basico"] for r in first}
+
+
+def test_branch_metadata_and_privacy(tmp_path):
+    rel=tmp_path / "2026-10"
+    rel.mkdir()
+    tables={
+        "Cnaes.zip":[["6491300","Factoring"]],
+        "Municipios.zip":[["0255","MANAUS"]],
+        "Naturezas.zip":[["2062","LTDA"],["2135","Individual"]],
+        "Estabelecimentos0.zip":[est("11111111","6491300"),
+            est("11111111","6491300",matriz="2",ordem="0002"),
+            est("22222222","6491300"),est("22222222","6491300",matriz="2",ordem="0002"),
+            est("33333333","6491300"),est("44444444","6491300",dv="99")],
+        "Empresas0.zip":[emp("11111111","FIXTURE LTDA"),emp("22222222","PESSOA 12345678901",natureza="2135")],
+    }
+    for name,rows in tables.items():
+        (rel/name).write_bytes(zipped(rows))
+    result=J.main(["--local-dir",str(tmp_path),"--release","2026-10","--parts","0",
+                   "--uf","AM","--include-branches","--dry-run"])
+    assert len(result)==2
+    assert all(r["razao_social"]=="FIXTURE LTDA" and r["natureza_codigo"]=="2062" for r in result)
+    assert len({r["cnpj"] for r in result})==2
+
+
+def test_limit_is_per_scan_not_global_counter():
+    stats={"matched":100}
+    rows=[est("11111111","6491300"),est("22222222","6491300")]
+    assert len(list(J.filter_establishments(rows,None,{"AM"},limit=2,stats=stats)))==2
+    assert stats["matched"]==102
