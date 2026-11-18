@@ -26,7 +26,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from app.collectors import rfb_files as R
-from app.services.cnpj import PORTE, SITUACAO
+from app.services.cnpj import PORTE, SITUACAO, is_valid_cnpj
 from app.services.segments import INDIVIDUAL_NATURE, SEGMENTS, profile_for
 
 # Layout validado com dados reais (publicação 2026-10): 30 colunas.
@@ -47,6 +47,9 @@ def mask_individual_name(name: str | None) -> str | None:
 def apply_individual_policy(records: list[dict], include_individual: bool, stats: dict) -> list[dict]:
     kept = []
     for r in records:
+        if not re.fullmatch(r"[0-9]{4}", str(r.get("natureza_codigo") or "")) or not r.get("razao_social"):
+            stats["unresolved_company"] = stats.get("unresolved_company", 0) + 1
+            continue
         if r.get("natureza_codigo") == INDIVIDUAL_NATURE:
             stats["individuals"] = stats.get("individuals", 0) + 1
             if not include_individual:
@@ -59,7 +62,7 @@ def apply_individual_policy(records: list[dict], include_individual: bool, stats
 
 def ckpt_args(a) -> dict:
     """Só retoma um checkpoint feito com os mesmos filtros."""
-    return {k: getattr(a, k) for k in ("segments", "uf", "include_branches", "limit")}
+    return {k: getattr(a, k) for k in ("segments", "uf", "include_branches", "limit", "parts", "local_dir", "include_individual", "skip_companies", "min_size")}
 
 
 def parse_parts(spec: str) -> list[int]:
@@ -100,6 +103,7 @@ def filter_establishments(rows, segments: list[str] | None, ufs: set[str] | None
                           only_headquarters: bool = True, limit: int | None = None, stats: dict | None = None):
     """Filtra linhas de Estabelecimentos. Função pura: testável sem rede."""
     stats = stats if stats is not None else {}
+    emitted = 0
     for row in rows:
         stats["read"] = stats.get("read", 0) + 1
         if len(row) != 30:
@@ -114,7 +118,12 @@ def filter_establishments(rows, segments: list[str] | None, ufs: set[str] | None
         profile = profile_for(row[E_CNAE], segments)
         if not profile:
             continue
+        key = row[E_BASICO] + row[E_ORDEM] + row[E_DV]
+        if not is_valid_cnpj(key):
+            stats["invalid_cnpj"] = stats.get("invalid_cnpj", 0) + 1
+            continue
         stats["matched"] = stats.get("matched", 0) + 1
+        emitted += 1
         yield {
             "cnpj": row[E_BASICO] + row[E_ORDEM] + row[E_DV],
             "cnpj_basico": row[E_BASICO],
@@ -129,7 +138,7 @@ def filter_establishments(rows, segments: list[str] | None, ufs: set[str] | None
             "target_profile": profile,
             # E-mail, telefones, endereço e sócios: descartados de propósito (LGPD).
         }
-        if limit and stats["matched"] >= limit:
+        if limit and emitted >= limit:
             return
 
 
@@ -293,6 +302,8 @@ def main(argv=None):
     t0 = time.time(); stats: dict = {}
     if a.local_dir and not a.release:
         ap.error("--local-dir exige --release (competência AAAA-MM dos arquivos)")
+    if a.skip_companies and not a.dry_run:
+        ap.error("--skip-companies é permitido apenas em dry-run; cadastro sem natureza jurídica não deve ser gravado.")
     if a.skip_companies and not a.include_individual:
         ap.error("sem ler Empresas não dá para identificar empresário individual/MEI; "
                  "remova --skip-companies ou assuma com --include-individual")
@@ -336,7 +347,7 @@ def main(argv=None):
                                            "found": found, "stats": stats}), encoding="utf-8")
                 tmp.replace(ckpt)
         if found and not a.skip_companies:
-            by_basico = {r["cnpj_basico"]: r for r in found.values()}
+            by_basico = {r["cnpj_basico"]: {} for r in found.values()}
             # Empresas é particionado por faixa de CNPJ básico: lê só os arquivos
             # necessários e para ao passar do maior CNPJ procurado em cada um.
             plan = plan_company_parts(company_part_starts(src), by_basico)
@@ -348,6 +359,7 @@ def main(argv=None):
             if stats.get("not_found"):
                 print(f"  {stats['not_found']} CNPJ(s) sem registro em Empresas.", flush=True)
             for r in found.values():
+                r.update(by_basico[r["cnpj_basico"]])
                 if r.get("natureza_codigo"):
                     r["natureza_juridica"] = naturezas.get(r["natureza_codigo"], r["natureza_codigo"])
     records = list(found.values())
@@ -356,6 +368,7 @@ def main(argv=None):
     if a.min_size:
         order = {"MICRO EMPRESA": 1, "EMPRESA DE PEQUENO PORTE": 3, "DEMAIS": 5}
         records = [r for r in records if order.get(r.get("porte"), 0) >= int(a.min_size)]
+    print(f"Auditoria: {stats.get('invalid_cnpj', 0)} CNPJs inválidos, {stats.get('unresolved_company', 0)} estabelecimentos sem identidade jurídica confirmada.", flush=True)
     print(f"Total: {len(records)} empresas · linhas fora do layout: {stats.get('bad_layout', 0)} · "
           f"empresários individuais/MEI {'incluídos (CPF removido)' if a.include_individual else 'excluídos'}: "
           f"{stats.get('individuals', 0)}", flush=True)
