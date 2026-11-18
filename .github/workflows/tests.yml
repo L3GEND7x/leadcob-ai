@@ -53,3 +53,23 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt pytest
       - run: python -m pytest -q tests/test_financial_integration.py
+
+      - name: Benchmark 53k synthetic CNPJs
+        timeout-minutes: 10
+        run: PYTHONPATH=. python benchmarks/registry_load.py > /tmp/registry-benchmark.json
+      - name: Publish benchmark results
+        if: always()
+        run: |
+          if test -s /tmp/registry-benchmark.json; then
+            cat /tmp/registry-benchmark.json
+            echo '### Synthetic registry benchmark' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/registry-benchmark.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: registry-benchmark
+          path: /tmp/registry-benchmark.json
+          if-no-files-found: warn
