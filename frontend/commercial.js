@@ -76,6 +76,17 @@ async function load(){if(!session)return;const version=++epoch;const current=mod
  const x=await workspace('assistant/context');if(version!==epoch)return;
  const root=$('results');
  root.replaceChildren(record('Resumo da sua organização',['Leads: '+x.lead_count,'Tarefas pendentes: '+x.pending_tasks,'Carteiras: '+x.portfolio_count]),record('Funil comercial',Object.entries(stages).map(([key,label])=>label+': '+(x.lead_stages[key]||0))),record('Empresas com canais cadastrados',Object.entries(channels).map(([key,label])=>label+': '+(x.companies_by_channel[key]||0))),el('p',x.note));
+ const history=await workspace('assistant/history');if(version!==epoch)return;
+ const panel=el('section');panel.append(el('h3','Meu histórico privado'));
+ for(const item of history)panel.append(record(item.prompt,[item.answer||('Estado: '+item.status)]));
+ if(!history.length)panel.append(el('p','Nenhuma solicitação registrada.'));
+ root.append(panel);
+ if(x.generation_enabled&&canWrite())$('form-area').append(form([field('prompt','Pergunta (não inclua dados pessoais ou confidenciais)','textarea')],'Enviar à IA',async v=>{
+ if(!v.prompt.trim()||v.prompt.length>2000)throw Error('Informe até 2.000 caracteres.');
+ if(!confirm('Enviar sua pergunta e os indicadores agregados da organização ao provedor de IA?'))return;
+ const response=await workspace('assistant/generate','POST',{request_id:crypto.randomUUID(),prompt:v.prompt});
+ await load();if(response.status!=='completed')throw Error('Não foi possível gerar a resposta. Consulte o histórico antes de reenviar.');
+ }));
  return;
  }
  if(current==='subscription'){const x=await workspace('subscription');if(version!==epoch)return;showSubscription(x);return;}
