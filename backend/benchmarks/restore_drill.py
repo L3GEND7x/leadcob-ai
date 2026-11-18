@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import re
 import tempfile
 import time
 from uuid import uuid4
@@ -42,10 +43,21 @@ def run(raw_url):
     env.update(PGHOST=url.host,PGPORT=str(url.port or 5432),PGUSER=url.username,
                PGPASSWORD=url.password or "",PGCONNECT_TIMEOUT="5")
     def cmd(args):
-        subprocess.run(args,env=env,check=True,timeout=120,
-                       stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        try:
+            subprocess.run(args,env=env,check=True,timeout=120,
+                           stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            # This drill accepts only synthetic records; never emit the command or credentials.
+            raise RuntimeError(f"{args[0]} failed (exit {exc.returncode}): "
+                + (exc.stderr or b"").decode(errors="replace")[:1000]) from None
     try:
         with admin.connect() as conn:
+            major = int(conn.exec_driver_sql("SHOW server_version_num").scalar_one()) // 10000
+            for tool in ("pg_dump", "pg_restore"):
+                version = subprocess.check_output([tool, "--version"], env=env, text=True, timeout=30)
+                match = re.search(r"PostgreSQL\)\s+(\d+)", version)
+                if not match or int(match.group(1)) != major:
+                    raise RuntimeError("Backup client major must match the PostgreSQL server.")
             for name in (source,target):
                 conn.exec_driver_sql(f'CREATE DATABASE "{name}"')
                 created.append(name)
