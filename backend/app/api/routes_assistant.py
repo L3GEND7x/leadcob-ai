@@ -381,3 +381,48 @@ def provider_check(request: Request, db: Session = Depends(get_db)):
     db.commit()
     return {**result, 'observed_at': observed_at, 'generation_tested': False,
             'note': 'Consulta de metadados do modelo. Não comprova geração, saldo ou funcionamento das ferramentas.'}
+
+
+@router.post('/generation-check')
+def generation_check(request: Request, db: Session = Depends(get_db)):
+    """Explicit owner-only bounded paid probe. No CRM context, tools or customer content."""
+    if not configured():
+        raise HTTPException(503, 'Complete a configuração local da Assistente IA.')
+    # Use the same durable budget reservation as normal messages. Keep an audit-only
+    # conversation for the fixed synthetic prompt; no automatic retries on uncertainty.
+    cid, rid = str(uuid4()), str(uuid4())
+    db.add(AssistantConversation(id=cid, owner=owner(request), title='Diagnóstico de geração'))
+    db.flush()
+    run = reserve(db, cid, rid)
+    started = success = False
+    input_tokens = output_tokens = 0
+    category = None
+    try:
+        from openai import OpenAI
+        with OpenAI(api_key=settings.openai_api_key.strip(), timeout=20, max_retries=0) as client:
+            started = True
+            response = client.responses.create(model=run.model, input='Responda somente OK.',
+                max_output_tokens=128, store=False)
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            success = response.status == 'completed' and response.output_text.strip() == 'OK'
+            if not success:
+                category = 'unexpected_probe_response'
+    except Exception as exc:
+        category = failure_category(failure_metadata(exc))
+    finally:
+        run = db.get(AssistantRequest, rid)
+        actual = math.ceil(input_tokens * run.input_price + output_tokens * run.output_price)
+        if success or not started:
+            db.execute(update(AssistantUsage).where(AssistantUsage.month == run.month).values(
+                charged_micro_usd=AssistantUsage.charged_micro_usd - run.reserved_micro_usd + (actual if success else 0)))
+        run.status = 'completed' if success else 'failed'
+        run.input_tokens, run.output_tokens = input_tokens, output_tokens
+        observed_at = datetime.now(timezone.utc).isoformat()
+        db.add(AuditLog(event='assistant_generation_check', entity_type='assistant', entity_id=None,
+            details={'generation_passed':success, 'failure_category':category, 'observed_at':observed_at,
+                     'input_tokens':input_tokens, 'output_tokens':output_tokens}))
+        db.commit()
+    return {'generation_passed':success, 'failure_category':category, 'observed_at':observed_at,
+            'tools_tested':False, 'input_tokens':input_tokens, 'output_tokens':output_tokens,
+            'note':'Teste sintético explícito, sujeito a cobrança da API. Não comprova ferramentas ou chat por assinante.'}
