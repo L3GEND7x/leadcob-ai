@@ -78,6 +78,14 @@ def parse_published(html):
     return parser
 
 
+# Only explicitly labelled Brazilian institutional telephone numbers in visible text.
+# Do not infer WhatsApp capability, collect unlabelled numbers or scan arbitrary IDs.
+PUBLIC_PHONE = re.compile(
+    r"(?<![\w])(?:telefone(?:\s+(?:comercial|institucional))?|tel\.?|central de atendimento|sac|financeiro)"
+    r"\s*[:\-]\s*((?:\+55\s*)?\(\d{2}\)\s*\d{4,5}[\s-]\d{4})(?!\d)", re.I
+)
+
+
 def published_channels(html, source_url):
     """Extract explicit contact links published by the registered business site."""
     channels = {}
@@ -90,7 +98,12 @@ def published_channels(html, source_url):
             continue
         kind, value = None, None
         if link.scheme.lower() == "tel":
-            kind, value = "phone", re.sub(r"\D", "", unquote(link.path).split(";")[0])
+            number = unquote(link.path).split(";")[0]
+            if not re.fullmatch(r"\+?[0-9() .-]+", number):
+                continue
+            kind, value = "phone", re.sub(r"\D", "", number)
+            if len(value) in (10, 11):
+                value = "55" + value
         elif link.scheme in {"http", "https"} and not link.username and not link.password:
             host = (link.hostname or "").lower()
             if host in {"wa.me", "api.whatsapp.com", "web.whatsapp.com"}:
@@ -115,6 +128,14 @@ def published_channels(html, source_url):
             continue
         if kind and value:
             channels[(kind, value)] = {"kind": kind, "value": value, "source_url": source_url}
+    for match in PUBLIC_PHONE.finditer(" ".join(parse_published(html).text)):
+        number = re.sub(r"\D", "", match.group(1))
+        if len(number) in (10, 11):
+            number = "55" + number
+        if not re.fullmatch(r"55[1-9][0-9](?:[2-5][0-9]{7}|9[0-9]{8})", number):
+            continue
+        channels.setdefault(("phone", number),
+            {"kind": "phone", "value": number, "source_url": source_url})
     return list(channels.values())
 
 
@@ -183,7 +204,7 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
                         lh = urlparse(link).hostname or ""
                     except ValueError:
                         continue
-                    if _root(lh) == domain and CONTACT_HINT.search(urlparse(link).path or "") and link not in seen and len(queue) < 12:
+                    if _root(lh) == domain and CONTACT_HINT.search(urlparse(link).path or "") and link not in seen and len(queue) < 12 and link not in queue:
                         queue.append(link)
     finally:
         if own:
