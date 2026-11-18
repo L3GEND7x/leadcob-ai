@@ -86,3 +86,18 @@ def test_published_mailto_and_hidden_content():
     assert {(e["kind"],e["value"]) for e in r["channels"]}=={
         ("whatsapp","5592999999999"),("linkedin","https://www.linkedin.com/company/empresa/")}
     assert all(e["source_url"]=="https://www.empresa.com.br/" for e in r["emails"]+r["channels"])
+
+
+def test_labelled_phones_without_inferred_whatsapp():
+    from app.collectors.site_contacts import published_channels
+    html = """<p>Telefone comercial: (92) 3232-4040</p>
+    <p>Financeiro: (92) 99999-8888</p>
+    <a href="tel:9232324040">Ligar</a>
+    <p>Pedido (92) 3333-4444</p>
+    <script>Telefone: (92) 3555-5555</script>
+    <a href="tel:abc9233334444">Inválido</a>"""
+    source="https://empresa.example/contato"
+    channels=published_channels(html,source)
+    assert {(c["kind"],c["value"]) for c in channels}=={
+        ("phone","559232324040"),("phone","5592999998888")}
+    assert all(c["source_url"]==source for c in channels)
