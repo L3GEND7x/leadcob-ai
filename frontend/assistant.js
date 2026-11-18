@@ -7,7 +7,7 @@ async function viewAssistente() {
   if (assistantBusy) return;
   const missing = Object.entries(status.configuration_checks || {}).filter(([,ok]) => !ok).map(([k]) => assistantConfigLabels[k] || k);
   V().innerHTML = head('SEU AMBIENTE DE TRABALHO', 'Assistente LeadCob', 'Consulte dados, prepare abordagens e organize sua próxima ação.')
-    + `<div class="assistant-layout"><section class="panel"><button id="ai-new">Nova conversa</button><div class="rows">${history.map(c => `<button class="row" data-conversation="${esc(c.id)}">${esc(c.title)}</button>`).join('')}</div><p class="note">${esc(status.model || 'Modelo não configurado')}<br>Consumo estimado e reservado US$ ${Number(status.estimated_and_reserved_usd).toFixed(4)} / ${Number(status.budget_usd).toFixed(2)}</p>${!status.configured ? `<p class="warnbox">${esc(status.setup)} ${esc(missing.join(' · '))}</p>` : '<p class="note">Configuração local presente; conexão ainda não verificada nesta consulta.</p>'}${status.configured ? '<button type="button" id="ai-provider-check">Verificar acesso ao modelo</button><p class="note" id="ai-provider-result" role="status"></p>' : ''}</section>
+    + `<div class="assistant-layout"><section class="panel"><button id="ai-new">Nova conversa</button><div class="rows">${history.map(c => `<button class="row" data-conversation="${esc(c.id)}">${esc(c.title)}</button>`).join('')}</div><p class="note">${esc(status.model || 'Modelo não configurado')}<br>Consumo estimado e reservado US$ ${Number(status.estimated_and_reserved_usd).toFixed(4)} / ${Number(status.budget_usd).toFixed(2)}</p>${!status.configured ? `<p class="warnbox">${esc(status.setup)} ${esc(missing.join(' · '))}</p>` : '<p class="note">Configuração local presente; conexão ainda não verificada nesta consulta.</p>'}${status.configured ? '<button type="button" id="ai-provider-check">Verificar acesso ao modelo</button><p class="note" id="ai-provider-result" role="status"></p><button type="button" id="ai-generation-check">Testar resposta real da IA</button><p class="note" id="ai-generation-result" role="status"></p>' : ''}</section>
     <section class="panel"><div id="ai-messages" aria-live="polite"></div><div id="ai-actions"></div><form id="ai-form" class="form"><label class="f full">Como posso ajudar?<textarea name="message" maxlength="6000" required placeholder="O que preciso fazer hoje?"></textarea></label><button class="primary" ${status.configured ? '' : 'disabled'}>Enviar</button><p id="ai-state" role="status"></p></form><button id="ai-delete" class="small">Excluir conversa</button></section></div>`;
   const check = $('ai-provider-check');
   if(check) check.onclick = async () => {
@@ -24,6 +24,21 @@ async function viewAssistente() {
         + ' · ' + data.observed_at;
     } catch(error) { if(result.isConnected) result.textContent = errMsg(error, 'Não foi possível verificar o modelo.'); }
     finally { check.disabled = false; }
+  };
+  const generate = $('ai-generation-check');
+  if(generate) generate.onclick = async () => {
+    if(assistantBusy || !confirm('Executar uma solicitação real à OpenAI? O teste usa apenas uma frase sintética, consome orçamento da API e não acessa dados do CRM.')) return;
+    assistantBusy = true; generate.disabled = true;
+    const result = $('ai-generation-result');
+    result.textContent = 'Testando geração real…';
+    try {
+      const data = await send('/assistant/generation-check', 'POST', {});
+      if (!result.isConnected) return;
+      result.textContent = (data.generation_passed ? 'Geração sintética aprovada. Ferramentas ainda não testadas.' :
+        (data.failure_category === 'unexpected_probe_response' ? 'Resposta diferente do esperado; confira modelo e limite de saída.' : assistantFailureMessages[data.failure_category] || assistantFailureMessages.request_failed))
+        + ' · Tokens observados: ' + data.input_tokens + ' entrada / ' + data.output_tokens + ' saída.';
+    } catch(error) { if(result.isConnected) result.textContent = errMsg(error, 'Não foi possível validar a geração.'); }
+    finally { assistantBusy = false; generate.disabled = false; }
   };
   document.querySelectorAll('[data-conversation]').forEach(b => b.onclick = () => openAssistantConversation(b.dataset.conversation));
   $('ai-new').onclick = () => { if (assistantBusy) return; assistantConversation = null; $('ai-messages').replaceChildren(); $('ai-actions').replaceChildren(); };
