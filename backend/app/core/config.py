@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     assistant_monthly_budget_usd: float = 0
     openai_input_usd_per_million: float = 0
     openai_output_usd_per_million: float = 0
+    workspace_assistant_enabled: bool = False
+    workspace_assistant_monthly_budget_usd: float = 0
     brave_search_api_key: str = ""
     # exemplos fictícios só quando pedidos explicitamente (nunca em uso real)
     demo_seed: bool = False
