@@ -16,6 +16,7 @@ O resultado é CADASTRO, não sinal de demanda.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 import argparse
 import json
 import io
@@ -307,7 +308,7 @@ def main(argv=None):
     if a.skip_companies and not a.include_individual:
         ap.error("sem ler Empresas não dá para identificar empresário individual/MEI; "
                  "remova --skip-companies ou assuma com --include-individual")
-    with R.client() as http:
+    with (nullcontext(None) if a.local_dir else R.client()) as http:
         release = a.release or R.latest_release(http)
         src = Source(release, http, a.local_dir)
         print(f"Publicação {release} · perfis {segments or 'todos'} · UF {sorted(ufs) if ufs else 'todas'}", flush=True)
