@@ -271,3 +271,24 @@ def lookup_prospect(request: Request, organization_id: int, cnpj: str):
         raise HTTPException(422,"CNPJ inválido.")
     with operation(request, organization_id) as (db, token, _):
         return lookup(db, token, organization_id, cnpj)
+
+
+class AssistantMessageIn(Input):
+    request_id: str = Field(pattern=r'^[0-9a-fA-F-]{36}$', min_length=36, max_length=36)
+    prompt: str = Field(min_length=1,max_length=2000)
+
+
+@router.get('/assistant/history')
+def assistant_history(request: Request, organization_id: int):
+    from app.services.workspace_assistant import history
+    with operation(request,organization_id) as (db,token,_):
+        return history(db,token,organization_id)
+
+
+@router.post('/assistant/generate')
+def assistant_generate(request: Request, organization_id: int, payload: AssistantMessageIn):
+    from app.services.workspace_assistant import generate
+    if not payload.prompt.strip():
+        raise HTTPException(422,'Informe uma pergunta.')
+    with operation(request,organization_id,True) as (db,token,csrf):
+        return generate(db,token,organization_id,csrf,payload.request_id,payload.prompt.strip())
