@@ -37,3 +37,33 @@ def test_queue_lifecycle(monkeypatch):
         assert progress(db,another)['completed']==1
         assert not run_one(db)
     engine.dispose()
+
+
+def test_diagnostics_and_unrecoverable_rows():
+    from app.services.contact_discovery_queue import diagnostics
+    engine=create_engine('sqlite://')
+    Base.metadata.create_all(engine)
+    now=datetime.now(timezone.utc)
+    with Session(engine) as db:
+        job=enqueue(db,[10,20,30])
+        rows=db.query(ContactDiscoveryItem).filter_by(job_id=job).order_by(ContactDiscoveryItem.id).all()
+        rows[0].status='running'
+        rows[0].attempts=1
+        rows[1].attempts=3
+        rows[2].status='running'
+        rows[2].attempts=3
+        rows[2].claim_token='expired'
+        rows[2].lease_until=now-timedelta(minutes=1)
+        db.commit()
+        before=diagnostics(db,now)
+        assert before['missing_claim_metadata']==1
+        assert before['expired_leases']==1
+        assert before['exhausted_queued']==1
+        assert before['worker_verified'] is False
+        assert before['oldest_queued_job_at'] is not None
+        assert claim(db,now) is None
+        after=diagnostics(db,now)
+        assert after['counts']['failed']==3
+        assert after['missing_claim_metadata']==after['expired_leases']==after['exhausted_queued']==0
+        assert after['oldest_queued_job_at'] is None
+    engine.dispose()
