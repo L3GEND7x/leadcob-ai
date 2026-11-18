@@ -77,8 +77,20 @@ jobs:
       - name: PostgreSQL logical backup and restore drill
         timeout-minutes: 5
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client
+          # Use the same major version as the dedicated service, without apt packages.
+          # Only synthetic test credentials and archives enter the temporary container.
+          tools_dir="$(mktemp -d)"
+          for tool in pg_dump pg_restore; do
+            cat > "$tools_dir/$tool" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker run --rm --network host \
+            -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGCONNECT_TIMEOUT \
+            -v /tmp:/tmp postgres:16 "$(basename "$0")" "$@"
+          SH
+            chmod 700 "$tools_dir/$tool"
+          done
+          export PATH="$tools_dir:$PATH"
           pg_dump --version
           pg_restore --version
           PYTHONPATH=. python benchmarks/restore_drill.py > /tmp/restore-drill.json
