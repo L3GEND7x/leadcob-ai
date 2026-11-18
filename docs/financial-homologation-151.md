@@ -1,0 +1,7 @@
+# Homologação financeira #151
+
+#150 mesclado. Benchmark aprovado: 53.000 CNPJs sintéticos, 13.250 contatos, quatro consultas concorrentes. Medianas inventário 0,853s, qualificação 1,843s, lacunas de email 1,082s; duração concorrente total 3,361s, 7,114s e 4,010s. RSS de pico 347568 KiB. Não representa produção.
+
+Falha observada: recebíveis associados a emissão sandbox podiam ser baixados manualmente ou anulados no razão local, embora renovação já estivesse bloqueada. Agora, sob o mesmo bloqueio de organização da emissão/vínculo, baixa e anulação de recebíveis vinculados ou reservados são recusadas. Não altera registros históricos. Novo GET administrativo por organização /api/owner/commercial/organizations/{id}/asaas-sandbox/diagnostics informa associações, vínculos, reservas sem vínculo e conflitos históricos pagos/anulados, sem chamar provedor. Reservas sem vínculo exigem revisão, não repetição automática. Testes HTTP SQLite/PostgreSQL escritos, execução pendente.
+
+Aceite externo ainda obrigatório: em ambiente sandbox autorizado e com chave separada, usar clientes e recebíveis de teste, conferir valores/referência, emissão PIX e boleto, simulação de recebimento, webhook autenticado e replay, divergências, estornos e falha incerta. O probe existente permite GET de cobrança conhecida. Não reconhecer receita, renovar assinatura ou cobrar cliente real a partir de sandbox. Não há integração financeira de produção certificada. Nenhuma chamada ao Asaas ou movimentação realizada nesta revisão. Diagnóstico por API, sem novo painel nesta entrega.

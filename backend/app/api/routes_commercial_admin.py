@@ -390,6 +390,8 @@ def settle_invoice(request: Request,organization_id: int,invoice_id: int,payload
         row=db.get(CommercialInvoice,invoice_id)
         if not row or row.organization_id!=organization_id:
             raise HTTPException(404,'Recebível não encontrado.')
+        if db.execute(text("SELECT 1 FROM asaas_sandbox_payments WHERE invoice_id=:iid UNION ALL SELECT 1 FROM asaas_sandbox_issue_reservations WHERE invoice_id=:iid"), {"iid":invoice_id}).first():
+            raise HTTPException(409,'Recebível associado ao sandbox não admite baixa financeira real.')
         reference=payload.payment_reference.strip()
         if len(reference)<3 or payload.amount_cents!=row.amount_cents or payload.paid_at>datetime.now(timezone.utc):
             raise HTTPException(422,'Valor, referência ou data de pagamento inválidos.')
@@ -427,6 +429,8 @@ def void_invoice(request: Request,organization_id: int,invoice_id: int):
         if row.status=='paid':
             raise HTTPException(409,'Recebível pago requer processo de estorno.')
         if row.status!='void':
+            if db.execute(text("SELECT 1 FROM asaas_sandbox_payments WHERE invoice_id=:iid UNION ALL SELECT 1 FROM asaas_sandbox_issue_reservations WHERE invoice_id=:iid"), {"iid":invoice_id}).first():
+                raise HTTPException(409,'Recebível associado ao sandbox exige revisão manual antes do cancelamento.')
             row.status='void'
             db.add(AuditLog(event='commercial_invoice_voided',entity_type='commercial_invoice',
                 entity_id=row.id,details={'organization_id':organization_id}))
@@ -777,3 +781,26 @@ def commercial_readiness(request: Request):
     with SessionLocal() as db:
         guard(request, db)
         return readiness(db, settings)
+
+
+@router.get('/organizations/{organization_id}/asaas-sandbox/diagnostics')
+def sandbox_diagnostics(request: Request, organization_id: int):
+    """Local evidence only: no provider request, payment or ledger mutation."""
+    with SessionLocal() as db:
+        guard(request, db)
+        if not db.get(Organization, organization_id):
+            raise HTTPException(404, 'Organização não encontrada.')
+        row = db.execute(text("""
+            SELECT COUNT(*) AS associated,
+                COALESCE(SUM(CASE WHEN p.invoice_id IS NOT NULL THEN 1 ELSE 0 END),0) AS bound,
+                COALESCE(SUM(CASE WHEN r.invoice_id IS NOT NULL AND p.invoice_id IS NULL THEN 1 ELSE 0 END),0) AS unresolved,
+                COALESCE(SUM(CASE WHEN i.status='paid' THEN 1 ELSE 0 END),0) AS paid_conflicts,
+                COALESCE(SUM(CASE WHEN i.status='void' THEN 1 ELSE 0 END),0) AS void_conflicts
+            FROM commercial_invoices i
+            LEFT JOIN asaas_sandbox_payments p ON p.invoice_id=i.id
+            LEFT JOIN asaas_sandbox_issue_reservations r ON r.invoice_id=i.id
+            WHERE i.organization_id=:oid AND (p.invoice_id IS NOT NULL OR r.invoice_id IS NOT NULL)
+        """), {'oid':organization_id}).mappings().one()
+        return {'environment':'sandbox', 'organization_id':organization_id,
+                **dict(row), 'provider_verified':False, 'production_ready':False,
+                'note':'Evidência local. Reservas sem vínculo e conflitos exigem revisão manual; não reenviar emissão.'}
