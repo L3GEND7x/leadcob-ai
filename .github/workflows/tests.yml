@@ -73,3 +73,28 @@ jobs:
           name: registry-benchmark
           path: /tmp/registry-benchmark.json
           if-no-files-found: warn
+
+      - name: PostgreSQL logical backup and restore drill
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
+          pg_restore --version
+          PYTHONPATH=. python benchmarks/restore_drill.py > /tmp/restore-drill.json
+      - name: Publish restore verification report
+        if: always()
+        run: |
+          if test -s /tmp/restore-drill.json; then
+            cat /tmp/restore-drill.json
+            echo '### Synthetic PostgreSQL restore drill' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/restore-drill.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: restore-drill-report
+          path: /tmp/restore-drill.json
+          if-no-files-found: warn
