@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 let session=null, moduleName='leads', offset=0, epoch=0, busy=false;
 const size=50;
 const stages={identified:'Identificado',contacted:'Contatado',negotiation:'Negociação',won:'Ganho',lost:'Perdido'};
-const names={leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações',subscription:'Meu plano'};
+const names={leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações',assistant:'Inteligência da organização',subscription:'Meu plano'};
 const channels={email:'E-mail',phone:'Telefone',whatsapp:'WhatsApp',website:'Site',linkedin:'LinkedIn',instagram:'Instagram',facebook:'Facebook'};
 function el(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function status(message){$('notice').textContent=message;}
@@ -51,6 +51,12 @@ function showContact(x){return record(channels[x.kind]||x.kind,[x.cnpj,x.value,'
 async function load(){if(!session)return;const version=++epoch;const current=moduleName;$('module-title').textContent=names[current];$('form-area').replaceChildren();$('results').replaceChildren(el('p','Carregando…'));$('pagination').hidden=true;
  for(const b of $('nav').querySelectorAll('button'))b.setAttribute('aria-current',String(b.dataset.module===current));
  try{
+ if(current==='assistant'){
+ const x=await workspace('assistant/context');if(version!==epoch)return;
+ const root=$('results');
+ root.replaceChildren(record('Resumo da sua organização',['Leads: '+x.lead_count,'Tarefas pendentes: '+x.pending_tasks,'Carteiras: '+x.portfolio_count]),record('Funil comercial',Object.entries(stages).map(([key,label])=>label+': '+(x.lead_stages[key]||0))),record('Empresas com canais cadastrados',Object.entries(channels).map(([key,label])=>label+': '+(x.companies_by_channel[key]||0))),el('p',x.note));
+ return;
+ }
  if(current==='subscription'){const x=await workspace('subscription');if(version!==epoch)return;showSubscription(x);return;}
  if(current==='settings'){const x=await workspace('settings');if(version!==epoch)return;$('results').replaceChildren(record('Preferências atuais',['Fuso: '+x.timezone,'Follow-up: '+x.followup_days.join(', ')+' dias','Registros por página: '+x.default_page_size]));
  if(session.role==='admin')$('form-area').append(form([field('timezone_name','Fuso horário','text',x.timezone),field('followup_days','Dias separados por vírgulas','text',x.followup_days.join(',')),field('default_page_size','Registros por página','number',x.default_page_size)],'Salvar preferências',async v=>{await workspace('settings','PUT',{timezone_name:v.timezone_name,followup_days:v.followup_days.split(',').map(Number),default_page_size:Number(v.default_page_size)});await load();}));return;}

@@ -255,3 +255,10 @@ def get_workspace_subscription(request: Request, organization_id: int):
     with operation(request,organization_id) as (db,token,_):
         return {**describe(db,organization_id), 'usage':usage(db,organization_id),
                 'enforcement_enabled':settings.commercial_entitlements_enabled}
+
+
+@router.get('/assistant/context')
+def assistant_context(request: Request, organization_id: int):
+    from app.services.workspace_assistant import context
+    with operation(request, organization_id) as (db, token, _):
+        return context(db, token, organization_id)

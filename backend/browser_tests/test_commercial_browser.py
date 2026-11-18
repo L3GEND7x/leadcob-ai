@@ -23,7 +23,7 @@ def test_commercial_workspace(viewport):
         page.locator('#form-area [name="name"]').fill("Lead E2E " + str(viewport["width"]))
         page.get_by_role("button",name="Adicionar lead").click()
         expect(page.locator("#results")).to_contain_text("Lead E2E " + str(viewport["width"]))
-        for label,title in [("Agenda","Agenda"),("Carteiras","Carteiras financeiras"),("Contatos","Contatos institucionais"),("Configurações","Configurações"),("Meu plano","Meu plano")]:
+        for label,title in [("Agenda","Agenda"),("Carteiras","Carteiras financeiras"),("Contatos","Contatos institucionais"),("Configurações","Configurações"),("Inteligência da organização","Inteligência da organização"),("Meu plano","Meu plano")]:
             page.get_by_role("button",name=label,exact=True).click()
             expect(page.locator("#module-title")).to_have_text(title)
             expect(page.locator("#results")).not_to_contain_text("Carregando")
@@ -102,6 +102,19 @@ def test_customer_journey_and_tenant_boundaries():
         assert b.request.get(path(2,f"portfolios/{pid}/titles")).status==404
         assert b.request.post(path(2,f"portfolios/{pid}/titles"),headers=hb,
             data=dict(reference="blocked",amount="1.00",due_date="2026-11-17")).status==404
+        ctx = a.request.get(path(1,"assistant/context"))
+        assert ctx.status==200,ctx.text()
+        assert ctx.json()["organization_id"]==1
+        assert ctx.json()["lead_stages"]["contacted"]>=1
+        assert ctx.json()["portfolio_count"]==1
+        assert ctx.json()["companies_by_channel"]["email"]==1
+        assert ctx.json()["generation_enabled"] is False
+        assert b.request.get(path(1,"assistant/context")).status==403
+        other=b.request.get(path(2,"assistant/context"))
+        assert other.status==200
+        assert other.json()["lead_count"]==0
+        assert other.json()["portfolio_count"]==0
+        assert other.json()["companies_by_channel"]=={}
         assert b.request.get(URL+"/api/assistant/status").status==401
         assert b.request.get(URL+"/api/registry/qualification").status==401
         assert b.request.get(URL+"/api/owner/commercial/readiness").status==401
