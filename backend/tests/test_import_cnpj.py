@@ -90,7 +90,7 @@ def fake_rfb(monkeypatch):
     }
     for i in range(2, 10):
         files[f"Empresas{i}.zip"] = zipped([emp(f"{90000000 + i}", "VAZIO")])
-    files["Empresas0.zip"] = zipped([emp("50000000", "Z"), emp("66666666", "ESCOLA ÇÃO LTDA", porte="01")])
+    files["Empresas0.zip"] = zipped([emp("50000000", "Z"), emp("55555555", "VAREJO LTDA"), emp("66666666", "ESCOLA ÇÃO LTDA", porte="01")])
     ranges = []
 
     def handler(req):
