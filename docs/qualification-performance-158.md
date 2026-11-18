@@ -1,0 +1,7 @@
+# Desempenho da qualificação #158
+
+#157 mesclado, três workflows aprovados; backend 265 testes, financeiro PostgreSQL 5. Baseline imediatamente anterior: run 44356225020, artefato 14453491073. 53.000 CNPJs sintéticos, 13.250 contatos, quatro consultas concorrentes, cinco repetições. Medianas inventário 0,712130 s; qualificação 1,492577 s; lacunas de e-mail 0,874361 s. Tempos totais concorrentes 2,787484 s; 5,772924 s; 3,307451 s. Pico RSS do processo completo 364808 KiB; CPU 31,311 s.
+
+Otimização: cache de perfil CNAE limitado a 4096 entradas por requisição, sem cache persistente de dados ou supressões; filtros de tipos/status/nulo e DISTINCT nos contatos; preserva validação Python de espaços e anonimização, ignora contatos/evidências de IDs inelegíveis e evita alocar conjuntos/listas vazios por empresa sem dados. Ranking, ordenação e cobertura preservados por intenção e novo teste escrito. CI ainda pendente. A consulta continua varrendo a cidade e agrupando CNPJs em memória; paginação profunda não foi resolvida. Não foram adicionados índices ou cache compartilhado sem evidência de ganho.
+
+Aceite: comparar artefato do novo CI com baseline acima (mesmo tamanho/carga), verificar testes e contagens, considerar variação entre runners; não alegar ganho causal sem comparação controlada. Benchmark mede serviços, não HTTP, capacidade ou latência de produção. Nenhuma consulta ou alteração de produção realizada nesta etapa.
