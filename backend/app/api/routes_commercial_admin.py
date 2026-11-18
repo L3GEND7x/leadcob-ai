@@ -390,6 +390,8 @@ def settle_invoice(request: Request,organization_id: int,invoice_id: int,payload
         row=db.get(CommercialInvoice,invoice_id)
         if not row or row.organization_id!=organization_id:
             raise HTTPException(404,'Recebível não encontrado.')
+        if db.execute(text("SELECT 1 FROM asaas_sandbox_payments WHERE invoice_id=:iid UNION ALL SELECT 1 FROM asaas_sandbox_issue_reservations WHERE invoice_id=:iid"), {"iid":invoice_id}).first():
+            raise HTTPException(409,'Recebível associado ao sandbox não admite baixa financeira real.')
         reference=payload.payment_reference.strip()
         if len(reference)<3 or payload.amount_cents!=row.amount_cents or payload.paid_at>datetime.now(timezone.utc):
             raise HTTPException(422,'Valor, referência ou data de pagamento inválidos.')
@@ -427,6 +429,8 @@ def void_invoice(request: Request,organization_id: int,invoice_id: int):
         if row.status=='paid':
             raise HTTPException(409,'Recebível pago requer processo de estorno.')
         if row.status!='void':
+            if db.execute(text("SELECT 1 FROM asaas_sandbox_payments WHERE invoice_id=:iid UNION ALL SELECT 1 FROM asaas_sandbox_issue_reservations WHERE invoice_id=:iid"), {"iid":invoice_id}).first():
+                raise HTTPException(409,'Recebível associado ao sandbox exige revisão manual antes do cancelamento.')
             row.status='void'
             db.add(AuditLog(event='commercial_invoice_voided',entity_type='commercial_invoice',
                 entity_id=row.id,details={'organization_id':organization_id}))
