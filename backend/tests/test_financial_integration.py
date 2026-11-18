@@ -132,8 +132,11 @@ def test_uncertain_issue_is_not_repeated_and_blocks_renewal(billing, monkeypatch
         assert db.get(CommercialInvoice,iid).status == "open"
     paid = c.post(f"{path}/{iid}/settle",headers=h,json=dict(amount_cents=2700,
                   payment_reference="manual-test-reference",paid_at=datetime.now(timezone.utc).isoformat()))
-    assert paid.status_code == 200,paid.text
+    assert paid.status_code == 409,paid.text
+    assert c.post(f"{path}/{iid}/void",headers=h).status_code == 409
     assert c.post(f"{path}/{iid}/renew",headers=h).status_code == 409
+    with session() as db:
+        assert db.get(CommercialInvoice,iid).status == "open"
 
 
 def test_concurrent_invoice_creation(billing):
@@ -154,3 +157,17 @@ def test_concurrent_invoice_creation(billing):
         assert a.result(timeout=30) == b.result(timeout=30)
     with session() as db:
         assert db.scalar(select(func.count()).select_from(CommercialInvoice)) == 1
+
+
+def test_bound_sandbox_cannot_settle_or_void(billing, monkeypatch):
+    c,h,path,payload,session,oid,other,end = billing
+    iid=create_receivable(c,h,path,payload)
+    monkeypatch.setattr(admin,"issue_charge",lambda **kwargs:"pay_fixture")
+    response=c.post(f"{path}/{iid}/asaas-sandbox/issue",headers=h,json={"billing_type":"BOLETO"})
+    assert response.status_code==201,response.text
+    assert c.post(f"{path}/{iid}/settle",headers=h,json=dict(amount_cents=2700,
+        payment_reference="fixture-bank",paid_at=datetime.now(timezone.utc).isoformat())).status_code==409
+    assert c.post(f"{path}/{iid}/void",headers=h).status_code==409
+    assert c.post(f"{path}/{iid}/renew",headers=h).status_code==409
+    with session() as db:
+        assert db.get(CommercialInvoice,iid).status=="open"
