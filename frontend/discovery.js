@@ -140,10 +140,10 @@ async function loadWorkerDiagnostics(){
  try{
  const r=await api('/api/contacts/worker-diagnostics'),grid=el('div',undefined,'metrics');
  const metrics=[...Object.entries(labels).map(([key,label])=>[label,r.counts[key]]),
- ['Reservas vencidas',r.expired_leases],['Reservas inconsistentes',r.missing_claim_metadata],
+ ['Workers com atividade recente',r.recent_workers],['Reservas vencidas',r.expired_leases],['Reservas inconsistentes',r.missing_claim_metadata],
  ['Na fila sem tentativas disponíveis',r.exhausted_queued]];
  for(const [label,value] of metrics){const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(value).toLocaleString('pt-BR')));grid.append(card);}
- root.replaceChildren(grid,el('p','Lote pendente mais antigo: '+(r.oldest_queued_job_at?new Date(r.oldest_queued_job_at).toLocaleString('pt-BR'):'Nenhum')),el('p',r.note),el('p','Consulta: '+new Date(r.observed_at).toLocaleString('pt-BR')));
+ root.replaceChildren(grid,el('p',r.worker_verified?'Atividade recente registrada.':'Sem atividade recente confirmada.'),el('p','Último registro do worker: '+(r.last_worker_observed_at?new Date(r.last_worker_observed_at).toLocaleString('pt-BR'):'Nenhum')),el('p','Lote pendente mais antigo: '+(r.oldest_queued_job_at?new Date(r.oldest_queued_job_at).toLocaleString('pt-BR'):'Nenhum')),el('p',r.note),el('p','Consulta: '+new Date(r.observed_at).toLocaleString('pt-BR')));
  }catch(e){root.replaceChildren(el('p',e.message));throw e;}
 }
 $('worker-refresh').addEventListener('click',()=>run(loadWorkerDiagnostics));

@@ -403,6 +403,14 @@ class WorkspaceSettings(Base):
     __table_args__ = (CheckConstraint("default_page_size BETWEEN 10 AND 250", name="ck_workspace_page_size"),)
 
 
+class ContactWorkerHeartbeat(Base):
+    __tablename__ = "contact_worker_heartbeats"
+    worker_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    state: Mapped[str] = mapped_column(String(20))
+    attempts_processed: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class ContactDiscoveryJob(Base):
     __tablename__ = "contact_discovery_jobs"
     id: Mapped[int] = mapped_column(primary_key=True)

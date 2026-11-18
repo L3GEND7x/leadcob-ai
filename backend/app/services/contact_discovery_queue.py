@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from sqlalchemy import select, update, or_, and_, func
-from app.db.models import ContactDiscoveryJob as Job, ContactDiscoveryItem as Item
+from app.db.models import ContactDiscoveryJob as Job, ContactDiscoveryItem as Item, ContactWorkerHeartbeat
 from app.core.security import stamp
 
 MAX_ATTEMPTS = 3
@@ -110,8 +110,31 @@ def diagnostics(db, now=None):
         or_(Item.lease_until.is_(None), Item.claim_token.is_(None)))) or 0
     exhausted = db.scalar(select(func.count(Item.id)).where(Item.status=='queued',Item.attempts>=MAX_ATTEMPTS)) or 0
     oldest = db.scalar(select(func.min(Job.created_at)).join(Item,Item.job_id==Job.id).where(Item.status=='queued'))
+    recent = list(db.scalars(select(ContactWorkerHeartbeat).where(
+        ContactWorkerHeartbeat.observed_at >= now-timedelta(seconds=420),
+        ContactWorkerHeartbeat.observed_at <= now).order_by(ContactWorkerHeartbeat.observed_at.desc())))
+    active = [x for x in recent if x.state in ('starting','processing','idle')]
+    latest = db.scalar(select(ContactWorkerHeartbeat.observed_at).order_by(
+        ContactWorkerHeartbeat.observed_at.desc()).limit(1))
     return dict(observed_at=now.isoformat(), counts={k:counts.get(k,0) for k in
         ('queued','running','completed','failed','skipped')}, expired_leases=expired,
         missing_claim_metadata=missing_lease, exhausted_queued=exhausted,
         oldest_queued_job_at=stamp(oldest).isoformat() if oldest else None,
-        worker_verified=False, note='Estado persistido da fila; não comprova que o worker está em execução.')
+        worker_verified=bool(active), recent_workers=len(active),
+        last_worker_observed_at=stamp(latest).isoformat() if latest else None,
+        worker_states={state:sum(x.state==state for x in recent) for state in ('starting','processing','idle','error','stopped')},
+        note='Atividade recente registrada pelo worker (até 7 minutos), não prova atividade instantânea ou coleta bem-sucedida.')
+
+
+def record_heartbeat(db, worker_id, state, attempts_processed, now=None):
+    now=now or datetime.now(timezone.utc)
+    if state not in ('starting','processing','idle','error','stopped'):
+        raise ValueError('Invalid worker state')
+    row=db.get(ContactWorkerHeartbeat,worker_id)
+    if row is None:
+        row=ContactWorkerHeartbeat(worker_id=worker_id)
+        db.add(row)
+    row.observed_at=now
+    row.state=state
+    row.attempts_processed=attempts_processed
+    db.commit()
