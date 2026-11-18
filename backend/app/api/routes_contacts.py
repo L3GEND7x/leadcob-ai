@@ -503,3 +503,9 @@ def discovery_targets(uf: str = Query('AM',pattern='^[A-Za-z]{2}$'),
     if not city.strip():
         raise HTTPException(422,'Município obrigatório.')
     return targets(db,uf.upper(),city.strip(),kind,limit,offset)
+
+
+@router.get('/worker-diagnostics')
+def worker_diagnostics(db: Session = Depends(get_db)):
+    from app.services.contact_discovery_queue import diagnostics
+    return diagnostics(db)

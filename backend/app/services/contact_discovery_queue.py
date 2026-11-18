@@ -38,6 +38,14 @@ def claim(db, now=None):
     db.execute(update(Item).where(Item.status=='running', Item.lease_until<=now,
                                   Item.attempts>=MAX_ATTEMPTS).execution_options(synchronize_session=False).values(status='failed',
                                   claim_token=None, lease_until=None, result={'status':'lease_expired'}))
+    # Rows without complete claim metadata cannot be safely resumed automatically.
+    db.execute(update(Item).where(Item.status=='running',
+        or_(Item.lease_until.is_(None),Item.claim_token.is_(None)))
+        .execution_options(synchronize_session=False).values(status='failed',claim_token=None,
+            lease_until=None,result={'status':'invalid_claim_metadata'}))
+    db.execute(update(Item).where(Item.status=='queued',Item.attempts>=MAX_ATTEMPTS)
+        .execution_options(synchronize_session=False).values(status='failed',claim_token=None,
+            lease_until=None,result={'status':'attempts_exhausted'}))
     eligible = or_(Item.status=='queued', and_(Item.status=='running', Item.lease_until<=now))
     selection = select(Item.id).where(eligible, Item.attempts<MAX_ATTEMPTS).order_by(Item.id).limit(1)
     if db.get_bind().dialect.name == 'postgresql':
@@ -62,7 +70,7 @@ def claim(db, now=None):
 
 def finish(db, item_id, token, result):
     status = result.get('status')
-    item = db.get(Item,item_id)
+    item = db.get(Item,item_id,populate_existing=True)
     if item is None or item.status!='running' or item.claim_token!=token:
         db.rollback()
         return False
@@ -91,3 +99,19 @@ def run_one(db):
         result = {'status':'error','added':0}
     finish(db,item_id,token,result)
     return True
+
+
+def diagnostics(db, now=None):
+    """Read-only queue observations; not an assertion that a worker is alive."""
+    now = now or datetime.now(timezone.utc)
+    counts = dict(db.execute(select(Item.status, func.count(Item.id)).group_by(Item.status)).all())
+    expired = db.scalar(select(func.count(Item.id)).where(Item.status=='running', Item.lease_until<=now)) or 0
+    missing_lease = db.scalar(select(func.count(Item.id)).where(Item.status=='running',
+        or_(Item.lease_until.is_(None), Item.claim_token.is_(None)))) or 0
+    exhausted = db.scalar(select(func.count(Item.id)).where(Item.status=='queued',Item.attempts>=MAX_ATTEMPTS)) or 0
+    oldest = db.scalar(select(func.min(Job.created_at)).join(Item,Item.job_id==Job.id).where(Item.status=='queued'))
+    return dict(observed_at=now.isoformat(), counts={k:counts.get(k,0) for k in
+        ('queued','running','completed','failed','skipped')}, expired_leases=expired,
+        missing_claim_metadata=missing_lease, exhausted_queued=exhausted,
+        oldest_queued_job_at=stamp(oldest).isoformat() if oldest else None,
+        worker_verified=False, note='Estado persistido da fila; não comprova que o worker está em execução.')

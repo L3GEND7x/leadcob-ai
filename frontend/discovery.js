@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id),base='/api/contacts/discovery-jobs',size=50;
 let csrf='',offset=0,itemOffset=0,job=null,busy=false;
 const labels={queued:'Na fila',running:'Processando',completed:'Concluído',failed:'Falhou',skipped:'Ignorado'};
-const reasons={completed:'Pesquisa concluída',suppressed:'Empresa suprimida',not_found:'Empresa não encontrada',missing_website:'Sem site cadastrado',invalid_cnpj:'CNPJ inválido',changed_or_suppressed:'Cadastro alterado ou suprimido',unavailable:'Site indisponível',error:'Falha de processamento',lease_expired:'Execução interrompida'};
+const reasons={completed:'Pesquisa concluída',suppressed:'Empresa suprimida',not_found:'Empresa não encontrada',missing_website:'Sem site cadastrado',invalid_cnpj:'CNPJ inválido',changed_or_suppressed:'Cadastro alterado ou suprimido',unavailable:'Site indisponível',error:'Falha de processamento',lease_expired:'Execução interrompida',invalid_claim_metadata:'Reserva inconsistente',attempts_exhausted:'Tentativas esgotadas'};
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
 function notice(text){$('notice').textContent=text;}
 async function api(path,method='GET',payload){
@@ -133,3 +133,17 @@ $('targets-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>
 $('targets-prev').addEventListener('click',()=>run(async()=>{targetsOffset=Math.max(0,targetsOffset-50);await loadTargets();}));
 $('targets-next').addEventListener('click',()=>run(async()=>{targetsOffset+=50;await loadTargets();}));
 $('targets-prepare').addEventListener('click',()=>{if(!preparedIds.length)return;const input=$('create').elements.ids;if(input.value.trim()&&!confirm('Substituir a lista de IDs já preenchida?'))return;input.value=preparedIds.join(', ');input.focus();notice('IDs preparados. Confira e clique em Criar fila para confirmar.');});
+
+
+async function loadWorkerDiagnostics(){
+ const root=$('worker-diagnostics');root.replaceChildren(el('p','Consultando fila…'));
+ try{
+ const r=await api('/api/contacts/worker-diagnostics'),grid=el('div',undefined,'metrics');
+ const metrics=[...Object.entries(labels).map(([key,label])=>[label,r.counts[key]]),
+ ['Reservas vencidas',r.expired_leases],['Reservas inconsistentes',r.missing_claim_metadata],
+ ['Na fila sem tentativas disponíveis',r.exhausted_queued]];
+ for(const [label,value] of metrics){const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(value).toLocaleString('pt-BR')));grid.append(card);}
+ root.replaceChildren(grid,el('p','Lote pendente mais antigo: '+(r.oldest_queued_job_at?new Date(r.oldest_queued_job_at).toLocaleString('pt-BR'):'Nenhum')),el('p',r.note),el('p','Consulta: '+new Date(r.observed_at).toLocaleString('pt-BR')));
+ }catch(e){root.replaceChildren(el('p',e.message));throw e;}
+}
+$('worker-refresh').addEventListener('click',()=>run(loadWorkerDiagnostics));
