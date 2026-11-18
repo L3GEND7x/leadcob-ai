@@ -1,6 +1,7 @@
 """Prioritization, not a prediction of debt or hiring intent."""
 from collections import Counter, defaultdict
 from heapq import nsmallest
+from functools import lru_cache
 from datetime import datetime, timezone
 from sqlalchemy import select, func
 from app.db.models import Company, Opportunity, BusinessContact, Suppression
@@ -34,17 +35,22 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
     city_filter = (func.upper(func.trim(Company.state)) == uf.strip().upper(),
                    func.lower(func.trim(Company.city)) == city.strip().lower())
     groups = defaultdict(list)
+    eligible_ids = set()
+    cached_profile = lru_cache(maxsize=4096)(profile_for)
     for row in db.execute(select(Company.id,Company.cnpj,Company.name,Company.registration_status,
         Company.registry_source,Company.registry_updated_at,Company.cnae_main).where(*city_filter)):
         key = clean_cnpj(row.cnpj)
         if row.id not in blocked_ids and key not in blocked_cnpjs and is_valid_cnpj(key):
             groups[key].append(row)
+            eligible_ids.add(row.id)
     contacts = defaultdict(set)
     verified = defaultdict(set)
     for cid,kind,status,value in db.execute(select(BusinessContact.company_id,BusinessContact.kind,
         BusinessContact.status,BusinessContact.value).join(Company,Company.id==BusinessContact.company_id)
-        .where(*city_filter,BusinessContact.status.in_(["verificado","a_verificar"]))):
-        if kind in DIRECT_CHANNELS and value and value.strip() and not value.strip().lower().startswith("anon:"):
+        .where(*city_filter,BusinessContact.status.in_(["verificado","a_verificar"]),
+        BusinessContact.kind.in_(DIRECT_CHANNELS),
+        BusinessContact.value.isnot(None)).distinct()):
+        if cid in eligible_ids and value and value.strip() and not value.strip().lower().startswith("anon:"):
             contacts[cid].add(kind)
             if status=="verificado":
                 verified[cid].add(kind)
@@ -54,7 +60,8 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
         Opportunity.status=="qualified", Opportunity.is_verified.is_(True),
         Opportunity.source_url.isnot(None), Opportunity.source_url!="",
         Opportunity.source_name!="Demonstração", Opportunity.kind.in_(["hiring","outsourcing","public_procurement"]))):
-        evidence[cid].append((oid,kind))
+        if cid in eligible_ids:
+            evidence[cid].append((oid,kind))
     counts = Counter()
     channel_counts = {k: {'available': 0, 'verified': 0} for k in sorted(DIRECT_CHANNELS)}
     any_channel = any_verified = active_sourced = 0
@@ -66,15 +73,15 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
         for cnpj,rows in groups.items():
             rows.sort(key=lambda x:x.id)
             r=rows[0]
-            profiles={profile_for(x.cnae_main) for x in rows}
+            profiles={cached_profile(x.cnae_main) for x in rows}
             profile=next(iter(profiles)) if len(profiles)==1 else None
             active=all(str(x.registration_status or "").strip().upper()=="ATIVA" for x in rows)
             sourced=all(x.registry_source and x.registry_updated_at for x in rows)
             # Do not combine inconsistent duplicates into a qualified prospect.
             ids=[x.id for x in rows]
-            ch=set().union(*(contacts[i] for i in ids))
-            v=set().union(*(verified[i] for i in ids))
-            ev=[e for i in ids for e in evidence[i]]
+            ch=set().union(*(contacts.get(i, ()) for i in ids))
+            v=set().union(*(verified.get(i, ()) for i in ids))
+            ev=[e for i in ids for e in evidence.get(i, ())]
             category=tier(active,sourced,profile,ev,ch,v)
             counts[category]+=1
             if active and sourced:
