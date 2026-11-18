@@ -67,3 +67,23 @@ def test_diagnostics_and_unrecoverable_rows():
         assert after['missing_claim_metadata']==after['expired_leases']==after['exhausted_queued']==0
         assert after['oldest_queued_job_at'] is None
     engine.dispose()
+
+
+def test_worker_heartbeat_fresh_stopped_and_expired():
+    from app.services.contact_discovery_queue import diagnostics, record_heartbeat
+    engine=create_engine('sqlite://')
+    Base.metadata.create_all(engine)
+    now=datetime.now(timezone.utc)
+    with Session(engine) as db:
+        assert diagnostics(db,now)['worker_verified'] is False
+        record_heartbeat(db,'worker-a','idle',0,now)
+        assert diagnostics(db,now)['worker_verified'] is True
+        assert diagnostics(db,now)['recent_workers']==1
+        assert diagnostics(db,now+timedelta(minutes=8))['worker_verified'] is False
+        record_heartbeat(db,'worker-a','stopped',1,now+timedelta(seconds=1))
+        result=diagnostics(db,now+timedelta(seconds=2))
+        assert result['worker_verified'] is False
+        assert result['worker_states']['stopped']==1
+        record_heartbeat(db,'worker-b','processing',0,now)
+        assert diagnostics(db,now+timedelta(seconds=2))['recent_workers']==1
+    engine.dispose()
