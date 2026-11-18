@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 let session=null, moduleName='leads', offset=0, epoch=0, busy=false;
 const size=50;
 const stages={identified:'Identificado',contacted:'Contatado',negotiation:'Negociação',won:'Ganho',lost:'Perdido'};
-const names={leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações',assistant:'Inteligência da organização',subscription:'Meu plano'};
+const names={prospects:'Pesquisa cadastral',leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações',assistant:'Inteligência da organização',subscription:'Meu plano'};
 const channels={email:'E-mail',phone:'Telefone',whatsapp:'WhatsApp',website:'Site',linkedin:'LinkedIn',instagram:'Instagram',facebook:'Facebook'};
 function el(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function status(message){$('notice').textContent=message;}
@@ -51,6 +51,27 @@ function showContact(x){return record(channels[x.kind]||x.kind,[x.cnpj,x.value,'
 async function load(){if(!session)return;const version=++epoch;const current=moduleName;$('module-title').textContent=names[current];$('form-area').replaceChildren();$('results').replaceChildren(el('p','Carregando…'));$('pagination').hidden=true;
  for(const b of $('nav').querySelectorAll('button'))b.setAttribute('aria-current',String(b.dataset.module===current));
  try{
+ if(current==='prospects'){
+ const root=$('results');
+ root.replaceChildren(el('p','Informe um CNPJ conhecido. Consulta pública individual; não pesquisa toda a cidade nem confirma demanda.'));
+ $('form-area').append(form([field('cnpj','CNPJ')],'Consultar cadastro',async v=>{
+ const key=v.cnpj.replace(/[^0-9A-Za-z]/g,'').toUpperCase();
+ if(key.length!==14)throw Error('Informe um CNPJ válido.');
+ root.replaceChildren(el('p','Consultando fonte cadastral…'));
+ try{
+ const x=await workspace('prospects/'+encodeURIComponent(key));if(version!==epoch)return;
+ root.replaceChildren(record(x.razao_social,[x.cnpj,(x.municipio||'—')+' / '+(x.uf||'—'),'CNAE: '+(x.cnae_principal||'—'),'Situação: '+(x.situacao_cadastral||'—'),'Fonte: '+x.source,'Consulta: '+x.observed_at,x.note]));
+ if(canWrite()&&x.situacao_cadastral==='ATIVA'){
+ root.append(button('Adicionar ao CRM privado',async()=>{
+ if(!confirm('Cadastrar esta empresa como lead identificado, sem demanda confirmada?'))return;
+ await workspace('leads','POST',{name:x.razao_social.slice(0,220),stage:'identified',notes:'CNPJ '+x.cnpj+' · '+(x.municipio||'')+' / '+(x.uf||'')+' · Fonte '+x.source+' · Consulta '+x.observed_at+' · Cadastro, não demanda confirmada.'});
+ moduleName='leads';offset=0;await load();
+ }));
+ }
+ }catch(e){if(version===epoch)root.replaceChildren(el('p',e.message));throw e;}
+ }));
+ return;
+ }
  if(current==='assistant'){
  const x=await workspace('assistant/context');if(version!==epoch)return;
  const root=$('results');

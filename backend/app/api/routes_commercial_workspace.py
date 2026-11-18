@@ -262,3 +262,12 @@ def assistant_context(request: Request, organization_id: int):
     from app.services.workspace_assistant import context
     with operation(request, organization_id) as (db, token, _):
         return context(db, token, organization_id)
+
+
+@router.get('/prospects/{cnpj}')
+def lookup_prospect(request: Request, organization_id: int, cnpj: str):
+    from app.services.workspace_prospects import lookup
+    if len(cnpj)>18:
+        raise HTTPException(422,"CNPJ inválido.")
+    with operation(request, organization_id) as (db, token, _):
+        return lookup(db, token, organization_id, cnpj)
