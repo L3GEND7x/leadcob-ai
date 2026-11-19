@@ -14,8 +14,8 @@ from app.core.security import stamp
 
 KINDS={"email","phone","whatsapp","linkedin","instagram","facebook","website"}
 # Only explicit public RFB import provenance, not arbitrary external/manual records.
-RFB_SOURCE=re.compile(r"^Receita Federal — (?:dados abertos [0-9]{4}-[0-9]{2}(?: \\(arquivos locais\\))?|snapshot AM [0-9]{4}-[0-9]{2}-[0-9]{2})$")
-CPF_TAIL=re.compile(r"\\d{11}\\s*$")
+RFB_SOURCE=re.compile(r"^Receita Federal — (?:dados abertos [0-9]{4}-[0-9]{2}(?: \(arquivos locais\))?|snapshot AM [0-9]{4}-[0-9]{2}-[0-9]{2})$")
+CPF_TAIL=re.compile(r"\d{11}\s*$")
 MAX_SCAN=100000
 
 def options(db,token,organization_id):
