@@ -292,3 +292,23 @@ def assistant_generate(request: Request, organization_id: int, payload: Assistan
         raise HTTPException(422,'Informe uma pergunta.')
     with operation(request,organization_id,True) as (db,token,csrf):
         return generate(db,token,organization_id,csrf,payload.request_id,payload.prompt.strip())
+
+
+@router.get('/registry-search/options')
+def registry_search_options(request: Request, organization_id: int):
+    from app.services.workspace_registry_search import options
+    with operation(request,organization_id) as (db,token,_):
+        return options(db,token,organization_id)
+
+
+@router.get('/registry-search')
+def registry_search(request: Request, organization_id: int,
+                    uf: str=Query(pattern=r'^[A-Za-z]{2}$'),
+                    city: str=Query(min_length=1,max_length=100),
+                    segment: str | None=Query(None,max_length=80),
+                    channel: str | None=Query(None,max_length=20),
+                    limit: int=Query(30,ge=1,le=50),
+                    offset: int=Query(0,ge=0,le=5000)):
+    from app.services.workspace_registry_search import search
+    with operation(request,organization_id) as (db,token,_):
+        return search(db,token,organization_id,uf,city,segment,channel,limit,offset)

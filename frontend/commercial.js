@@ -53,6 +53,39 @@ async function load(){if(!session)return;const version=++epoch;const current=mod
  try{
  if(current==='prospects'){
  const root=$('results');
+ const config=await workspace('registry-search/options');if(version!==epoch)return;
+ if(config.enabled){
+ const area=el('section');area.append(el('h3','Pesquisar por cidade e segmento'));
+ const output=el('div');let searchParams=null,page=0;
+ async function drawSearch(){
+ const qs=new URLSearchParams(searchParams);qs.set('limit','30');qs.set('offset',String(page*30));
+ if(!qs.get('segment'))qs.delete('segment');if(!qs.get('channel'))qs.delete('channel');
+ const result=await workspace('registry-search?'+qs);if(version!==epoch)return;
+ output.replaceChildren(el('p',result.note),el('p','Resultados: '+result.total.toLocaleString('pt-BR')));
+ for(const item of result.items){
+ const row=record(item.razao_social,[item.cnpj,item.municipio+' / '+item.uf,item.segment_label,
+ 'Fonte: '+item.source,'Atualização: '+item.registry_updated_at,
+ 'Canais privados: '+(item.private_channels.map(k=>channels[k]||k).join(', ')||'Nenhum cadastrado')]);
+ if(canWrite())row.append(button('Adicionar ao CRM privado',async()=>{
+ if(!confirm('Adicionar como empresa identificada, sem demanda confirmada?'))return;
+ await workspace('leads','POST',{name:item.razao_social.slice(0,220),stage:'identified',notes:'CNPJ '+item.cnpj+' · '+item.municipio+' / '+item.uf+' · Fonte '+item.source+' · Cadastro, não demanda confirmada.'});
+ moduleName='leads';offset=0;await load();
+ }));
+ output.append(row);
+ }
+ const controls=el('div',undefined,'actions');
+ const prev=button('Anterior',async()=>{page--;await drawSearch();});prev.disabled=page===0;
+ const next=button('Próxima',async()=>{page++;await drawSearch();});next.disabled=(page+1)*30>=result.total||(page+1)*30>5000;
+ controls.append(prev,next);output.append(controls);
+ }
+ const segments=Object.fromEntries([['','Todos'],...config.segments.map(x=>[x.key,x.label])]);
+ const kinds=Object.fromEntries([['','Todos'],...config.channels.map(k=>[k,channels[k]||k])]);
+ const filters=form([field('uf','UF','text','AM'),field('city','Município','text','Manaus'),
+ field('segment','Segmento','text','',segments),field('channel','Canal privado cadastrado','text','',kinds)],
+ 'Pesquisar empresas',async v=>{searchParams=v;page=0;await drawSearch();});
+ filters.elements.segment.required=false;filters.elements.channel.required=false;
+ area.append(filters,output);$('form-area').append(area);
+ }
  root.replaceChildren(el('p','Informe um CNPJ conhecido. Consulta pública individual; não pesquisa toda a cidade nem confirma demanda.'));
  $('form-area').append(form([field('cnpj','CNPJ')],'Consultar cadastro',async v=>{
  const key=v.cnpj.replace(/[^0-9A-Za-z]/g,'').toUpperCase();
