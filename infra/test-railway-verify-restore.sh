@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 umask 077
+for binary in su-exec initdb pg_ctl restic pg_dump pg_restore createdb psql; do
+    command -v "$binary" || { echo "Missing binary: $binary" >&2; exit 1; }
+done
 work=$(mktemp -d /tmp/leadcob-restore-ci-XXXXXXXX)
 chown postgres:postgres "$work"
 mkdir "$work/sock"
@@ -11,8 +14,12 @@ cleanup() {
     rm -rf "$work"
 }
 trap cleanup EXIT
-su-exec postgres initdb -D "$work/pg" -A trust --no-instructions >/dev/null 2>&1
-su-exec postgres pg_ctl -D "$work/pg" -o "-c listen_addresses='' -c unix_socket_directories=$work/sock -p 65431" -w start >/dev/null 2>&1
+su-exec postgres initdb -D "$work/pg" -A trust --no-instructions >"$work/initdb.log" 2>&1 || {
+    cat "$work/initdb.log" >&2; exit 1;
+}
+su-exec postgres pg_ctl -D "$work/pg" -o "-c listen_addresses='' -c unix_socket_directories=$work/sock -p 65431" -w start >"$work/start.log" 2>&1 || {
+    cat "$work/start.log" >&2; exit 1;
+}
 running=yes
 createdb -h "$work/sock" -p 65431 -U postgres example
 psql -X -v ON_ERROR_STOP=1 -h "$work/sock" -p 65431 -U postgres -d example -c \
