@@ -1,0 +1,5 @@
+# Fail-closed de configuração comercial (#166)
+
+Risco observado: em produção, COMMERCIAL_AUTH_ENABLED=true e COMMERCIAL_ENTITLEMENTS_ENABLED=false liberaria login comercial sem enforcement das cotas contratadas. Além disso, WORKSPACE_ASSISTANT_ENABLED=true poderia ser configurado sem preço/modelo/chave/orçamento válido. A inicialização agora rejeita essas combinações em APP_ENV=production, antes de atender requisições. Os recursos experimentais exigem autenticação comercial e limites habilitados. As variáveis de produção atualmente não ativam nenhuma dessas flags; portanto não há intenção de habilitar acesso ou consumo na implantação deste PR.
+
+O teste utiliza apenas configurações sintéticas. A validação de valores não comprova autenticação com usuários reais nem existência de crédito OpenAI. Uma configuração válida não implica GO financeiro ou LGPD. Plano gratuito/teste público sem cotas deverá ter política explícita separada, não um bypass de segurança.

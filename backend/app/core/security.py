@@ -64,6 +64,19 @@ def validate_configuration():
             raise RuntimeError('Produção exige conexão PostgreSQL autenticada.')
         if settings.demo_seed:
             raise RuntimeError('DEMO_SEED deve estar desativado em produção.')
+        if settings.commercial_auth_enabled and not settings.commercial_entitlements_enabled:
+            raise RuntimeError('Acesso comercial exige limites de assinatura ativos em produção.')
+        if settings.workspace_assistant_enabled or settings.workspace_registry_search_enabled:
+            if not (settings.commercial_auth_enabled and settings.commercial_entitlements_enabled):
+                raise RuntimeError('Recursos experimentais exigem autenticação e limites comerciais em produção.')
+        if settings.workspace_assistant_enabled:
+            from math import isfinite
+            if not settings.openai_api_key.strip() or not settings.openai_model.strip() or not all(
+                    isfinite(v) and 0 < v <= 1000 for v in (
+                        settings.workspace_assistant_monthly_budget_usd,
+                        settings.openai_input_usd_per_million,
+                        settings.openai_output_usd_per_million)):
+                raise RuntimeError('IA comercial exige modelo, chave, preços e orçamento explícitos.')
 
 
 def stamp(value):
