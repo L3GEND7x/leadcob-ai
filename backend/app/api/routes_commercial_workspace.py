@@ -319,6 +319,9 @@ def registry_search(request: Request, organization_id: int, payload: RegistrySea
     from app.services.workspace_registry_search import search, consume_quota
     with operation(request,organization_id,True) as (db,token,csrf):
         consume_quota(db,token,organization_id,csrf)
+        # Persist the quota before the potentially expensive scan. Errors must not
+        # make repeated requests free; the organization lock serialized increments.
+        db.commit()
         return search(db,token,organization_id,**payload.model_dump())
 
 
