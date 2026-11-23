@@ -189,3 +189,51 @@ def test_sandbox_diagnostics_is_scoped_and_read_only(billing, monkeypatch):
     assert c.get(url.replace(f"/organizations/{oid}/",f"/organizations/{other}/")).json()["associated"]==0
     with session() as db:
         assert db.get(CommercialInvoice,iid).status=="open"
+
+
+def test_owner_financial_audit_is_read_only_and_sandbox_is_not_revenue(billing, monkeypatch):
+    c,h,path,payload,session,oid,other,end=billing
+    iid=create_receivable(c,h,path,payload)
+    url=f"/api/owner/commercial/organizations/{oid}/financial-audit"
+    first=c.get(url)
+    assert first.status_code==200, first.text
+    assert first.json()["amounts_cents"]["open_cents"]==2700
+    assert first.json()["amounts_cents"]["manual_paid_cents"]==0
+    assert first.json()["provider_verified"] is False
+    assert first.json()["bank_reconciled"] is False
+    assert c.get(url.replace(f"/organizations/{oid}/",f"/organizations/{other}/")).json()["receivables"]==0
+    def uncertain(**kwargs):
+        raise PaymentUnavailable("Synthetic timeout")
+    monkeypatch.setattr(admin,"issue_charge",uncertain)
+    assert c.post(f"{path}/{iid}/asaas-sandbox/issue",headers=h,json={"billing_type":"PIX"}).status_code==503
+    second=c.get(url)
+    assert second.status_code==200,second.text
+    result=second.json()
+    assert result["amounts_cents"]["open_cents"]==2700
+    assert result["amounts_cents"]["sandbox_associated_open_cents"]==2700
+    assert result["amounts_cents"]["manual_paid_cents"]==0
+    assert result["exception_count"]==1
+    assert result["exceptions"][0]["flags"]==["sandbox_unresolved_reservation"]
+    assert c.get(url).json()==result
+    with session() as db:
+        assert db.get(CommercialInvoice,iid).status=="open"
+
+
+def test_owner_financial_audit_manual_receipt_is_not_bank_confirmation(billing):
+    c,h,path,payload,session,oid,other,end=billing
+    iid=create_receivable(c,h,path,payload)
+    url=f"/api/owner/commercial/organizations/{oid}/financial-audit"
+    response=c.post(f"{path}/{iid}/settle",headers=h,json={
+        "amount_cents":2700,"payment_reference":"bank-fixture-only",
+        "paid_at":datetime.now(timezone.utc).isoformat()})
+    assert response.status_code==200,response.text
+    report=c.get(url)
+    assert report.status_code==200,report.text
+    data=report.json()
+    assert data["counts"]["paid"]==1
+    assert data["amounts_cents"]["manual_paid_cents"]==2700
+    assert data["amounts_cents"]["open_cents"]==0
+    assert data["exception_count"]==0
+    assert data["bank_reconciled"] is False
+    assert data["provider_verified"] is False
+    assert c.get(url.replace(f"/organizations/{oid}/",f"/organizations/{other}/")).json()["amounts_cents"]["manual_paid_cents"]==0
