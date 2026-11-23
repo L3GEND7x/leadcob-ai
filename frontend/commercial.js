@@ -60,7 +60,7 @@ async function load(){if(!session)return;const version=++epoch;const current=mod
  async function drawSearch(){
  const qs=new URLSearchParams(searchParams);qs.set('limit','30');qs.set('offset',String(page*30));
  if(!qs.get('segment'))qs.delete('segment');if(!qs.get('channel'))qs.delete('channel');
- const result=await workspace('registry-search?'+qs);if(version!==epoch)return;
+ const result=await workspace('registry-search','POST',Object.fromEntries(qs));if(version!==epoch)return;
  output.replaceChildren(el('p',result.note),el('p','Resultados: '+result.total.toLocaleString('pt-BR')));
  for(const item of result.items){
  const row=record(item.razao_social,[item.cnpj,item.municipio+' / '+item.uf,item.segment_label,
@@ -68,7 +68,7 @@ async function load(){if(!session)return;const version=++epoch;const current=mod
  'Canais privados: '+(item.private_channels.map(k=>channels[k]||k).join(', ')||'Nenhum cadastrado')]);
  if(canWrite())row.append(button('Adicionar ao CRM privado',async()=>{
  if(!confirm('Adicionar como empresa identificada, sem demanda confirmada?'))return;
- await workspace('leads','POST',{name:item.razao_social.slice(0,220),stage:'identified',notes:'CNPJ '+item.cnpj+' · '+item.municipio+' / '+item.uf+' · Fonte '+item.source+' · Cadastro, não demanda confirmada.'});
+ await workspace('registry-import','POST',{cnpj:item.cnpj});
  moduleName='leads';offset=0;await load();
  }));
  output.append(row);
