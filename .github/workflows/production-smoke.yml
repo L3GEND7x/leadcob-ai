@@ -1,0 +1,29 @@
+name: Producao — smoke externo anonimo
+on:
+  pull_request:
+    paths:
+      - 'backend/app/jobs/release_smoke.py'
+      - '.github/workflows/production-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/app/jobs/release_smoke.py'
+      - '.github/workflows/production-smoke.yml'
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-smoke-read-only
+  cancel-in-progress: false
+jobs:
+  public-read-only-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check external availability and anonymous authorization
+        run: |
+          set -eu
+          PYTHONPATH=backend python -m app.jobs.release_smoke --base-url https://leadcob-web-production.up.railway.app

@@ -1,0 +1,5 @@
+# Smoke de produção externo
+
+Workflow Producao — smoke externo anonimo: roda em pull requests que alteram o smoke, após push do workflow, execução manual e a cada seis horas. Sem credenciais, sem escrita, sem chamadas OpenAI, sem acesso financeiro. Verifica health, HTML/CSS/JS, anonimato da sessão comercial e bloqueios de acesso a páginas do proprietário. A CLI permite --expected-sha com commit aprovado em execuções controladas. Não substitui autorização com dois assinantes reais, conciliação financeira, worker em produção, recuperação de backup e LGPD.
+
+A Railway está fixa ao commit f7bfecb5cac10daad301811f814b9dfd24b42d75; push no GitHub não atualiza produção automaticamente. Comparar SHA do deploy, verificar logs e só alterar o pin após homologação. Falhas deste job podem significar indisponibilidade pública ou bloqueio de rede do runner e exigem investigação.
