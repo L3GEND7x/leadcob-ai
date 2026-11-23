@@ -87,9 +87,9 @@ def search(db,token,organization_id,uf,city,segment=None,channel=None,limit=30,o
 
 MAX_REGISTRY_QUERIES_HOURLY=30
 
-def consume_quota(db, token, organization_id, now=None):
+def consume_quota(db, token, organization_id, csrf, now=None):
     """Must run under operation(write=True) organization lock, in its transaction."""
-    authorize(db,token,organization_id,"write")
+    authorize(db,token,organization_id,"write",csrf=csrf)
     now=now or datetime.now(timezone.utc)
     bucket=now.strftime("%Y-%m-%dT%H")
     item=db.get(WorkspaceRegistryQueryQuota,(organization_id,bucket))
