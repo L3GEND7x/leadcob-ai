@@ -2,15 +2,17 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 import re
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from fastapi import HTTPException
 from app.core.config import settings
 from app.core.account_access import authorize
-from app.db.models import Company, Suppression, WorkspaceContact, WorkspaceSuppression
+from app.db.models import (Company, Suppression, WorkspaceContact, WorkspaceSuppression,
+    WorkspaceRegistryQueryQuota, WorkspaceProspectImport, WorkspaceLead)
 from app.services.commercial_entitlements import check_subscription
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
 from app.services.segments import SEGMENTS, profile_for
 from app.core.security import stamp
+from app.services.workspace_leads import create_lead
 
 KINDS={"email","phone","whatsapp","linkedin","instagram","facebook","website"}
 # Only explicit public RFB import provenance, not arbitrary external/manual records.
@@ -81,3 +83,59 @@ def search(db,token,organization_id,uf,city,segment=None,channel=None,limit=30,o
     return {"total":len(items),"items":items[offset:offset+limit],
         "observed_at":datetime.now(timezone.utc).isoformat(),
         "note":"Base cadastral local parcial, sem confirmação de demanda. Canais são apenas os cadastrados pela sua organização; não são contatos verificados."}
+
+
+MAX_REGISTRY_QUERIES_HOURLY=30
+
+def consume_quota(db, token, organization_id, now=None):
+    """Must run under operation(write=True) organization lock, in its transaction."""
+    authorize(db,token,organization_id,"write")
+    now=now or datetime.now(timezone.utc)
+    bucket=now.strftime("%Y-%m-%dT%H")
+    item=db.get(WorkspaceRegistryQueryQuota,(organization_id,bucket))
+    if item is None:
+        item=WorkspaceRegistryQueryQuota(organization_id=organization_id,hour_bucket=bucket,requests=0)
+        db.add(item)
+    if item.requests>=MAX_REGISTRY_QUERIES_HOURLY:
+        raise HTTPException(429,"Limite de consultas por hora atingido.")
+    item.requests+=1
+    db.flush()
+    return item.requests
+
+
+def import_prospect(db,token,organization_id,csrf,cnpj):
+    """Safe structured import; only a verified eligible public registry company."""
+    principal=authorize(db,token,organization_id,"write",csrf=csrf)
+    check_subscription(db,principal.organization_id)
+    if not settings.workspace_registry_search_enabled:
+        raise HTTPException(503,"Pesquisa regional ainda não habilitada.")
+    key=clean_cnpj(cnpj)
+    if not is_valid_cnpj(key):
+        raise HTTPException(422,"CNPJ inválido.")
+    if db.get(WorkspaceSuppression,(organization_id,key)):
+        raise HTTPException(409,"Empresa suprimida.")
+    if db.get(WorkspaceProspectImport,(organization_id,key)):
+        raise HTTPException(409,"CNPJ já incluído no CRM desta organização.")
+    if db.scalar(select(Suppression.id).where(Suppression.cnpj==key).limit(1)) is not None:
+        raise HTTPException(409,"Empresa suprimida.")
+    companies=list(db.scalars(select(Company).where(Company.cnpj==key)))
+    if not companies or db.scalar(select(Suppression.id).where(
+        Suppression.company_id.in_([x.id for x in companies])).limit(1)) is not None:
+        raise HTTPException(409,"Cadastro não elegível.")
+    if any(not x.name or CPF_TAIL.search(x.name) or not x.registry_source
+           or not RFB_SOURCE.fullmatch(x.registry_source)
+           or not x.registry_updated_at or not x.legal_nature
+           or "individual" in x.legal_nature.casefold()
+           or x.legal_nature.startswith(("213","2.1.3"))
+           or str(x.registration_status or "").strip().upper()!="ATIVA"
+           or not x.cnae_main or profile_for(x.cnae_main) is None
+           for x in companies):
+        raise HTTPException(409,"Cadastro não elegível.")
+    if len({(x.name,x.cnae_main,x.legal_nature) for x in companies})!=1:
+        raise HTTPException(409,"Cadastros divergentes.")
+    x=max(companies,key=lambda row:stamp(row.registry_updated_at))
+    result=create_lead(db,token,organization_id,csrf,name=x.name,
+        stage="identified",notes=f"CNPJ {key} · {x.city or ''} / {x.state or ''} · Fonte {x.registry_source} · Cadastro, sem demanda confirmada.")
+    db.add(WorkspaceProspectImport(organization_id=organization_id,cnpj=key,lead_id=result.id))
+    db.flush()
+    return {"lead_id":result.id,"cnpj":key,"stage":"identified"}
