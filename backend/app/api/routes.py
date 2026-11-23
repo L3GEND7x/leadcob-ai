@@ -75,7 +75,11 @@ def health():
     from app.db.database import engine
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
-    return {"status": "ok", "service": "LeadCob AI", "version": "0.5.3"}
+    import os
+    revision = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")
+    revision = revision if len(revision) == 40 and all(ch in "0123456789abcdef" for ch in revision.lower()) else None
+    return {"status": "ok", "service": "LeadCob AI", "version": "0.5.3",
+            "revision": revision}
 
 
 @router.get("/dashboard/summary")
