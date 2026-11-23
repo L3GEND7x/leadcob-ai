@@ -37,6 +37,7 @@ def audit(db, organization_id, today=None):
         sandbox_associated_open_cents=0, void_cents=0)
     counts = Counter()
     exceptions = []
+    sub = db.get(CommercialSubscription, organization_id)
     for item in invoices:
         flags = []
         binding, reservation = bindings.get(item.id), reservations.get(item.id)
@@ -58,7 +59,7 @@ def audit(db, organization_id, today=None):
             counts["paid"] += 1
             if linked:
                 flags.append("sandbox_marked_paid")
-            else:
+            elif item.payment_reference and item.paid_at:
                 sums["manual_paid_cents"] += amount
             if not item.payment_reference or not item.paid_at:
                 flags.append("paid_without_manual_evidence")
@@ -85,7 +86,6 @@ def audit(db, organization_id, today=None):
         if renewed:
             if renewed.organization_id != organization_id or item.status != "paid" or linked:
                 flags.append("renewal_without_eligible_payment")
-            sub = db.get(CommercialSubscription, organization_id)
             if sub is None:
                 flags.append("renewal_without_subscription")
             elif stamp(sub.ends_at) < stamp(renewed.new_end):
@@ -95,7 +95,6 @@ def audit(db, organization_id, today=None):
             exceptions.append({"invoice_id":item.id,"flags":flags,
                 "amount_cents":amount,"status":item.status,
                 "sandbox_associated":linked})
-    sub = db.get(CommercialSubscription, organization_id)
     return {"organization_id":organization_id,"as_of":today.isoformat(),
         "receivables":total,"counts":dict(counts),"amounts_cents":sums,
         "exceptions":exceptions,"exception_count":len(exceptions),
