@@ -1,9 +1,9 @@
 """Tenant-scoped private lead operations. No legacy CRM access."""
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.core.account_access import authorize
-from app.db.models import WorkspaceLead
+from app.db.models import WorkspaceLead, WorkspaceProspectImport
 
 STAGES = frozenset({'identified', 'contacted', 'negotiation', 'won', 'lost'})
 
@@ -61,5 +61,9 @@ def update_lead(db: Session, token: str, organization_id: int, csrf: str,
 
 def delete_lead(db: Session, token: str, organization_id: int, csrf: str, lead_id: int):
     principal = authorize(db, token, organization_id, 'write', csrf=csrf)
-    db.delete(_find(db, principal.organization_id, lead_id))
+    item = _find(db, principal.organization_id, lead_id)
+    db.execute(delete(WorkspaceProspectImport).where(
+        WorkspaceProspectImport.organization_id == principal.organization_id,
+        WorkspaceProspectImport.lead_id == lead_id))
+    db.delete(item)
     db.flush()

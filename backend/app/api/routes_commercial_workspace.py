@@ -301,14 +301,32 @@ def registry_search_options(request: Request, organization_id: int):
         return options(db,token,organization_id)
 
 
-@router.get('/registry-search')
-def registry_search(request: Request, organization_id: int,
-                    uf: str=Query(pattern=r'^[A-Za-z]{2}$'),
-                    city: str=Query(min_length=1,max_length=100),
-                    segment: str | None=Query(None,max_length=80),
-                    channel: str | None=Query(None,max_length=20),
-                    limit: int=Query(30,ge=1,le=50),
-                    offset: int=Query(0,ge=0,le=5000)):
-    from app.services.workspace_registry_search import search
-    with operation(request,organization_id) as (db,token,_):
-        return search(db,token,organization_id,uf,city,segment,channel,limit,offset)
+class RegistrySearchIn(Input):
+    uf: str = Field(pattern=r'^[A-Za-z]{2}$')
+    city: str = Field(min_length=1,max_length=100)
+    segment: str | None = Field(default=None,max_length=80)
+    channel: str | None = Field(default=None,max_length=20)
+    limit: int = Field(default=30,ge=1,le=50)
+    offset: int = Field(default=0,ge=0,le=5000)
+
+
+class RegistryImportIn(Input):
+    cnpj: str = Field(min_length=14,max_length=18)
+
+
+@router.post('/registry-search')
+def registry_search(request: Request, organization_id: int, payload: RegistrySearchIn):
+    from app.services.workspace_registry_search import search, consume_quota
+    with operation(request,organization_id,True) as (db,token,csrf):
+        consume_quota(db,token,organization_id,csrf)
+        # Persist the quota before the potentially expensive scan. Errors must not
+        # make repeated requests free; the organization lock serialized increments.
+        db.commit()
+        return search(db,token,organization_id,**payload.model_dump())
+
+
+@router.post('/registry-import', status_code=201)
+def registry_import(request: Request, organization_id: int, payload: RegistryImportIn):
+    from app.services.workspace_registry_search import import_prospect
+    with operation(request,organization_id,True,resource='leads') as (db,token,csrf):
+        return import_prospect(db,token,organization_id,csrf,payload.cnpj)

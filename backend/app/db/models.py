@@ -564,3 +564,19 @@ class WorkspaceAssistantExchange(Base):
 class WorkspaceAssistantBudgetLock(Base):
     __tablename__ = "workspace_assistant_budget_locks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+
+class WorkspaceRegistryQueryQuota(Base):
+    __tablename__ = "workspace_registry_query_quotas"
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    hour_bucket: Mapped[str] = mapped_column(String(13), primary_key=True)
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    __table_args__ = (CheckConstraint("requests >= 0", name="ck_registry_query_requests"),)
+
+
+class WorkspaceProspectImport(Base):
+    __tablename__ = "workspace_prospect_imports"
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    cnpj: Mapped[str] = mapped_column(String(14), primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("workspace_leads.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
