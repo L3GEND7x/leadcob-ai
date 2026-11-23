@@ -116,7 +116,9 @@ def import_prospect(db,token,organization_id,csrf,cnpj):
         raise HTTPException(409,"Empresa suprimida.")
     if db.get(WorkspaceProspectImport,(organization_id,key)):
         raise HTTPException(409,"CNPJ já incluído no CRM desta organização.")
-    if db.scalar(select(Suppression.id).where(Suppression.cnpj==key).limit(1)) is not None:
+    suppressed_global={clean_cnpj(value) for value in db.scalars(
+        select(Suppression.cnpj).where(Suppression.cnpj.isnot(None)))}
+    if key in suppressed_global:
         raise HTTPException(409,"Empresa suprimida.")
     companies=list(db.scalars(select(Company).where(Company.cnpj==key)))
     if not companies or db.scalar(select(Suppression.id).where(
