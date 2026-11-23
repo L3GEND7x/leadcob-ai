@@ -1,0 +1,30 @@
+name: Restauracao diaria verificavel
+on:
+  pull_request:
+    paths:
+      - 'infra/railway-backup.sh'
+      - 'infra/railway-verify-restore.sh'
+      - 'infra/test-railway-verify-restore.sh'
+      - 'infra/Dockerfile.railway-backup'
+      - '.github/workflows/backup-restore-verification.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/railway-backup.sh'
+      - 'infra/railway-verify-restore.sh'
+      - 'infra/test-railway-verify-restore.sh'
+      - 'infra/Dockerfile.railway-backup'
+      - '.github/workflows/backup-restore-verification.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-recovery-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production backup image
+        run: docker build -f infra/Dockerfile.railway-backup -t leadcob-backup-verify-ci .
+      - name: Restore encrypted local snapshot into isolated PostgreSQL
+        run: docker run --rm --entrypoint sh -v "$PWD/infra/test-railway-verify-restore.sh:/test.sh:ro" leadcob-backup-verify-ci /test.sh

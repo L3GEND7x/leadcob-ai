@@ -30,6 +30,23 @@ def test_managed_postgres_url_and_production_validation(monkeypatch):
         validate_configuration()
 
 
+def _unit_backup_script(tmp_path):
+    """Stub the real restore subprocess only for unit tests of the backup order.
+
+    A separate Docker CI job runs the actual Restic download and PostgreSQL restore.
+    """
+    source = (ROOT / 'infra' / 'railway-backup.sh').read_text()
+    line = 'sh "$(dirname "$0")/railway-verify-restore.sh" "$dump"'
+    assert line in source
+    folder = tmp_path / 'backup-scripts'
+    folder.mkdir()
+    (folder / 'railway-backup-lib.sh').write_text(
+        (ROOT / 'infra' / 'railway-backup-lib.sh').read_text())
+    (folder / 'railway-backup.sh').write_text(
+        source.replace(line, 'printf "isolated-restore\\n" >> "$CALLS"'))
+    return folder / 'railway-backup.sh'
+
+
 def test_railway_backup_verifies_dump_before_upload(tmp_path):
     fake = tmp_path / 'bin'
     fake.mkdir()
@@ -48,7 +65,7 @@ def test_railway_backup_verifies_dump_before_upload(tmp_path):
            'PGDATABASE': 'leadcob', 'RESTIC_REPOSITORY': 's3:https://s3.example.com/bucket',
            'RESTIC_PASSWORD': 'test-password', 'AWS_ACCESS_KEY_ID': 'testkeyid0000001',
            'AWS_SECRET_ACCESS_KEY': 'test-secret'}
-    script = ROOT / 'infra' / 'railway-backup.sh'
+    script = _unit_backup_script(tmp_path)
     failed = subprocess.run(['sh', str(script)], env={**env, 'FAIL_RESTORE': '1'}, capture_output=True)
     assert failed.returncode != 0 and not log.exists()
     succeeded = subprocess.run(['sh', str(script)], env=env, capture_output=True)
@@ -115,12 +132,13 @@ def test_railway_backup_rejects_bad_configuration_without_revealing_it(tmp_path,
 
 def test_railway_backup_reports_each_stage_and_latest_snapshot(tmp_path):
     env, log = _fake_tools(tmp_path)
-    result = subprocess.run(['sh', str(ROOT / 'infra' / 'railway-backup.sh')], env=env, capture_output=True, text=True)
+    result = subprocess.run(['sh', str(_unit_backup_script(tmp_path))], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     calls = log.read_text().splitlines()
     assert calls[0] == 'pg_dump' and calls[1] == 'cat config'
     assert calls[2].startswith('backup ') and calls[3] == 'check'
-    assert calls[4] == 'snapshots --tag leadcob --latest 1'
+    assert calls[4] == 'isolated-restore'
+    assert calls[5] == 'snapshots --tag leadcob --latest 1'
     assert 'Configuração conferida (keyID com 26 caracteres' in result.stdout
     assert 'BACKUP CONCLUÍDO' in result.stdout
     assert 'fakefake' not in result.stdout + result.stderr and 'segredoFalso' not in result.stdout + result.stderr

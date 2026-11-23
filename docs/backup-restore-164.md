@@ -1,0 +1,7 @@
+# Auditoria da restauração remota — PR 164
+
+O job atual fazia pg_dump custom, pg_restore --list, restic backup e restic check, mas não restaurava o último snapshot em um PostgreSQL isolado. Este PR adiciona um passo após upload que: baixa o snapshot Restic remoto mais recente, compara SHA256 com o dump enviado, inicia um cluster PostgreSQL temporário em socket Unix local (TCP desativado), restaura todos os objetos e exige pelo menos uma tabela pública. O cluster e os dados temporários são eliminados no final; variáveis de conexão com produção são removidas antes de qualquer SQL no banco temporário. O cron falha se o restore falhar, sem apagar o backup novo. O teste CI usa Restic local e PostgreSQL real com detecção de arquivo adulterado.
+
+**Não equivale a RTO/RPO formal nem substitui restauração em ambiente independente com credenciais e rede próprias.** Só prova restore local no mesmo container e compatibilidade de versão (PostgreSQL 18). O snapshot de 23/11 foi verificado apenas por restic check; este recurso só comprovará snapshots novos depois que o serviço de backup receber o novo código e um novo ciclo executar com sucesso.
+
+Antes de atualizar backup: exigir CI verde, revisar consumo de memória/CPU e logs do cron; não trocar chaves, banco, agendamento ou provedor. Nunca executar restauração contra produção. CI não utiliza segredos reais.
