@@ -804,3 +804,12 @@ def sandbox_diagnostics(request: Request, organization_id: int):
         return {'environment':'sandbox', 'organization_id':organization_id,
                 **dict(row), 'provider_verified':False, 'production_ready':False,
                 'note':'Evidência local. Reservas sem vínculo e conflitos exigem revisão manual; não reenviar emissão.'}
+
+
+@router.get('/organizations/{organization_id}/financial-audit')
+def financial_audit(request: Request, organization_id: int):
+    """Owner-only read-only ledger reconciliation; no settlement actions."""
+    from app.services.commercial_financial_audit import audit
+    with SessionLocal() as db:
+        guard(request, db)
+        return audit(db, organization_id)
