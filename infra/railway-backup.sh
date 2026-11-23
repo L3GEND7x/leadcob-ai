@@ -29,6 +29,7 @@ echo 'Etapa 3/4: enviando dump criptografado.'
 restic backup "$dump" --tag leadcob
 echo 'Etapa 4/4: conferindo o repositório remoto.'
 restic check
+sh "$(dirname "$0")/railway-verify-restore.sh" "$dump"
 echo 'Snapshot mais recente com a etiqueta leadcob:'
 restic snapshots --tag leadcob --latest 1
-echo 'BACKUP CONCLUÍDO: dump verificado, enviado ao armazenamento externo e repositório conferido.'
+echo 'BACKUP CONCLUÍDO: dump verificado, snapshot remoto baixado e restaurado no PostgreSQL temporario, repositório conferido.'
