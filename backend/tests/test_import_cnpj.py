@@ -227,6 +227,9 @@ def test_branch_metadata_and_privacy(tmp_path):
     assert len(result)==2
     assert all(r["razao_social"]=="FIXTURE LTDA" and r["natureza_codigo"]=="2062" for r in result)
     assert len({r["cnpj"] for r in result})==2
+    with pytest.raises(SystemExit, match="Lote exige revisão"):
+        J.main(["--local-dir",str(tmp_path),"--release","2026-10","--parts","0",
+                "--uf","AM","--include-branches","--dry-run","--strict-layout"])
 
 
 def test_limit_is_per_scan_not_global_counter():
@@ -236,13 +239,13 @@ def test_limit_is_per_scan_not_global_counter():
     assert stats["matched"]==102
 
 
-def test_municipal_subdivision_and_strict_layout():
+def test_municipal_subdivision():
     rows = [est("11111111", "6491300", mun="0255"),
             est("22222222", "6491300", mun="0256")]
     selected = list(J.filter_establishments(rows, None, {"AM"}, municipality_codes={"0255"}))
     assert len(selected) == 1 and selected[0]["municipio_codigo"] == "0255"
 
 
-def test_strict_mode_rejects_incomplete_identity_and_unknown_municipality(fake_rfb):
+def test_unknown_municipality_rejected(fake_rfb):
     with pytest.raises(SystemExit):
         J.main(["--uf", "AM", "--parts", "0", "--municipality-code", "9999", "--dry-run"])
