@@ -15,3 +15,7 @@ O relatório \`contactability\` (PR #173) considerava somente CNPJs empresariais
 Testes sintéticos com divergência cadastral, opt-out por ID de duplicata, empresário individual, e-mail pessoal, site interno/invalidado e empresa com e-mail funcional. Testes comparativos verificam igualdade entre os números dos canais \`email\`, \`phone\` e \`linkedin\` nos dois endpoints, além da visibilidade no navegador desktop/mobile.
 
 Nenhuma contagem real de Manaus é afirmada. O status "verificado" é dado interno, não prova autorização de contato nem interesse comercial. A leitura do banco é local, sem integração adicional e sem custo externo.
+
+
+## Benchmark PostgreSQL sintético
+A massa do teste de 53.000 CNPJs agora informa a natureza jurídica empresarial, pois o cenário de performance mede a consulta de empresas elegíveis. Isto muda a composição da massa sintética, não as métricas de empresas reais nem resultados financeiros. O benchmark segue com mesma quantidade de CNPJs e contatos, armazenamento isolado e limpeza da schema temporária; números de tempo anteriores podem não ser diretamente comparáveis após a alteração da regra de filtragem.
