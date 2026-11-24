@@ -149,6 +149,10 @@ def test_owner_discovery_has_explicit_manual_queue_action(viewport):
         page.get_by_role("button",name="Medir contactabilidade").click()
         expect(page.locator("#contactability-results")).to_contain_text("CNPJs empresariais elegíveis")
         expect(page.locator("#contactability-results")).to_contain_text("E-mail institucional")
+        page.get_by_role("button",name="Localizar empresas").click()
+        expect(page.locator("#targets-results")).to_contain_text("CNPJs empresariais elegíveis")
+        expect(page.locator("#targets-results")).to_contain_text("Verificado com URL de origem")
+
 
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert not errors,errors
