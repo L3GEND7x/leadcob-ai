@@ -80,17 +80,46 @@ def test_cnpj_contactability_and_owner_endpoint(tmp_path,monkeypatch):
         assert result["channels"]["phone"]=={"registered":2,"verified":1,
             "with_source_url":1,"verified_with_source_url":0}
         assert result["channels"]["linkedin"]["verified_with_source_url"]==1
+
+        from app.services.contact_targets import targets
+        for kind in ("email", "phone", "linkedin"):
+            review = targets(db, "AM", "Manaus", kind)
+            assert review["active_unique_cnpjs"] == result["active_unique_cnpjs"]
+            assert review["active_corporate_cnpjs"] == result["active_corporate_cnpjs"]
+            assert review["with_channel"] == result["channels"][kind]["registered"]
+            assert review["with_verified_channel"] == result["channels"][kind]["verified"]
+            assert (review["with_verified_sourced_channel"] ==
+                    result["channels"][kind]["verified_with_source_url"])
+            assert review["missing_channel"] == (
+                review["active_corporate_cnpjs"] - review["with_channel"])
+            assert all(item["company_id"] not in (5, 6, 7, 8)
+                       for item in review["items"])
+        email_targets = targets(db, "AM", "Manaus", "email")
+        assert email_targets["with_channel"] == 1
+        assert any(item["reason"] == "conflicting_sites"
+                   for item in email_targets["items"])
+        assert email_targets["ready_for_site_discovery"] == 0
+
         assert "contato@alpha" not in str(result)
         assert "92999999999" not in str(result)
     client=TestClient(app)
     try:
         assert client.get("/api/contacts/contactability").status_code==401
+        assert client.get("/api/contacts/discovery-targets").status_code==401
         login=client.post("/api/auth/login",json={
             "username":settings.admin_username,"password":"fixture-strong-owner-password"})
         assert login.status_code==200,login.text
         response=client.get("/api/contacts/contactability?uf=AM&city=Manaus")
         assert response.status_code==200,response.text
         assert response.json()["active_corporate_cnpjs"]==4
+        targets_response = client.get(
+            "/api/contacts/discovery-targets?uf=AM&city=Manaus&kind=email")
+        assert targets_response.status_code == 200, targets_response.text
+        assert targets_response.json()["active_corporate_cnpjs"] == 4
+        assert targets_response.json()["with_channel"] == response.json()["channels"]["email"]["registered"]
+        assert all(item["company_id"] not in (5, 6, 7, 8)
+                   for item in targets_response.json()["items"])
+
         assert "contato@alpha" not in response.text
         assert "92999999999" not in response.text
         assert client.get("/api/contacts/contactability?uf=AM&city=%20").status_code==422
