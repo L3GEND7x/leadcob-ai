@@ -26,8 +26,8 @@ def _institutional_contact(kind, value):
         return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) and _role_box(value.split("@", 1)[0]))
     if kind in ("phone", "whatsapp"):
         return bool(
-            re.fullmatch(r"\\+?[0-9() .-]+", value)
-            and 10 <= len(re.sub(r"\\D", "", value)) <= 13
+            re.fullmatch(r"\+?[0-9() .-]+", value)
+            and 10 <= len(re.sub(r"\D", "", value)) <= 13
         )
     if kind in ("linkedin", "instagram", "facebook"):
         try:
