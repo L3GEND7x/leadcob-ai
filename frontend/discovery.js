@@ -79,7 +79,9 @@ $('export-contacts').addEventListener('click',()=>run(async()=>{
  const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download='leadcob-contatos-institucionais.csv';document.body.append(a);a.click();a.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
- return 'CSV gerado com '+Number(response.headers.get('X-Exported-Rows')||0).toLocaleString('pt-BR')+' contatos. Confira status e origem.';
+ const n=Number(response.headers.get('X-Exported-Rows')||0),hasMore=response.headers.get('X-Has-More')==='true';
+ if(hasMore){$('export-offset').value=response.headers.get('X-Next-Offset')||String(Number(offset||0)+n);}
+ return 'CSV gerado com '+n.toLocaleString('pt-BR')+' contatos. '+(hasMore?'Próxima página preparada, sem iniciar nova exportação. ':'Esta consulta não tem outras páginas. ')+'Confira situação e origem.';
 }));
 
 

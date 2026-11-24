@@ -552,9 +552,11 @@ def export_business_contacts(uf: str = Query('AM',pattern='^[A-Za-z]{2}$'),
     from fastapi import Response
     from app.services.contact_export import export_csv
     try:
-        contents, n = export_csv(db,uf=uf,city=city,status=status,limit=limit,offset=offset)
+        contents, n, has_more = export_csv(db,uf=uf,city=city,status=status,limit=limit,offset=offset)
     except ValueError as exc:
         raise HTTPException(422,str(exc)) from exc
     return Response(content=contents,media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition":"attachment; filename=leadcob-contatos-institucionais.csv",
-                             "Cache-Control":"no-store","X-Exported-Rows":str(n)})
+                             "Cache-Control":"no-store","X-Exported-Rows":str(n),
+                             "X-Has-More": "true" if has_more else "false",
+                             "X-Next-Offset": str(offset+n) if has_more else ""})

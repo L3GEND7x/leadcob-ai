@@ -65,6 +65,8 @@ def test_owner_export_is_bounded_private_and_cannot_execute_spreadsheet_formulas
         response=client.get(url)
         assert response.status_code==200,response.text
         assert response.headers["x-exported-rows"]=="2"
+        assert response.headers["x-has-more"]=="false"
+        assert response.headers["x-next-offset"]==""
         assert "attachment" in response.headers["content-disposition"]
         assert response.headers["cache-control"]=="no-store"
         assert response.content.startswith(b"\xef\xbb\xbf")
@@ -88,3 +90,61 @@ def test_owner_export_is_bounded_private_and_cannot_execute_spreadsheet_formulas
         client.close()
         app.dependency_overrides.pop(get_db,None)
         engine.dispose()
+
+
+
+def test_export_pages_only_eligible_records_without_duplicates_and_verified_preferred():
+    """Suppression and source filters must run BEFORE offset/limit, across all pages."""
+    from sqlalchemy.orm import Session
+    from app.services.contact_export import export_csv
+    engine=create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add_all([
+            Company(id=101,cnpj=cnpj(101),name="Alpha Ltda",state="AM",city="Manaus",
+                    registration_status="ATIVA",legal_nature="Sociedade Limitada"),
+            Company(id=102,cnpj=cnpj(101),name="Alpha filial",state="AM",city="Manaus",
+                    registration_status="ATIVA",legal_nature="Sociedade Limitada"),
+            Company(id=103,cnpj=cnpj(103),name="Opt out",state="AM",city="Manaus",
+                    registration_status="ATIVA",legal_nature="Sociedade Limitada"),
+            Company(id=104,cnpj=cnpj(103),name="Mesmo CNPJ suprimido",state="AM",city="Manaus",
+                    registration_status="ATIVA",legal_nature="Sociedade Limitada"),
+            Company(id=105,cnpj="00000000000000",name="CNPJ inválido",state="AM",city="Manaus",
+                    registration_status="ATIVA",legal_nature="Sociedade Limitada"),
+            Company(id=106,cnpj=cnpj(106),name="Beta Ltda",state="AM",city="Manaus",
+                    registration_status="ATIVA",legal_nature="Sociedade Limitada"),
+            Company(id=107,cnpj=cnpj(107),name="Empresário individual",state="AM",city="Manaus",
+                    registration_status="ATIVA",legal_nature="Empresário Individual"),
+        ])
+        db.flush()
+        db.add(Suppression(company_id=104,reason="opt-out da empresa duplicada"))
+        for company,kind,value,status,url in [
+            (101,"email","contato@alpha.example","a_verificar","https://alpha.example"),
+            (102,"email","contato@alpha.example","verificado","https://alpha.example"),
+            (102,"email","financeiro@alpha.example","verificado","https://alpha.example"),
+            (102,"email","joao.silva@alpha.example","verificado","https://alpha.example"),
+            (103,"email","contato@supprimida.example","verificado","https://supprimida.example"),
+            (105,"email","contato@invalid.example","verificado","https://invalid.example"),
+            (106,"email","sac@beta.example","verificado","https://beta.example"),
+            (106,"email","vendas@beta.example","a_verificar",None),
+            (107,"email","contato@individual.example","verificado","https://individual.example"),
+        ]:
+            db.add(BusinessContact(company_id=company,kind=kind,value=value,
+                                   status=status,source_name="Fonte simulada",source_url=url))
+        db.commit()
+        data,n,has_more=export_csv(db,status="todos",limit=100)
+        assert n==3 and has_more is False
+        expected=list(csv.reader(io.StringIO(data.decode("utf-8-sig")),delimiter=";"))[1:]
+        assert {row[5] for row in expected}=={
+            "contato@alpha.example","financeiro@alpha.example","sac@beta.example"}
+        assert next(row for row in expected if row[5]=="contato@alpha.example")[6]=="verificado"
+        paged=[]
+        for index in range(3):
+            data,n,has_more=export_csv(db,status="todos",limit=1,offset=index)
+            assert n==1
+            assert has_more==(index<2)
+            paged.extend(list(csv.reader(io.StringIO(data.decode("utf-8-sig")),delimiter=";"))[1:])
+        assert paged==expected
+        data,n,has_more=export_csv(db,status="todos",limit=1,offset=3)
+        assert n==0 and has_more is False
+    engine.dispose()
