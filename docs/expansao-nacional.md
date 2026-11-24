@@ -29,8 +29,9 @@ contra escrita concorrente por outros processos, nem atualização de empresas j
 existentes, nem marcação de baixadas. Auditar CNPJs legados antes da expansão.
 
 Limite de memória: 150 mil candidatos por execução, configurável até 300 mil.
-Se exceder, falhar sem importar e implementar subdivisão por município/CNAE ou
-staging em disco antes de prosseguir; não simplesmente aumentar o limite.
+Se exceder, falhar sem importar e subdividir com --municipality-code 0255 (exemplo:
+Manaus; usar código da tabela Municipios.zip, não IBGE). Se a subdivisão ainda
+exceder o limite, preparar staging em disco; não simplesmente aumentar o limite.
 Se layout, DV ou identidade jurídica divergirem, o modo estrito recusa a partição.
 Os contadores são relativos ao lote. coverage_complete é sempre false; não significa
 cobertura oficial nem que todos os arquivos Empresas tenham sido processados.
