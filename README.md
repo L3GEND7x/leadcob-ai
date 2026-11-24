@@ -22,9 +22,10 @@ backup local diário e opção de cópia criptografada para armazenamento extern
 consulte [operação online](docs/operacao-online.md). Exige domínio, VPS, senha e configuração própria.
 O assistente OpenAI exige chave de API e teto mensal configurados no servidor.
 
-**Online (Railway):** [instalação gerenciada](docs/operacao-railway.md) com domínio HTTPS fornecido pela plataforma,
-PostgreSQL privado e backup diário criptografado na Backblaze. Exige conta Railway, cobrança configurada e variáveis
-de ambiente próprias; este projeto ainda não foi implantado nessa plataforma.
+**Online (Railway):** [operação gerenciada](docs/operacao-railway.md) com domínio HTTPS, PostgreSQL privado e
+backup criptografado na Backblaze. A implantação depende da configuração de cada ambiente; consulte a Railway,
+os logs de deploy, a versão implantada, as migrações, os backups e o ensaio de restauração para confirmar o estado
+atual. Este README não constitui prova de disponibilidade ou homologação de produção.
 
 ## Módulos (0.5.2)
 Central de comando · Inteligência do dia · Encontrar empresas · Sinais e oportunidades · CRM comercial (ficha,
@@ -65,10 +66,14 @@ Como Claude e ChatGPT trabalham juntos neste repositório: `COLABORACAO.md`.
 Catálogo completo de fontes: `docs/fontes.md`. Histórico e decisões: `CHANGELOG.md`.
 Nenhum dado fictício é criado (os exemplos de demonstração só existem com `DEMO_SEED=true`).
 O acesso local sem senha é limitado ao próprio computador; para publicar use a configuração de produção.
-Esta versão ainda não foi implantada em nuvem nem testada com credenciais reais de OpenAI ou Brave.
+A disponibilidade online, a versão efetivamente implantada e a validade das integrações externas devem ser
+verificadas no ambiente de execução. Testes automatizados e commits não demonstram, isoladamente, funcionamento
+com credenciais reais, entrega de mensagens ou atualização da base de empresas.
 
 ## Segurança e operação
-Login individual e proteção CSRF, HTTPS na configuração de VPS, limite de tentativas de login, migrações versionadas e backup local estão implementados.
+O código inclui login individual e proteção CSRF, configuração HTTPS para VPS, limite de tentativas,
+migrações versionadas e mecanismos de backup. Essas proteções precisam ser verificadas na implantação real,
+especialmente isolamento de contas, segredos, retenção, restauração e ausência de dados sensíveis nos logs.
 A cópia externa criptografada é opcional e depende de bucket, credenciais e ativação no servidor. Antes de usar dados reais continuamente,
 implante a VPS, ative a cópia externa, ensaie uma restauração real e configure monitoramento e retenção no provedor. Capturas externas ainda são síncronas; precisam de fila de trabalhos e agendamento para operação contínua.
 Respeitar termos de uso e controles técnicos das fontes. Priorizar dados de pessoa jurídica e canais
@@ -78,3 +83,20 @@ escala exigem aprovação humana.
 
 ## Contatos empresariais (v0.5.1, complemento)
 A nova aba Contatos sincroniza canais institucionais existentes nas fichas, permite cadastro via API com fonte e revisão de status. Não coleta dados pessoais nem promete localizar contatos inexistentes. Consulte `docs/contatos.md`.
+
+## Estado operacional e limites de evidência (24/11/2026)
+
+Este README contém histórico de versões e contagens antigas: não use os números de testes de 09–10/11 como
+prova do estado atual. Os PRs mais recentes incluem o inventário cadastral, a medição de contactabilidade por
+CNPJ único, a priorização de empresas para pesquisa e a validação formal de canais na exportação CSV.
+Consulte [contactabilidade](docs/contactability-173.md) e a [central de enriquecimento](frontend/discovery.html).
+
+**Diferenças importantes:** CNPJ cadastrado não significa empresa contatável; contato formalmente válido não
+significa que o endereço seja da empresa, que exista consentimento ou que haja interesse comercial; lead
+prioritário não significa contrato provável. A contagem auditada deve ser extraída da base de produção por
+consulta autenticada, com filtros de município, situação, supressão, natureza jurídica e deduplicação.
+
+**Antes de autorizar prospecção em produção:** conferir deploy e schema, executar testes na revisão implantada,
+medir inventário/contactabilidade com dados reais, revisar amostra dos sites e canais institucionais, validar
+base legal e opt-out com responsável por privacidade, realizar piloto humano de baixo volume e registrar resultados.
+Não habilitar disparos automáticos, cobrança real ou APIs pagas sem aprovação explícita e homologação.
