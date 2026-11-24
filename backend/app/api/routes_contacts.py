@@ -509,3 +509,33 @@ def discovery_targets(uf: str = Query('AM',pattern='^[A-Za-z]{2}$'),
 def worker_diagnostics(db: Session = Depends(get_db)):
     from app.services.contact_discovery_queue import diagnostics
     return diagnostics(db)
+
+
+# Free-tier fallback: explicit single-item manual execution by the authenticated owner.
+# It has no unattended loop, no outgoing messages, and never selects another job.
+from threading import Lock
+_manual_contact_step_lock = Lock()
+
+
+@router.post('/discovery-jobs/{job_id}/process-one')
+def manually_process_contact_job(job_id: int, db: Session = Depends(get_db)):
+    from app.db.models import ContactDiscoveryJob
+    from app.services.contact_discovery_queue import run_one, progress
+    if db.get(ContactDiscoveryJob, job_id) is None:
+        raise HTTPException(404, "Lote não encontrado.")
+    if not _manual_contact_step_lock.acquire(blocking=False):
+        raise HTTPException(429, "Uma pesquisa manual já está em andamento nesta instância.")
+    try:
+        try:
+            attempted = run_one(db, job_id=job_id)
+        except Exception:
+            db.rollback()
+            raise HTTPException(503, "Processamento manual indisponível; confira o histórico do lote.")
+    finally:
+        _manual_contact_step_lock.release()
+    db.add(AuditLog(event="discovery_manual_step", entity_type="contact_discovery_job",
+                    entity_id=job_id, details={"attempted":attempted}))
+    db.commit()
+    return {"attempted":attempted, "job":progress(db, job_id),
+            "note":"No máximo uma empresa do lote por acionamento. Pesquisa apenas site cadastrado, "
+                   "sem envio de mensagens. Novos contatos permanecem a verificar."}
