@@ -60,26 +60,7 @@ def export_csv(db, *, uf="AM", city="Manaus", status="verificado",
         nature=str(company.legal_nature or '').strip()
         if not nature or 'individual' in nature.casefold() or nature.startswith(('213','2.1.3')):
             continue
-        if re.search(r'[0-9]{11}\s*
-        value=(contact.value or "").strip()
-        if not value or value.casefold().startswith("anon:"):
-            continue
-        if contact.status!="verificado" and not contact.source_url:
-            continue
-        if contact.kind=="email" and not _role_box(value.split("@",1)[0]):
-            continue
-        # Only contacts marked as institutional in the directory, never names of personnel.
-        key=(cnpj, contact.kind, value.casefold())
-        if key in seen:
-            continue
-        seen.add(key)
-        writer.writerow(tuple(safe_cell(v) for v in (
-            cnpj, company.name, company.state, company.city, contact.kind,
-            value, contact.status, contact.source_name, contact.source_url,
-            contact.checked_at.isoformat() if contact.checked_at else "")))
-        emitted+=1
-    return out.getvalue().encode("utf-8"),emitted
-,company.name or ''):
+        if re.search(r'[0-9]{11}\s*$', company.name or ''):
             continue
         value=(contact.value or "").strip()
         if not value or value.casefold().startswith("anon:"):
