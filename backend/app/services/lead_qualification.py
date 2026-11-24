@@ -83,7 +83,7 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
             active=all(str(x.registration_status or "").strip().upper()=="ATIVA" for x in rows)
             sourced=all(str(x.registry_source or '').strip() and x.registry_updated_at for x in rows)
             corporate=all(_corporate(x.legal_nature) and
-                          not re.search(r'[0-9]{11}\s*
+                          not re.search(r"[0-9]{11}\s*$", str(x.name or "")) for x in rows)
             # Do not combine inconsistent duplicates into a qualified prospect.
             ids=[x.id for x in rows]
             ch=set().union(*(contacts.get(i, ()) for i in ids))
@@ -115,33 +115,3 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
           with_verified_channel=any_verified, without_any_channel=active_sourced-any_channel,
           channels=channel_counts),
         note="Prioridade de revisão, não confirmação de demanda, dívida ou intenção de contratar. Natureza jurídica ausente ou individual requer revisão; evidências exigem URL HTTP(S) formalmente válida. Canais passam por validação formal, não por teste de entrega. Evidências qualificadas já registradas podem estar desatualizadas.")
-, str(x.name or '')) for x in rows)
-            # Do not combine inconsistent duplicates into a qualified prospect.
-            ids=[x.id for x in rows]
-            ch=set().union(*(contacts.get(i, ()) for i in ids))
-            v=set().union(*(verified.get(i, ()) for i in ids))
-            ev=[e for i in ids for e in evidence.get(i, ())]
-            category=tier(active,sourced,profile,ev,ch,v)
-            counts[category]+=1
-            if active and sourced:
-                active_sourced += 1
-                any_channel += int(bool(ch))
-                any_verified += int(bool(v))
-                for k in ch:
-                    channel_counts[k]['available'] += 1
-                for k in v:
-                    channel_counts[k]['verified'] += 1
-            if selected_tier and selected_tier!=category:
-                continue
-            total += 1
-            yield dict(company_id=r.id,cnpj=cnpj,name=r.name,profile=profile,
-                profile_label=SEGMENTS.get(profile,{}).get("label"),tier=category,
-                channels=sorted(ch),verified_channels=sorted(v),
-                evidence_ids=sorted({e[0] for e in ev}),evidence_kinds=sorted({e[1] for e in ev}))
-    items = nsmallest(offset+limit, candidates(), key=lambda x:(order[x["tier"]],-len(x["verified_channels"]),x["company_id"]))
-    return dict(uf=uf,city=city,observed_at=datetime.now(timezone.utc).isoformat(),counts=dict(counts),
-        unique_cnpjs=len(groups),total=total,items=items[offset:offset+limit],
-        contact_coverage=dict(active_sourced_cnpjs=active_sourced, with_any_channel=any_channel,
-          with_verified_channel=any_verified, without_any_channel=active_sourced-any_channel,
-          channels=channel_counts),
-        note="Prioridade de revisão, não confirmação de demanda, dívida ou intenção de contratar. Canais passam por validação formal, não por teste de entrega. Evidências qualificadas já registradas podem estar desatualizadas.")
