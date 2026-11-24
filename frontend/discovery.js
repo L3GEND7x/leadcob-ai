@@ -10,7 +10,7 @@ async function api(path,method='GET',payload){
  const r=await fetch(path,{method,headers,credentials:'same-origin',cache:'no-store',body:payload===undefined?undefined:JSON.stringify(payload)});
  const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Operação recusada ('+r.status+').');return data;
 }
-async function run(fn){if(busy)return;busy=true;notice('Carregando…');try{await fn();notice('Dados atualizados.');}catch(e){notice(e.message);}finally{busy=false;}}
+async function run(fn){if(busy)return;busy=true;notice('Carregando…');try{const message=await fn();notice(typeof message==='string'?message:'Dados atualizados.');}catch(e){notice(e.message);}finally{busy=false;}}
 function btn(text,fn){const b=el('button',text,'secondary');b.type='button';b.addEventListener('click',()=>run(fn));return b;}
 function finished(r){return r.completed+r.failed+r.skipped;}
 async function history(){
@@ -26,11 +26,20 @@ async function detail(){
  $('detail-title').textContent='Lote #'+job;$('metrics').replaceChildren();
  for(const [key,label] of Object.entries(labels)){const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',String(r[key])));$('metrics').append(card);}
  $('progress').max=Math.max(r.total,1);$('progress').value=finished(r);$('summary').textContent=finished(r)+' de '+r.total+' registros finalizados. Concluído não significa contato verificado.';
+ $('process-one').disabled=!r.queued && !r.running;
  $('items').replaceChildren();for(const x of items){const card=el('article',undefined,'record');card.append(el('strong','Empresa #'+x.company_id),el('p',(labels[x.status]||x.status)+' · '+x.attempts+' tentativa(s)'));if(x.result?.status)card.append(el('p',reasons[x.result.status]||x.result.status));if(Number.isInteger(x.result?.added))card.append(el('p','Contatos adicionados nesta tentativa: '+x.result.added));if(Number.isInteger(x.result?.pages_read))card.append(el('p','Páginas lidas: '+x.result.pages_read));$('items').append(card);}
  if(!items.length)$('items').append(el('p','Nenhum registro nesta página.'));
  $('item-prev').disabled=itemOffset===0;$('item-next').disabled=items.length<size;$('item-page').textContent='Página '+(itemOffset/size+1);$('detail').hidden=false;
 }
 $('create').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const raw=new FormData(e.target).get('ids').trim().split(/[\s,;]+/);if(!raw.every(x=>/^\d+$/.test(x)&&Number.isSafeInteger(Number(x))&&Number(x)>0))throw Error('Informe somente IDs inteiros positivos.');const ids=[...new Set(raw.map(Number))];if(ids.length>1000)throw Error('Limite de 1.000 empresas por lote.');const r=await api(base,'POST',{company_ids:ids});e.target.reset();job=r.job_id;offset=itemOffset=0;await history();await detail();});});
+$('process-one').addEventListener('click',()=>{if(job===null)return;
+ if(!confirm('Pesquisar somente 1 empresa deste lote no site cadastrado? Confira previamente a titularidade do site. Nenhuma mensagem será enviada.'))return;
+ run(async()=>{
+  const result=await api(base+'/'+job+'/process-one','POST',{});
+  await detail();await history();await coverage();await loadWorkerDiagnostics();
+  return result.attempted?'Tentativa executada. Confira resultado e contatos antes de usar.':'Sem empresas elegíveis neste lote.';
+ });
+});
 $('refresh').addEventListener('click',()=>run(history));$('refresh-detail').addEventListener('click',()=>run(detail));
 $('prev').addEventListener('click',()=>run(async()=>{offset=Math.max(0,offset-size);await history();}));
 $('next').addEventListener('click',()=>run(async()=>{offset+=size;await history();}));
