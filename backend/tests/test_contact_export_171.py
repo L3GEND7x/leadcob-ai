@@ -49,6 +49,7 @@ def test_owner_export_is_bounded_private_and_cannot_execute_spreadsheet_formulas
             (3,"email","sac@baixada.com","verificado","https://baixada.com"),
             (4,"email","financeiro@empresa4.com","a_verificar","https://empresa4.com"),
             (4,"phone","559232324041","a_verificar",None),
+            (5,"email","financeiro@pessoafisica.com","verificado","https://pessoafisica.com"),
         ]:
             db.add(BusinessContact(company_id=company,kind=kind,value=value,status=status,
                 source_name="Teste institucional",source_url=url))
@@ -74,6 +75,7 @@ def test_owner_export_is_bounded_private_and_cannot_execute_spreadsheet_formulas
         assert "joao.silva" not in response.text
         assert "bloqueada" not in response.text
         assert "baixada" not in response.text
+        assert "pessoafisica" not in response.text
         more=client.get(url+"&status=todos")
         assert more.status_code==200,more.text
         assert more.headers["x-exported-rows"]=="3"
