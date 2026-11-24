@@ -148,3 +148,44 @@ def test_export_pages_only_eligible_records_without_duplicates_and_verified_pref
         data,n,has_more=export_csv(db,status="todos",limit=1,offset=3)
         assert n==0 and has_more is False
     engine.dispose()
+
+
+
+def test_export_blocks_cnpj_with_conflicting_duplicate_status():
+    from sqlalchemy.orm import Session
+    from app.services.contact_export import export_csv
+    engine=create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        for id_,number,status in [
+            (201,201,"ATIVA"),
+            (202,201,"BAIXADA"),  # same CNPJ; contradictory local status
+            (203,203,"ATIVA"),
+            (204,204,"ATIVA"),
+            (205,204,None),       # same CNPJ; unknown local status
+        ]:
+            db.add(Company(id=id_,cnpj=cnpj(number),name=f"Fixture {id_}",
+                state="AM",city="Manaus",registration_status=status,
+                legal_nature="Sociedade Empresária Limitada"))
+        db.flush()
+        for company_id,value in [
+            (201,"contato@conflito.example"),
+            (203,"contato@ativa.example"),
+            (204,"contato@desconhecida.example"),
+        ]:
+            db.add(BusinessContact(company_id=company_id,kind="email",value=value,
+                status="verificado",source_name="Fixture institucional",
+                source_url="https://example.org"))
+        db.commit()
+        data,count,has_more=export_csv(db,uf="AM",city="Manaus",limit=50)
+        csv_rows=list(csv.reader(io.StringIO(data.decode("utf-8-sig")),delimiter=";"))[1:]
+        assert count==1 and has_more is False
+        assert len(csv_rows)==1
+        assert csv_rows[0][0]==cnpj(203)
+        assert csv_rows[0][5]=="contato@ativa.example"
+        assert "conflito.example" not in data.decode("utf-8")
+        assert "desconhecida.example" not in data.decode("utf-8")
+        # Pagination is computed AFTER excluding all CNPJs with conflicting status.
+        data,count,has_more=export_csv(db,uf="AM",city="Manaus",limit=1,offset=1)
+        assert count==0 and has_more is False
+    engine.dispose()

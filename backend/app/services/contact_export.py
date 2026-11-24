@@ -42,6 +42,23 @@ def export_csv(db, *, uf="AM", city="Manaus", status="verificado", limit=1000, o
         blocked_cnpjs.update(clean_cnpj(c) for c in db.scalars(
             select(Company.cnpj).where(Company.id.in_(blocked_ids))) if c)
 
+    # A duplicate local record with BAIXADA, SUSPENSA or unknown status makes
+    # this CNPJ unfit for outreach even when another row is marked ATIVA.
+    # Scope matches the city's inventory; no cross-city inference is made.
+    non_active_keys = set()
+    status_rows = db.execute(select(
+        Company.cnpj, Company.registration_status
+    ).where(
+        func.upper(func.trim(Company.state)) == uf.upper(),
+        func.lower(func.trim(Company.city)) == city.strip().lower(),
+    )).yield_per(500)
+    try:
+        for raw_cnpj, raw_status in status_rows:
+            if str(raw_status or "").strip().upper() != "ATIVA":
+                non_active_keys.add(clean_cnpj(raw_cnpj))
+    finally:
+        status_rows.close()
+
     query = (
         select(Company, BusinessContact)
         .join(BusinessContact, BusinessContact.company_id == Company.id)
@@ -75,7 +92,8 @@ def export_csv(db, *, uf="AM", city="Manaus", status="verificado", limit=1000, o
     try:
         for company, contact in stream:
             cnpj = clean_cnpj(company.cnpj)
-            if not is_valid_cnpj(cnpj) or company.id in blocked_ids or cnpj in blocked_cnpjs:
+            if (not is_valid_cnpj(cnpj) or company.id in blocked_ids or
+                    cnpj in blocked_cnpjs or cnpj in non_active_keys):
                 continue
             nature = str(company.legal_nature or "").strip()
             if not nature or "individual" in nature.casefold() or nature.startswith(("213", "2.1.3")):
