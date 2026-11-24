@@ -144,6 +144,7 @@ def test_owner_discovery_has_explicit_manual_queue_action(viewport):
         expect(page.locator("#process-one")).to_have_count(1)
         expect(page.locator("#detail")).to_be_hidden()
         expect(page.locator("#create")).to_be_visible()
+        expect(page.locator("#export-contacts")).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert not errors,errors
         browser.close()
