@@ -1,0 +1,9 @@
+# PR #173 — CNPJs contatáveis em Manaus
+
+A Central de Enriquecimento passa a apresentar métricas **agregadas por CNPJ único**, não por linha da base ou por endereço de contato. A nova rota autenticada `GET /api/contacts/contactability?uf=AM&city=Manaus` retorna número de CNPJs válidos únicos, ativos, ativos de natureza jurídica empresarial, com site consistente, sem site conflitante, com canal institucional, verificado e verificado com URL de origem. Os canais são e-mail institucional, telefone, WhatsApp explicitamente classificado, LinkedIn, Instagram e Facebook.
+
+A consulta não acessa sites externos, não invoca IA, não faz envios de mensagens, não modifica a base nem expõe nome da empresa, CNPJ ou valor de contato. Remove CNPJs suprimidos inclusive quando o opt-out atinge um dos registros duplicados, exclui naturezas individuais, CNPJ inválido e grupos de situação cadastral conflitante ou inativa. Em e-mails exige caixa de papel institucional (ex.: financeiro@), sem nomes de pessoas. São consultas de leitura em lotes de até 500 registros.
+
+**Limitações:** um registro com status interno `verificado` não equivale a consentimento, validação jurídica, entrega da mensagem ou demanda por serviços. Uma URL de origem formalmente válida não prova que o domínio ainda pertença à empresa. `Com site consistente` refere-se a sites cadastrados, não a confirmação externa de titularidade. As contagens são da **base local**; não representam o universo de CNPJs publicado pela Receita Federal. Exibição de valores reais demanda login do proprietário e clique explícito em **Medir contactabilidade**.
+
+**Validação:** suíte sintética prova distinção CNPJ/linha, dupes, supressões, situações, natureza jurídica individual, e-mail nominal, canais sociais, revisão e origem; teste HTTP confirma que resposta não exige nenhuma credencial externa e que dados identificáveis não são retornados.
