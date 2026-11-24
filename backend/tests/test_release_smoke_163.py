@@ -15,7 +15,13 @@ def fake_response(enabled=False, revision=SHA):
         "commercial_page":200 if enabled else 404,
         "commercial_session":200 if enabled else 404,
         "owner_admin_private":401,"owner_discovery_private":401,"owner_readiness_private":401,
-        "owner_contact_export_private":401,"owner_contactability_private":401}
+        "owner_contact_export_private":401,"owner_contactability_private":401,
+        "owner_registry_coverage_private":401,
+        "owner_registry_qualification_private":401,
+        "owner_contact_coverage_private":401,
+        "owner_discovery_targets_private":401,
+        "owner_worker_diagnostics_private":401,
+        "owner_discovery_jobs_private":401}
     def transport(base,method,path):
         name=next(name for name,m,p in CHECKS if p==path)
         assert method=="GET"
@@ -71,3 +77,21 @@ def test_release_migration_chain_has_single_current_head_and_required_tables():
                  "contact_worker_heartbeats","commercial_invoices",
                  "asaas_sandbox_issue_reservations"):
         assert name in Base.metadata.tables
+
+
+@pytest.mark.parametrize("check,path", [
+    ("owner_registry_coverage_private", "/api/registry/coverage?uf=AM&city=Manaus"),
+    ("owner_registry_qualification_private", "/api/registry/qualification?uf=AM&city=Manaus"),
+    ("owner_contact_coverage_private", "/api/contacts/coverage?uf=AM&city=Manaus"),
+    ("owner_discovery_targets_private", "/api/contacts/discovery-targets?uf=AM&city=Manaus&kind=email"),
+    ("owner_worker_diagnostics_private", "/api/contacts/worker-diagnostics"),
+    ("owner_discovery_jobs_private", "/api/contacts/discovery-jobs?limit=1&offset=0"),
+])
+def test_private_prospecting_routes_fail_smoke_on_anonymous_success(check, path):
+    def leaky(base, method, target):
+        if target == path:
+            return 200, b"private"
+        return fake_response()(base, method, target)
+    result = run("https://example.test", request=leaky)
+    assert not result["checks_passed"]
+    assert check in result["failures"]
