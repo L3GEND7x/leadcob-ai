@@ -84,3 +84,38 @@ def test_pruning_only_removes_expired_worker_heartbeats():
         from app.services.contact_discovery_queue import progress
         assert progress(db, job_id)["queued"] == 1
     engine.dispose()
+
+
+def test_probe_coverage_reports_only_aggregate_manaus_data(monkeypatch, capsys):
+    from app.services import registry_coverage as registry_module
+    from app.api import routes_contacts
+    monkeypatch.setattr(sys, "argv", ["worker", "--probe", "--probe-coverage"])
+    monkeypatch.setattr(worker.settings, "app_env", "development")
+    monkeypatch.setattr(worker.settings, "contact_discovery_worker_enabled", False)
+    monkeypatch.setattr(worker, "SessionLocal", lambda: nullcontext(object()))
+    monkeypatch.setattr(worker, "diagnostics", lambda db: {
+        "counts": {"queued": 0}, "expired_leases": 0,
+        "worker_verified": False, "recent_workers": 0})
+    expected_registry={
+        "company_records": 10, "unique_valid_cnpjs": 8, "active_cnpjs": 7,
+        "duplicate_valid_records": 1, "missing_cnpj_records": 1,
+        "invalid_cnpj_records": 0, "conflicting_status_cnpjs": 0,
+        "with_registry_source_and_date": 7, "with_target_profile": 7,
+        "secret_company_name": "never-output"}
+    def registry(db, uf, city):
+        assert (uf,city)==("AM","Manaus")
+        return expected_registry
+    def contacts(*,uf,city,db):
+        assert (uf,city)==("AM","Manaus")
+        return {"eligible_company_records": 10, "with_any_channel": 3,
+            "with_any_verified_channel": 1,
+            "channels": {"email":{"available":3,"verified":1}},
+            "private_email":"never-output"}
+    monkeypatch.setattr(registry_module, "registry_coverage", registry)
+    monkeypatch.setattr(routes_contacts, "contact_coverage", contacts)
+    worker.main()
+    report=json.loads(capsys.readouterr().out)
+    assert report["manaus_registry"]["unique_valid_cnpjs"] == 8
+    assert report["manaus_contact_coverage"]["with_any_channel"] == 3
+    assert report["collection_attempted"] is False
+    assert "never-output" not in str(report)
