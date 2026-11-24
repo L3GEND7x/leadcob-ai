@@ -56,7 +56,13 @@ def test_cached_profile_and_contact_filters_preserve_qualification(monkeypatch):
         for i,kind,value,status in [(1,"email","financeiro@example.test","verificado"),
                 (1,"email","contato@example.test","a_verificar"),(2,"email","\t ","verificado"),
                 (3,"phone"," ANON:123 ","verificado"),(4,"website","https://example.test","verificado"),
-                (5,"phone","559232324040","invalido"),(6,"phone","559232324041","a_verificar")]:
+                (5,"phone","559232324040","invalido"),(6,"phone","559232324041","a_verificar"),
+                (2,"email","joao.silva@example.test","verificado"),
+                (3,"phone","not-a-phone","verificado"),
+                (4,"linkedin","https://www.linkedin.com/in/individual","verificado"),
+                (7,"linkedin","https://linkedin.com.example.test/company/fixture","verificado"),
+                (8,"whatsapp","123","verificado"),
+                (9,"instagram","https://instagram.com.example.test/fixture","verificado")]:
             db.add(BusinessContact(company_id=i,kind=kind,value=value,status=status,
                 source_name="Fixture",department="geral"))
         db.commit()

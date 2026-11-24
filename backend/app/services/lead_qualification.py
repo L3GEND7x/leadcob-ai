@@ -7,8 +7,9 @@ from sqlalchemy import select, func
 from app.db.models import Company, Opportunity, BusinessContact, Suppression
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
 from app.services.segments import profile_for, SEGMENTS
+from app.services.contact_readiness import DIRECT, _institutional_contact
 
-DIRECT_CHANNELS = {"email", "phone", "whatsapp", "linkedin", "instagram", "facebook"}
+DIRECT_CHANNELS = set(DIRECT)
 
 
 def tier(registry_active, sourced, profile, evidence, channels, verified):
@@ -50,7 +51,7 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
         .where(*city_filter,BusinessContact.status.in_(["verificado","a_verificar"]),
         BusinessContact.kind.in_(DIRECT_CHANNELS),
         BusinessContact.value.isnot(None)).distinct()):
-        if cid in eligible_ids and value and value.strip() and not value.strip().lower().startswith("anon:"):
+        if cid in eligible_ids and _institutional_contact(kind, value):
             contacts[cid].add(kind)
             if status=="verificado":
                 verified[cid].add(kind)
@@ -105,4 +106,4 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
         contact_coverage=dict(active_sourced_cnpjs=active_sourced, with_any_channel=any_channel,
           with_verified_channel=any_verified, without_any_channel=active_sourced-any_channel,
           channels=channel_counts),
-        note="Prioridade de revisão, não confirmação de demanda, dívida ou intenção de contratar. Evidências qualificadas já registradas podem estar desatualizadas.")
+        note="Prioridade de revisão, não confirmação de demanda, dívida ou intenção de contratar. Canais passam por validação formal, não por teste de entrega. Evidências qualificadas já registradas podem estar desatualizadas.")
