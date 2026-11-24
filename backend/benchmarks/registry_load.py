@@ -45,7 +45,7 @@ def run(url, records=53000, repeats=5, workers=4):
                     first=_dv(base,WEIGHTS_1)
                     key=base+first+_dv(base+first,WEIGHTS_2)
                     batch.append(dict(id=i,name=f"Synthetic {i}",cnpj=key,state="AM",city="Manaus",
-                        registration_status="ATIVA",registry_source="Synthetic benchmark",
+                        registration_status="ATIVA",legal_nature="Sociedade Empresária Limitada",registry_source="Synthetic benchmark",
                         registry_updated_at=now,cnae_main="4631100",website="https://example.test"))
                 conn.execute(insert(Company),batch)
             for start in range(1,records+1,1000):
@@ -73,6 +73,7 @@ def run(url, records=53000, repeats=5, workers=4):
                 assert len(value["items"])==50
             else:
                 assert value["active_unique_cnpjs"]==records
+                assert value["active_corporate_cnpjs"]==records
                 assert value["missing_channel"]==records-records//4
                 assert len(value["items"])==50
             return elapsed
