@@ -12,7 +12,7 @@ def test_missing_channel_targets_and_duplicates():
         a = Company(name="Fixture A",cnpj="11222333000181",city="Manaus",state="AM",
                     registration_status="ATIVA",website="https://example.com",legal_nature="Sociedade Empresária Limitada")
         b = Company(name="Fixture duplicate",cnpj=a.cnpj,city="Manaus",state="AM",
-                    registration_status="ATIVA",website=a.website)
+                    registration_status="ATIVA",website=a.website,legal_nature="Sociedade Empresária Limitada")
         db.add_all([a,b]);db.commit()
         r=targets(db,"AM","Manaus","email")
         assert r["active_unique_cnpjs"]==1
