@@ -20,3 +20,9 @@ A consistência entre diferentes downloads presume que os dados não mudaram ent
 O exportador verifica todos os registros do **mesmo município** e não exporta os canais de um CNPJ se qualquer registro duplicado estiver marcado como `BAIXADA`, `SUSPENSA`, `INAPTA` ou tiver situação desconhecida — ainda que outro registro pareça `ATIVA`. Esse cuidado evita transformar uma divergência da base local em um lead aparentemente ativo. Os arquivos não exibem informações dessas empresas em quarentena. O filtro executa somente uma consulta de leitura adicional, iterada em lotes, e preserva a paginação de contatos elegíveis do #172.
 
 A divergência é detectada dentro do município solicitado; divergências entre municípios ou fontes externas ainda exigem reconciliação da base. A situação cadastral armazenada não confirma a atualização real na Receita Federal. Nenhuma coleta externa ou alteração de registros foi feita.
+
+
+## PR #178 — validação de canal antes de exportar
+A validação de formato do CSV agora utiliza o mesmo filtro de contactabilidade e lista de pesquisa para **e-mails de caixa institucional, telefones numéricos e perfis oficiais LinkedIn (página de empresa), Instagram e Facebook**. Links de redes sociais com domínio falso, perfil pessoal LinkedIn ou caminho genérico de compartilhamento ficam fora do CSV mesmo quando seu registro foi marcado "verificado". O canal \`website\` exige URL HTTP(S) pública formalmente válida. Contatos "a verificar" precisam de URL de origem **válida**, e não apenas um campo preenchido.
+
+A verificação de URL é sintática; não consulta a titularidade do domínio nem comprova autorização, atualidade ou entrega. A validação de e-mail e telefone também é apenas formal. O padrão da exportação continua sendo "somente verificados"; não são feitos disparos, coleta externa, migrações ou alterações de status.
