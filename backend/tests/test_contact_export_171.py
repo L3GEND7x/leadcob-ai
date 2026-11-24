@@ -189,3 +189,66 @@ def test_export_blocks_cnpj_with_conflicting_duplicate_status():
         data,count,has_more=export_csv(db,uf="AM",city="Manaus",limit=1,offset=1)
         assert count==0 and has_more is False
     engine.dispose()
+
+
+
+def test_csv_excludes_malformed_phones_fake_social_hosts_and_untraceable_unverified():
+    from sqlalchemy.orm import Session
+    from app.services.contact_export import export_csv
+    from app.services.contact_readiness import contactability
+    from app.services.contact_targets import targets
+
+    engine=create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        company=Company(id=301,cnpj=cnpj(301),name="Empresa corporativa",
+                        state="AM",city="Manaus",registration_status="ATIVA",
+                        legal_nature="Sociedade Empresária Limitada")
+        db.add(company);db.flush()
+        cases=[
+            ("email","contato@corporate.example","verificado","https://corporate.example"),
+            ("email","contato@","verificado","https://corporate.example"),
+            ("phone","559292123456","verificado","https://corporate.example"),
+            ("phone","55ABC9292123456","verificado","https://corporate.example"),
+            ("whatsapp","5592999999999","verificado","https://corporate.example"),
+            ("whatsapp","msg to this phone","verificado","https://corporate.example"),
+            ("linkedin","https://www.linkedin.com/company/corporate","verificado","https://corporate.example"),
+            ("linkedin","https://linkedin.com/in/pessoa","verificado","https://corporate.example"),
+            ("linkedin","https://linkedin.com.evil.test/company/corporate","verificado","https://corporate.example"),
+            ("instagram","https://www.instagram.com/empresa/","verificado","https://corporate.example"),
+            ("instagram","https://www.instagram.com/accounts/login","verificado","https://corporate.example"),
+            ("facebook","https://www.facebook.com/corporate/","a_verificar","not-a-real-source"),
+            ("facebook","https://www.facebook.com/corporate/","a_verificar","https://corporate.example/contact"),
+            ("website","http://localhost:8080/admin","verificado","https://corporate.example"),
+            ("website","https://corporate.example","verificado","https://corporate.example"),
+        ]
+        for kind,value,status,source in cases:
+            db.add(BusinessContact(
+                company_id=company.id,kind=kind,value=value,status=status,
+                source_name="Fixture controlada",source_url=source))
+        db.commit()
+        csv_body,count,has_more=export_csv(db,status="todos",limit=50)
+        rows=list(csv.reader(io.StringIO(csv_body.decode("utf-8-sig")),delimiter=";"))[1:]
+        values={row[5] for row in rows}
+        assert count == len(rows) == 7
+        assert not has_more
+        assert "contato@corporate.example" in values
+        assert "559292123456" in values
+        assert "5592999999999" in values
+        assert "https://www.linkedin.com/company/corporate" in values
+        assert "https://www.instagram.com/empresa/" in values
+        assert "https://www.facebook.com/corporate/" in values
+        assert "https://corporate.example" in values
+        assert "contato@" not in values
+        assert "55ABC9292123456" not in values
+        assert "https://linkedin.com/in/pessoa" not in values
+        assert "https://linkedin.com.evil.test/company/corporate" not in values
+        assert "https://www.instagram.com/accounts/login" not in values
+        assert "http://localhost:8080/admin" not in values
+        report=contactability(db)
+        for kind in ("email","phone","whatsapp","linkedin","instagram","facebook"):
+            target=targets(db,"AM","Manaus",kind)
+            assert target["with_channel"] == report["channels"][kind]["registered"]
+        assert report["channels"]["linkedin"]["registered"] == 1
+        assert report["channels"]["phone"]["registered"] == 1
+    engine.dispose()
