@@ -32,7 +32,7 @@ def progress(db, job_id):
                 **{k:counts.get(k,0) for k in ('queued','running','completed','failed','skipped')})
 
 
-def claim(db, now=None):
+def claim(db, now=None, job_id=None):
     now = now or datetime.now(timezone.utc)
     # Exhausted expired leases become terminal, rather than vanishing forever.
     db.execute(update(Item).where(Item.status=='running', Item.lease_until<=now,
@@ -47,7 +47,10 @@ def claim(db, now=None):
         .execution_options(synchronize_session=False).values(status='failed',claim_token=None,
             lease_until=None,result={'status':'attempts_exhausted'}))
     eligible = or_(Item.status=='queued', and_(Item.status=='running', Item.lease_until<=now))
-    selection = select(Item.id).where(eligible, Item.attempts<MAX_ATTEMPTS).order_by(Item.id).limit(1)
+    selection = select(Item.id).where(eligible, Item.attempts<MAX_ATTEMPTS)
+    if job_id is not None:
+        selection = selection.where(Item.job_id == job_id)
+    selection = selection.order_by(Item.id).limit(1)
     if db.get_bind().dialect.name == 'postgresql':
         selection = selection.with_for_update(skip_locked=True)
     candidate = db.scalar(selection)
@@ -86,9 +89,9 @@ def finish(db, item_id, token, result):
     return changed.rowcount==1
 
 
-def run_one(db):
+def run_one(db, job_id=None):
     from app.api.routes_contacts import discover_batch, BatchDiscoveryIn
-    claimed = claim(db)
+    claimed = claim(db, job_id=job_id)
     if claimed is None:
         return False
     item_id, company_id, token = claimed
