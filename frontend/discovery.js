@@ -67,6 +67,22 @@ async function coverage(){
 }
 $('coverage-form').addEventListener('submit',e=>{e.preventDefault();run(coverage);});
 
+$('export-contacts').addEventListener('click',()=>run(async()=>{
+ const status=$('export-status').value,offset=$('export-offset').value;
+ if(status==='todos'&&!confirm('Incluir contatos A VERIFICAR, com fontes para revisão? Não envie mensagens sem validação prévia e base legal.'))return 'Exportação cancelada.';
+ const params=new URLSearchParams(new FormData($('coverage-form')));
+ if(!params.get('uf'))params.set('uf','AM');
+ if(!params.get('city'))params.set('city','Manaus');
+ params.set('status',status);params.set('limit','5000');params.set('offset',offset||'0');
+ const response=await fetch('/api/contacts/export.csv?'+params,{credentials:'same-origin',cache:'no-store'});
+ if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(typeof data.detail==='string'?data.detail:'Não foi possível exportar os contatos.');}
+ const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='leadcob-contatos-institucionais.csv';document.body.append(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+ return 'CSV gerado com '+Number(response.headers.get('X-Exported-Rows')||0).toLocaleString('pt-BR')+' contatos. Confira status e origem.';
+}));
+
+
 
 async function registryCoverage(){
  const root=$('registry');root.replaceChildren(el('p','Consultando base local…'));
