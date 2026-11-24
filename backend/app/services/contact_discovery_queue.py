@@ -1,7 +1,7 @@
 """Owner queue. One item per worker iteration, no automatic messages."""
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-from sqlalchemy import select, update, or_, and_, func
+from sqlalchemy import select, update, or_, and_, func, true
 from app.db.models import ContactDiscoveryJob as Job, ContactDiscoveryItem as Item, ContactWorkerHeartbeat
 from app.core.security import stamp
 
@@ -34,16 +34,17 @@ def progress(db, job_id):
 
 def claim(db, now=None, job_id=None):
     now = now or datetime.now(timezone.utc)
+    scope = Item.job_id == job_id if job_id is not None else true()
     # Exhausted expired leases become terminal, rather than vanishing forever.
     db.execute(update(Item).where(Item.status=='running', Item.lease_until<=now,
-                                  Item.attempts>=MAX_ATTEMPTS).execution_options(synchronize_session=False).values(status='failed',
+                                  Item.attempts>=MAX_ATTEMPTS, scope).execution_options(synchronize_session=False).values(status='failed',
                                   claim_token=None, lease_until=None, result={'status':'lease_expired'}))
     # Rows without complete claim metadata cannot be safely resumed automatically.
     db.execute(update(Item).where(Item.status=='running',
-        or_(Item.lease_until.is_(None),Item.claim_token.is_(None)))
+        or_(Item.lease_until.is_(None),Item.claim_token.is_(None)), scope)
         .execution_options(synchronize_session=False).values(status='failed',claim_token=None,
             lease_until=None,result={'status':'invalid_claim_metadata'}))
-    db.execute(update(Item).where(Item.status=='queued',Item.attempts>=MAX_ATTEMPTS)
+    db.execute(update(Item).where(Item.status=='queued',Item.attempts>=MAX_ATTEMPTS, scope)
         .execution_options(synchronize_session=False).values(status='failed',claim_token=None,
             lease_until=None,result={'status':'attempts_exhausted'}))
     eligible = or_(Item.status=='queued', and_(Item.status=='running', Item.lease_until<=now))
