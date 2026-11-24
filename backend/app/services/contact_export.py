@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, func
 from app.db.models import Company, BusinessContact, Suppression
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
+from app.collectors.site_contacts import _role_box
 
 CHANNELS={"email","phone","whatsapp","linkedin","instagram","facebook","website"}
 STATUS={"verificado","a_verificar","todos"}
@@ -57,6 +58,10 @@ def export_csv(db, *, uf="AM", city="Manaus", status="verificado",
             continue
         value=(contact.value or "").strip()
         if not value or value.casefold().startswith("anon:"):
+            continue
+        if contact.status!="verificado" and not contact.source_url:
+            continue
+        if contact.kind=="email" and not _role_box(value.split("@",1)[0]):
             continue
         # Only contacts marked as institutional in the directory, never names of personnel.
         key=(cnpj, contact.kind, value.casefold())
