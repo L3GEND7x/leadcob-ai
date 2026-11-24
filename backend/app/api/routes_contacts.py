@@ -11,6 +11,7 @@ from sqlalchemy import or_, func
 from app.db.database import get_db
 from app.db.models import BusinessContact, Company, Suppression, AuditLog, DomainCandidate
 from app.services.contactability import build_map as build_contact_map, department_from_email
+from app.services.contact_suppression import is_suppressed, suppression_keys, sql_cnpj
 
 router = APIRouter(prefix="/api/contacts", tags=["contatos empresariais"])
 KINDS = {"email", "website", "phone", "whatsapp", "linkedin", "instagram", "facebook"}
@@ -25,7 +26,7 @@ class ContactIn(BaseModel):
     source_url: str | None = None
 
 def is_blocked(db, company):
-    return db.query(Suppression).filter(or_(Suppression.company_id == company.id, Suppression.cnpj == company.cnpj) if company.cnpj else Suppression.company_id == company.id).first() is not None
+    return is_suppressed(db, company)
 
 def clean(kind, value):
     v = value.strip()
@@ -72,10 +73,11 @@ def insert(db, company, kind, value, source, url=None, department=None, status="
 @router.get("")
 def list_contacts(q: str = "", kind: str = "", company_id: int | None = None, status: str = "", uf: str = "", city: str = "", limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
     query = db.query(BusinessContact, Company).join(Company, BusinessContact.company_id == Company.id)
-    blocked_ids = [x.company_id for x in db.query(Suppression).filter(Suppression.company_id.isnot(None)).all()]
-    blocked_cnpjs = [x.cnpj for x in db.query(Suppression).filter(Suppression.cnpj.isnot(None)).all()]
-    if blocked_ids: query = query.filter(~Company.id.in_(blocked_ids))
-    if blocked_cnpjs: query = query.filter(or_(Company.cnpj.is_(None), ~Company.cnpj.in_(blocked_cnpjs)))
+    blocked_ids, blocked_cnpjs = suppression_keys(db)
+    if blocked_ids:
+        query = query.filter(~Company.id.in_(blocked_ids))
+    if blocked_cnpjs:
+        query = query.filter(or_(Company.cnpj.is_(None), ~sql_cnpj(Company.cnpj).in_(blocked_cnpjs)))
     if uf: query = query.filter(func.upper(Company.state) == uf.strip().upper())
     if city: query = query.filter(Company.city.ilike(f"%{city.strip()}%"))
     if status in STATUSES: query = query.filter(BusinessContact.status == status)
