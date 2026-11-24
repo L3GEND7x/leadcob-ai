@@ -63,7 +63,7 @@ def apply_individual_policy(records: list[dict], include_individual: bool, stats
 
 def ckpt_args(a) -> dict:
     """Só retoma um checkpoint feito com os mesmos filtros."""
-    return {k: getattr(a, k) for k in ("segments", "uf", "include_branches", "limit", "parts", "local_dir", "include_individual", "skip_companies", "min_size")}
+    return {k: getattr(a, k) for k in ("segments", "uf", "include_branches", "limit", "parts", "local_dir", "include_individual", "skip_companies", "min_size", "municipality_code")}
 
 
 def parse_parts(spec: str) -> list[int]:
@@ -101,7 +101,8 @@ def lookup_table(src: "Source", name: str) -> dict[str, str]:
 
 
 def filter_establishments(rows, segments: list[str] | None, ufs: set[str] | None, only_active: bool = True,
-                          only_headquarters: bool = True, limit: int | None = None, stats: dict | None = None):
+                          only_headquarters: bool = True, limit: int | None = None, stats: dict | None = None,
+                          municipality_codes: set[str] | None = None):
     """Filtra linhas de Estabelecimentos. Função pura: testável sem rede."""
     stats = stats if stats is not None else {}
     emitted = 0
@@ -115,6 +116,8 @@ def filter_establishments(rows, segments: list[str] | None, ufs: set[str] | None
         if only_headquarters and row[E_MATRIZ] != "1":
             continue
         if ufs and row[E_UF] not in ufs:
+            continue
+        if municipality_codes and row[E_MUNICIPIO] not in municipality_codes:
             continue
         profile = profile_for(row[E_CNAE], segments)
         if not profile:
@@ -280,12 +283,15 @@ def main(argv=None):
     ap.add_argument("--release", help="AAAA-MM (padrão: a mais recente)")
     ap.add_argument("--segments", default="", help="restringe a perfis (vazio = TODOS os setores): " + ", ".join(SEGMENTS))
     ap.add_argument("--uf", default="", help="UFs separadas por vírgula (vazio = Brasil)")
+    ap.add_argument("--municipality-code", default="", help="códigos de município da tabela Municipios.zip, separados por vírgula")
     ap.add_argument("--parts", default="0-9", help="arquivos Estabelecimentos/Empresas (ex.: 0-9, 1, 2,5)")
     ap.add_argument("--include-branches", action="store_true", help="incluir filiais (padrão: só matrizes)")
     ap.add_argument("--skip-companies", action="store_true", help="não ler Empresas (sem razão social/porte)")
     ap.add_argument("--min-size", choices=["01", "03", "05"], help="porte mínimo: 01 ME, 03 EPP, 05 demais")
     ap.add_argument("--limit", type=int, help="máximo de empresas (para testes)")
     ap.add_argument("--dry-run", action="store_true", help="não grava no banco")
+    ap.add_argument("--summary-only", action="store_true", help="omite amostras de registros no log de dry-run")
+    ap.add_argument("--strict-layout", action="store_true", help="recusa lote com linhas incompatíveis ou identidade jurídica não resolvida")
     ap.add_argument("--include-individual", action="store_true",
                     help="inclui empresário individual/MEI (natureza 213-5): a razão social contém nome e CPF da pessoa; "
                          "o CPF é removido, mas o nome continua sendo dado pessoal — exige base legal documentada (LGPD)")
@@ -300,6 +306,9 @@ def main(argv=None):
     if unknown:
         ap.error(f"perfis desconhecidos: {unknown}")
     ufs = {u.strip().upper() for u in a.uf.split(",") if u.strip()} or None
+    municipality_codes = {x.strip() for x in a.municipality_code.split(",") if x.strip()} or None
+    if municipality_codes and any(not re.fullmatch(r"[0-9]{4}", x) for x in municipality_codes):
+        ap.error("código de município deve ter quatro dígitos da tabela Receita.")
     t0 = time.time(); stats: dict = {}
     if a.local_dir and not a.release:
         ap.error("--local-dir exige --release (competência AAAA-MM dos arquivos)")
@@ -315,6 +324,8 @@ def main(argv=None):
         cnaes = lookup_table(src, "Cnaes.zip")
         municipios = lookup_table(src, "Municipios.zip")
         naturezas = lookup_table(src, "Naturezas.zip")
+        if municipality_codes and not municipality_codes.issubset(municipios):
+            ap.error("código de município ausente da tabela da competência.")
         found: dict[str, dict] = {}
         done_parts: set[int] = set()
         ckpt = Path(a.checkpoint) if a.checkpoint else None
@@ -332,7 +343,7 @@ def main(argv=None):
                 break
             rows = src.rows(f"Estabelecimentos{part}.zip")
             for rec in filter_establishments(rows, segments, ufs, only_headquarters=not a.include_branches,
-                                             limit=remaining, stats=stats):
+                                             limit=remaining, stats=stats, municipality_codes=municipality_codes):
                 rec["cnae_descricao"] = cnaes.get(rec["cnae_principal"])
                 rec["municipio"] = municipios.get(rec["municipio_codigo"])
                 found[rec["cnpj"]] = rec
@@ -373,9 +384,12 @@ def main(argv=None):
     print(f"Total: {len(records)} empresas · linhas fora do layout: {stats.get('bad_layout', 0)} · "
           f"empresários individuais/MEI {'incluídos (CPF removido)' if a.include_individual else 'excluídos'}: "
           f"{stats.get('individuals', 0)}", flush=True)
+    if a.strict_layout and (stats.get("bad_layout") or stats.get("unresolved_company") or stats.get("invalid_cnpj")):
+        raise SystemExit("Lote exige revisão: layout, CNPJ ou identidade jurídica inconsistente.")
     if a.dry_run:
-        for r in records[:10]:
-            print("  ", r["cnpj"], r.get("razao_social") or r.get("nome_fantasia"), r["cnae_principal"], r.get("municipio"), r["uf"], r.get("porte"))
+        if not a.summary_only:
+            for r in records[:10]:
+                print("  ", r["cnpj"], r.get("razao_social") or r.get("nome_fantasia"), r["cnae_principal"], r.get("municipio"), r["uf"], r.get("porte"))
         return records
     created, updated = save(records, release + (" (arquivos locais)" if a.local_dir else ""))
     print(f"Gravado: {created} novas, {updated} atualizadas", flush=True)
