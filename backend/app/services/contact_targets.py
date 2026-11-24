@@ -1,56 +1,141 @@
-"""Read-only discovery targets; no external search, messaging or inferred contacts."""
-from collections import defaultdict
-from sqlalchemy import select, func
-from app.db.models import Company, BusinessContact, Suppression
-from app.services.cnpj import clean_cnpj, is_valid_cnpj
+"""Read-only discovery targets aligned with the owner contactability report.
 
-KINDS = {"email","phone","whatsapp","linkedin","instagram","facebook","website"}
+No third-party request, contact guessing, or automatic queue creation. Only
+institutional company CNPJs eligible under the same rules as the dashboard
+are offered for manual review.
+"""
+import re
+from collections import defaultdict
+
+from sqlalchemy import select, func
+from app.db.models import Company, BusinessContact
+from app.services.cnpj import clean_cnpj, is_valid_cnpj
+from app.services.contact_readiness import (
+    _corporate, _institutional_contact, _source_url,
+)
+from app.services.contact_suppression import suppression_keys
+
+KINDS = {"email", "phone", "whatsapp", "linkedin", "instagram",
+         "facebook", "website"}
+
+
+def _channel_is_eligible(kind, value):
+    if kind == "website":
+        return _source_url(value)
+    return _institutional_contact(kind, value)
 
 
 def targets(db, uf, city, kind, limit=50, offset=0):
     if kind not in KINDS:
         raise ValueError("Canal inválido.")
-    blocked_ids = set(db.scalars(select(Suppression.company_id).where(Suppression.company_id.isnot(None))))
-    blocked_keys = {clean_cnpj(c) for c in db.scalars(select(Suppression.cnpj).where(Suppression.cnpj.isnot(None)))}
-    blocked_keys.update(clean_cnpj(c) for c in db.scalars(select(Company.cnpj).where(
-        Company.id.in_(select(Suppression.company_id).where(Suppression.company_id.isnot(None))))) if c)
-    scope = (func.upper(func.trim(Company.state)) == uf.strip().upper(),
-             func.lower(func.trim(Company.city)) == city.strip().lower())
+    uf, city = str(uf).strip().upper(), str(city).strip()
+    if not re.fullmatch(r"[A-Z]{2}", uf) or not city or len(city) > 100:
+        raise ValueError("UF ou município inválido.")
+    if not 1 <= limit <= 100 or not 0 <= offset <= 100000:
+        raise ValueError("Paginação inválida.")
+
+    blocked_ids, blocked_keys = suppression_keys(db)
+    scope = (
+        func.upper(func.trim(Company.state)) == uf,
+        func.lower(func.trim(Company.city)) == city.lower(),
+    )
+
+    # Keep all same-CNPJ rows in the location so a conflict can quarantine
+    # the whole CNPJ instead of allowing its apparently active duplicate.
     groups = defaultdict(list)
-    for row in db.execute(select(Company.id,Company.cnpj,Company.name,Company.website,
-        Company.registration_status).where(*scope)):
-        key = clean_cnpj(row.cnpj)
-        if row.id not in blocked_ids and key not in blocked_keys and is_valid_cnpj(key):
+    stream = db.execute(select(
+        Company.id, Company.cnpj, Company.name, Company.website,
+        Company.registration_status, Company.legal_nature,
+    ).where(*scope)).yield_per(500)
+    try:
+        for row in stream:
+            key = clean_cnpj(row.cnpj)
+            if row.id in blocked_ids or key in blocked_keys or not is_valid_cnpj(key):
+                continue
             groups[key].append(row)
-    present, verified = set(), set()
-    for cid,status,value in db.execute(select(BusinessContact.company_id,BusinessContact.status,
-        BusinessContact.value).join(Company,Company.id==BusinessContact.company_id).where(
-        *scope,BusinessContact.kind==kind,BusinessContact.status.in_(["a_verificar","verificado"]))):
-        if value and value.strip() and not value.strip().lower().startswith("anon:"):
-            present.add(cid)
-            if status == "verificado":
-                verified.add(cid)
-    items=[]
-    active=available=checked=0
-    for key,rows in groups.items():
-        if not all(str(x.registration_status or "").strip().upper()=="ATIVA" for x in rows):
+    finally:
+        stream.close()
+
+    active = 0
+    corporate = {}
+    corporate_groups = {}
+    for key, rows in groups.items():
+        if any(str(row.registration_status or "").strip().upper() != "ATIVA"
+               for row in rows):
             continue
         active += 1
-        ids={x.id for x in rows}
-        available += int(bool(ids & present))
-        checked += int(bool(ids & verified))
-        if ids & present:
+        eligible = [
+            row for row in rows
+            if _corporate(row.legal_nature)
+            and not re.search(r"[0-9]{11}\s*$", str(row.name or ""))
+        ]
+        if not eligible:
             continue
-        # Avoid choosing a website when duplicate records disagree.
-        sites={x.website.strip() for x in rows if x.website and x.website.strip()}
-        candidates=sorted((x for x in rows if x.website and x.website.strip()),key=lambda x:x.id)
-        ready=len(sites)==1 and bool(candidates)
-        row=candidates[0] if ready else min(rows,key=lambda x:x.id)
-        items.append(dict(company_id=row.id,cnpj=key,name=row.name,
-                          discovery_ready=ready,reason="registered_site" if ready else
-                          ("conflicting_sites" if len(sites)>1 else "missing_site")))
-    items.sort(key=lambda x:(not x["discovery_ready"],x["company_id"]))
-    return dict(uf=uf,city=city,kind=kind,active_unique_cnpjs=active,with_channel=available,
-        with_verified_channel=checked,missing_channel=len(items),
-        ready_for_site_discovery=sum(x["discovery_ready"] for x in items),
-        items=items[offset:offset+limit],note="Ausência no diretório não comprova ausência externa. Site cadastrado exige revisão de titularidade; coleta depende do worker.")
+        corporate_groups[key] = eligible
+        for row in eligible:
+            corporate[row.id] = key
+
+    present, verified, sourced_verified = set(), set(), set()
+    contact_stream = db.execute(select(
+        BusinessContact.company_id, BusinessContact.status,
+        BusinessContact.value, BusinessContact.source_url,
+    ).join(Company, Company.id == BusinessContact.company_id).where(
+        *scope, BusinessContact.kind == kind,
+        BusinessContact.status.in_(("a_verificar", "verificado")),
+    )).yield_per(500)
+    try:
+        for company_id, status, value, source_url in contact_stream:
+            key = corporate.get(company_id)
+            if key is None or not _channel_is_eligible(kind, value):
+                continue
+            present.add(key)
+            if status == "verificado":
+                verified.add(key)
+                if _source_url(source_url):
+                    sourced_verified.add(key)
+    finally:
+        contact_stream.close()
+
+    items = []
+    for key, rows in corporate_groups.items():
+        if key in present:
+            continue
+        # A site becomes a *candidate* for a manually confirmed fetch only
+        # if all eligible local rows agree and the URL shape is valid.
+        sites = {str(row.website).strip() for row in rows
+                 if row.website and str(row.website).strip()}
+        valid_sites = {site for site in sites if _source_url(site)}
+        ready = len(sites) == 1 and len(valid_sites) == 1
+        candidates = [row for row in rows
+                      if row.website and str(row.website).strip() in valid_sites]
+        row = min(candidates if ready else rows, key=lambda item: item.id)
+        reason = (
+            "registered_site" if ready else
+            "conflicting_sites" if len(sites) > 1 else
+            "invalid_site" if sites else "missing_site"
+        )
+        items.append({
+            "company_id": row.id,
+            "cnpj": key,
+            "name": row.name,
+            "discovery_ready": ready,
+            "reason": reason,
+        })
+    items.sort(key=lambda item: (not item["discovery_ready"], item["company_id"]))
+    return {
+        "uf": uf, "city": city, "kind": kind,
+        "active_unique_cnpjs": active,
+        "active_corporate_cnpjs": len(corporate_groups),
+        "with_channel": len(present),
+        "with_verified_channel": len(verified),
+        "with_verified_sourced_channel": len(sourced_verified),
+        "missing_channel": len(items),
+        "ready_for_site_discovery": sum(item["discovery_ready"] for item in items),
+        "items": items[offset:offset + limit],
+        "note": (
+            "Apenas CNPJs empresariais ativos, não suprimidos, com status consistente "
+            "e canais institucionais válidos na base local. Ausência de registro não "
+            "comprova ausência do canal. Site exige revisão de titularidade; nenhuma "
+            "coleta ocorre nesta consulta."
+        ),
+    }
