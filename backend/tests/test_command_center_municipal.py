@@ -12,7 +12,7 @@ def test_contact_coverage_is_deduplicated_and_unaffected_by_tier_filter():
     with Session(engine) as db:
         common = dict(cnpj="11222333000181", city="Manaus", state="AM",
                       registration_status="ATIVA", registry_source="Fixture",
-                      registry_updated_at=datetime.now(timezone.utc), cnae_main="4631100")
+                      registry_updated_at=datetime.now(timezone.utc), cnae_main="4631100", legal_nature="206-2 Sociedade Empresária Limitada")
         a = Company(name="Fixture A", **common)
         b = Company(name="Fixture duplicate", **common)
         db.add_all([a,b])

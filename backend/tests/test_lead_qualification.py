@@ -51,7 +51,7 @@ def test_cached_profile_and_contact_filters_preserve_qualification(monkeypatch):
             first=_dv(base,WEIGHTS_1)
             db.add(Company(id=i,name=f"Fixture {i}",cnpj=base+first+_dv(base+first,WEIGHTS_2),
                 state="AM",city="Manaus",registration_status="ATIVA",registry_source="Fixture",
-                registry_updated_at=datetime.now(timezone.utc),cnae_main="4631100"))
+                registry_updated_at=datetime.now(timezone.utc),cnae_main="4631100",legal_nature="206-2 Sociedade Empresária Limitada"))
         db.flush()
         for i,kind,value,status in [(1,"email","financeiro@example.test","verificado"),
                 (1,"email","contato@example.test","a_verificar"),(2,"email","\t ","verificado"),
@@ -75,4 +75,44 @@ def test_cached_profile_and_contact_filters_preserve_qualification(monkeypatch):
         assert [x["company_id"] for x in result["items"]]==[1,6]
         assert result["items"][0]["channels"]==["email"]
         assert qualification(db,"AM","Manaus",selected_tier="contactable_prospect",offset=1,limit=1)["items"][0]["company_id"]==6
+    engine.dispose()
+
+
+def test_qualification_requires_corporate_registry_and_public_evidence_url():
+    from datetime import datetime, timezone
+    from app.db.models import BusinessContact, Opportunity
+    from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        for i, nature, url in [
+            (1, "206-2 Sociedade Empresária Limitada", "https://example.test/vagas"),
+            (2, "206-2 Sociedade Empresária Limitada", "http://127.0.0.1/private"),
+            (3, "213-5 Empresário Individual", "https://example.test/vagas"),
+            (4, None, "https://example.test/vagas"),
+            (5, "206-2 Sociedade Empresária Limitada", "not-a-url"),
+        ]:
+            base = f"{i:012d}"
+            first = _dv(base, WEIGHTS_1)
+            db.add(Company(id=i, name=f"Fixture {i}", cnpj=base+first+_dv(base+first, WEIGHTS_2),
+                state="AM", city="Manaus", registration_status="ATIVA", registry_source="Fixture",
+                registry_updated_at=datetime.now(timezone.utc), cnae_main="4631100", legal_nature=nature))
+            db.flush()
+            db.add(BusinessContact(company_id=i, kind="email", value="financeiro@example.test",
+                status="verificado", source_name="Fixture", department="geral"))
+            db.add(Opportunity(company_id=i, kind="hiring", title="Fixture",
+                status="qualified", is_verified=True, source_name="Fixture", source_url=url))
+        db.commit()
+        result = qualification(db, "AM", "Manaus")
+        rows = {x["company_id"]: x for x in result["items"]}
+        assert rows[1]["tier"] == "priority_review"
+        for i in (2, 5):
+            assert rows[i]["tier"] == "contactable_prospect"
+            assert rows[i]["evidence_ids"] == []
+        for i in (3, 4):
+            assert rows[i]["tier"] == "registry_review"
+            assert rows[i]["channels"] == rows[i]["evidence_ids"] == []
+            assert rows[i]["name"] == "Cadastro empresarial a revisar"
+        assert result["contact_coverage"]["active_sourced_cnpjs"] == 3
+        assert result["contact_coverage"]["with_verified_channel"] == 3
     engine.dispose()
