@@ -145,6 +145,11 @@ def test_owner_discovery_has_explicit_manual_queue_action(viewport):
         expect(page.locator("#detail")).to_be_hidden()
         expect(page.locator("#create")).to_be_visible()
         expect(page.locator("#export-contacts")).to_be_visible()
+        expect(page.get_by_role("button",name="Medir contactabilidade")).to_be_visible()
+        page.get_by_role("button",name="Medir contactabilidade").click()
+        expect(page.locator("#contactability-results")).to_contain_text("CNPJs empresariais elegíveis")
+        expect(page.locator("#contactability-results")).to_contain_text("E-mail institucional")
+
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert not errors,errors
         browser.close()
