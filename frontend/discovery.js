@@ -105,6 +105,40 @@ async function registryCoverage(){
 $('registry-form').addEventListener('submit',e=>{e.preventDefault();run(registryCoverage);});
 
 
+
+async function loadContactability(){
+ const root=$('contactability-results');root.replaceChildren(el('p','Conferindo CNPJs válidos e canais institucionais da base local…'));
+ try{
+  const params=new URLSearchParams(new FormData($('contactability-form')));
+  const data=await api('/api/contacts/contactability?'+params);
+  const metrics=el('div',undefined,'metrics');
+  const fields=[
+   ['CNPJs válidos únicos','valid_unique_cnpjs'],
+   ['CNPJs ativos','active_unique_cnpjs'],
+   ['CNPJs empresariais elegíveis','active_corporate_cnpjs'],
+   ['Com telefone, e-mail ou rede','with_any_direct_channel'],
+   ['Com canal verificado','with_verified_direct_channel'],
+   ['Verificado com URL de origem','with_verified_sourced_direct_channel'],
+   ['Sem canal institucional registrado','without_direct_channel'],
+   ['Com site cadastrado consistente','with_consistent_registered_site'],
+   ['Com sites conflitantes','with_conflicting_sites']
+  ];
+  for(const [title,key] of fields){const card=el('div',undefined,'metric');card.append(el('span',title),el('strong',Number(data[key]||0).toLocaleString('pt-BR')));metrics.append(card);}
+  root.replaceChildren(metrics,el('h3','Cobertura por canal'));
+  const name={email:'E-mail institucional',phone:'Telefone',whatsapp:'WhatsApp explícito',
+   linkedin:'LinkedIn',instagram:'Instagram',facebook:'Facebook'};
+  for(const kind of ['email','phone','whatsapp','linkedin','instagram','facebook']){
+   const c=data.channels[kind];
+   root.append(el('p',name[kind]+': '+c.registered.toLocaleString('pt-BR')+
+    ' CNPJs com canal · '+c.verified.toLocaleString('pt-BR')+
+    ' verificados · '+c.verified_with_source_url.toLocaleString('pt-BR')+
+    ' verificados com fonte URL.'));
+  }
+  root.append(el('p',data.note),el('p','Apurado em '+new Date(data.observed_at).toLocaleString('pt-BR')+'. Atualização local não comprova competência da Receita Federal.'));
+ }catch(e){root.replaceChildren(el('p','Contactabilidade indisponível: '+e.message));throw e;}
+}
+$('contactability-form').addEventListener('submit',e=>{e.preventDefault();run(loadContactability);});
+
 const qualificationLabels={priority_review:'Prioridade de revisão',evidence_contact_needed:'Evidência — verificar contato',contactable_prospect:'Prospect com canal',prospect_research:'Pesquisar prospect',registry_review:'Revisar cadastro',special_route:'Tratamento específico'};
 let qualificationOffset=0,qualificationQuery=null;
 async function loadQualification(){
