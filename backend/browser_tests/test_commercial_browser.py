@@ -141,7 +141,7 @@ def test_owner_discovery_has_explicit_manual_queue_action(viewport):
         expect(page.get_by_role("heading",name="Central de comando",exact=True)).to_be_visible()
         page.goto(URL+"/owner/discovery")
         expect(page.get_by_role("heading",name="Central de enriquecimento")).to_be_visible()
-        expect(page.get_by_role("button",name="Processar 1 empresa agora")).to_have_count(1)
+        expect(page.locator("#process-one")).to_have_count(1)
         expect(page.locator("#detail")).to_be_hidden()
         expect(page.locator("#create")).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
