@@ -50,6 +50,7 @@ def main():
     parser.add_argument('--max-items', type=int, default=20)
     parser.add_argument('--continuous', action='store_true')
     parser.add_argument('--probe', action='store_true', help='Read-only queue metrics; no external requests or job claims')
+    parser.add_argument('--probe-coverage', action='store_true', help='With --probe: read-only Manaus registry/contact counts')
     parser.add_argument('--idle-seconds', type=int, default=15)
     parser.add_argument('--interval-seconds', type=int, default=2)
     args = parser.parse_args()
@@ -60,14 +61,28 @@ def main():
     logging.basicConfig(level=logging.INFO)
     if settings.app_env.strip().lower() == 'production':
         check_schema_revision()
+    if args.probe_coverage and not args.probe:
+        parser.error('--probe-coverage requires --probe')
     if args.probe:
         with SessionLocal() as db:
             report = diagnostics(db)
-        print(json.dumps({
-            'counts': report['counts'], 'expired_leases': report['expired_leases'],
-            'worker_verified': report['worker_verified'], 'recent_workers': report['recent_workers'],
-            'collection_attempted': False
-        }, ensure_ascii=False))
+            summary = {
+                'counts': report['counts'], 'expired_leases': report['expired_leases'],
+                'worker_verified': report['worker_verified'], 'recent_workers': report['recent_workers'],
+                'collection_attempted': False
+            }
+            if args.probe_coverage:
+                from app.services.registry_coverage import registry_coverage
+                from app.api.routes_contacts import contact_coverage
+                registry = registry_coverage(db, "AM", "Manaus")
+                channels = contact_coverage(uf="AM", city="Manaus", db=db)
+                summary["manaus_registry"] = {k:registry[k] for k in (
+                    "company_records", "unique_valid_cnpjs", "active_cnpjs",
+                    "duplicate_valid_records", "missing_cnpj_records", "invalid_cnpj_records",
+                    "conflicting_status_cnpjs", "with_registry_source_and_date", "with_target_profile")}
+                summary["manaus_contact_coverage"] = {k:channels[k] for k in (
+                    "eligible_company_records", "with_any_channel", "with_any_verified_channel", "channels")}
+        print(json.dumps(summary, ensure_ascii=False))
         return
     if not settings.contact_discovery_worker_enabled:
         logger.warning('Worker desativado: CONTACT_DISCOVERY_WORKER_ENABLED deve ser true.')
