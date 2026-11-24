@@ -10,7 +10,7 @@ from app.main import app
 from app.core import security
 from app.core.config import settings
 from app.db.database import Base, get_db
-from app.db.models import Company, BusinessContact, AuditLog, Suppression
+from app.db.models import Company, BusinessContact, AuditLog, Suppression, ContactDiscoveryItem
 from app.api import routes_contacts as contacts
 from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
 from app.services.contact_discovery_queue import enqueue, progress
@@ -51,6 +51,9 @@ def test_manual_discovery_requires_owner_csrf_and_processes_one_selected_job(tmp
         db.commit()
         first_job=enqueue(db,[11,12])
         other_job=enqueue(db,[13])
+        other_item=db.query(ContactDiscoveryItem).filter_by(job_id=other_job).one()
+        other_item.attempts=3  # unrelated exhausted row must not be mutated by this job
+        db.commit()
     called=[]
     from app.collectors import site_contacts
     def source(website, max_pages=2):
