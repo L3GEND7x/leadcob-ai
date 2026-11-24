@@ -5,7 +5,7 @@ import re
 from collections import Counter
 from datetime import date
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from app.db.models import Company, Suppression
 from app.jobs import import_cnpj
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
@@ -42,14 +42,16 @@ def insert_missing(db, rows, release, batch_size=500):
     for start in range(0, len(rows), batch_size):
         batch = rows[start:start + batch_size]
         keys = [r["cnpj"] for r in batch]
-        # Stored CNPJs are canonical 14-character identifiers; uppercase covers legacy lowercase.
-        present = set(db.scalars(select(func.upper(Company.cnpj)).where(
-            func.upper(Company.cnpj).in_(keys))))
+        # Canonical identifiers are indexed; also cover wholly lowercase legacy values
+        # without applying a function to every row in the national table.
+        lookup = sorted(set(keys) | {k.lower() for k in keys})
+        present = {clean_cnpj(v) for v in db.scalars(select(Company.cnpj).where(
+            Company.cnpj.in_(lookup)))}
         blocked = {clean_cnpj(v) for v in db.scalars(select(Suppression.cnpj).where(
-            func.upper(Suppression.cnpj).in_(keys)))}
+            Suppression.cnpj.in_(lookup)))}
         blocked.update(clean_cnpj(v) for v in db.scalars(
             select(Company.cnpj).join(Suppression, Suppression.company_id == Company.id)
-            .where(func.upper(Company.cnpj).in_(keys))))
+            .where(Company.cnpj.in_(lookup))))
         try:
             for rec in batch:
                 key = rec["cnpj"]
