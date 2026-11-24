@@ -7,3 +7,9 @@ O dono autenticado pode exportar **até 5.000 registros por solicitação**, com
 **Limites:** O status `verificado` é o controle de revisão do sistema e não comprova a natureza jurídica do contato, titularidade do telefone, consentimento ou base legal para mensagens. Contatos pessoais que tenham sido erroneamente classificados como institucionais podem exigir revisão adicional antes da exportação. Os resultados são dados internos locais; não é censo do mercado. Paginação ocorre antes de filtros Python de supressão e deduplicação, portanto páginas podem ter menos de 5.000 linhas, e duplicações podem atravessar páginas; unir e conferir antes de utilizar. Não usar arquivos exportados para spam.
 
 **Homologação:** teste HTTP com sessão e bloqueio sem autenticação, caracteres maliciosos, situação cadastral, opt-out, limite e canais não verificados. CI e navegador devem passar antes da implantação. Nenhum contato real precisa ser mostrado em logs ou testes sintéticos.
+
+
+## Correção de paginação e rastreabilidade — PR #172
+O offset passa a representar **contatos elegíveis únicos depois dos filtros de CNPJ, situação, supressão, natureza jurídica, origem e caixa institucional**, não uma posição arbitrária nas linhas brutas do banco. A página seguinte é indicada pelo cabeçalho \`X-Has-More\` e \`X-Next-Offset\`, e só é obtida mediante novo clique explícito; a página atual permanece um CSV independente. Duplicatas por CNPJ+tipo+contato são descartadas através de todas as páginas; na presença de registros equivalentes prioriza-se o \`verificado\`. A consulta usa iteração em lotes para limitar memória do processo.
+
+A consistência entre diferentes downloads presume que os dados não mudaram entre as consultas. Se foram inseridos/alterados contatos ou regras de supressão, refaça a exportação desde o início para evitar saltos. Não há snapshot histórico nem garantia de completude de contatos fora da base local.
