@@ -286,6 +286,8 @@ def main(argv=None):
     ap.add_argument("--min-size", choices=["01", "03", "05"], help="porte mínimo: 01 ME, 03 EPP, 05 demais")
     ap.add_argument("--limit", type=int, help="máximo de empresas (para testes)")
     ap.add_argument("--dry-run", action="store_true", help="não grava no banco")
+    ap.add_argument("--summary-only", action="store_true", help="omite amostras de registros no log de dry-run")
+    ap.add_argument("--strict-layout", action="store_true", help="recusa lote com linhas incompatíveis ou identidade jurídica não resolvida")
     ap.add_argument("--include-individual", action="store_true",
                     help="inclui empresário individual/MEI (natureza 213-5): a razão social contém nome e CPF da pessoa; "
                          "o CPF é removido, mas o nome continua sendo dado pessoal — exige base legal documentada (LGPD)")
@@ -373,9 +375,12 @@ def main(argv=None):
     print(f"Total: {len(records)} empresas · linhas fora do layout: {stats.get('bad_layout', 0)} · "
           f"empresários individuais/MEI {'incluídos (CPF removido)' if a.include_individual else 'excluídos'}: "
           f"{stats.get('individuals', 0)}", flush=True)
+    if a.strict_layout and (stats.get("bad_layout") or stats.get("unresolved_company") or stats.get("invalid_cnpj")):
+        raise SystemExit("Lote exige revisão: layout, CNPJ ou identidade jurídica inconsistente.")
     if a.dry_run:
-        for r in records[:10]:
-            print("  ", r["cnpj"], r.get("razao_social") or r.get("nome_fantasia"), r["cnae_principal"], r.get("municipio"), r["uf"], r.get("porte"))
+        if not a.summary_only:
+            for r in records[:10]:
+                print("  ", r["cnpj"], r.get("razao_social") or r.get("nome_fantasia"), r["cnae_principal"], r.get("municipio"), r["uf"], r.get("porte"))
         return records
     created, updated = save(records, release + (" (arquivos locais)" if a.local_dir else ""))
     print(f"Gravado: {created} novas, {updated} atualizadas", flush=True)
