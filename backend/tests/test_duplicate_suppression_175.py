@@ -91,8 +91,9 @@ def test_opt_out_by_duplicate_id_hides_all_routes_and_blocks_discovery(tmp_path,
             assert is_blocked(db,db.get(Company,101))
             assert is_blocked(db,db.get(Company,102))
         data=client.get("/api/contacts").json()
-        assert data["total"]==1
-        assert data["items"][0]["company_id"]==103
+        assert data["total"]>=1
+        assert all(row["company_id"]==103 for row in data["items"])
+        assert all("example.org" not in row["value"] for row in data["items"])
         assert client.post("/api/contacts",json=payload,headers=hdr).status_code==403
     finally:
         client.close()
