@@ -21,6 +21,8 @@ CHECKS = (
     ("owner_admin_private", "GET", "/owner/commercial"),
     ("owner_discovery_private", "GET", "/owner/discovery"),
     ("owner_readiness_private", "GET", "/api/owner/commercial/readiness"),
+    ("owner_contact_export_private", "GET", "/api/contacts/export.csv?uf=AM&city=Manaus"),
+    ("owner_contactability_private", "GET", "/api/contacts/contactability?uf=AM&city=Manaus"),
 )
 
 

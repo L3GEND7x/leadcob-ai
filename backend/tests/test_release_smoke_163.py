@@ -14,7 +14,8 @@ def fake_response(enabled=False, revision=SHA):
     statuses={"health":200,"dashboard":200,"styles":200,"commercial_asset":200,
         "commercial_page":200 if enabled else 404,
         "commercial_session":200 if enabled else 404,
-        "owner_admin_private":401,"owner_discovery_private":401,"owner_readiness_private":401}
+        "owner_admin_private":401,"owner_discovery_private":401,"owner_readiness_private":401,
+        "owner_contact_export_private":401,"owner_contactability_private":401}
     def transport(base,method,path):
         name=next(name for name,m,p in CHECKS if p==path)
         assert method=="GET"
@@ -48,6 +49,11 @@ def test_release_smoke_rejects_stale_build_private_leak_and_bad_url():
             return 200,b"private owner page"
         return status,body
     assert "owner_admin_private" in run("https://example.test",request=leaky)["failures"]
+    for endpoint,check in (("/api/contacts/export.csv?uf=AM&city=Manaus","owner_contact_export_private"),
+                           ("/api/contacts/contactability?uf=AM&city=Manaus","owner_contactability_private")):
+        def leak_contact(base,method,path):
+            return (200,b"private") if path==endpoint else fake_response()(base,method,path)
+        assert check in run("https://example.test",request=leak_contact)["failures"]
     for url in ("http://example.test","https://user:pass@example.test",
                 "file:///etc/passwd","https://example.test/path","https://example.test/?x=1"):
         with pytest.raises(ReleaseSmokeFailed):
