@@ -23,6 +23,12 @@ CHECKS = (
     ("owner_readiness_private", "GET", "/api/owner/commercial/readiness"),
     ("owner_contact_export_private", "GET", "/api/contacts/export.csv?uf=AM&city=Manaus"),
     ("owner_contactability_private", "GET", "/api/contacts/contactability?uf=AM&city=Manaus"),
+    ("owner_registry_coverage_private", "GET", "/api/registry/coverage?uf=AM&city=Manaus"),
+    ("owner_registry_qualification_private", "GET", "/api/registry/qualification?uf=AM&city=Manaus"),
+    ("owner_contact_coverage_private", "GET", "/api/contacts/coverage?uf=AM&city=Manaus"),
+    ("owner_discovery_targets_private", "GET", "/api/contacts/discovery-targets?uf=AM&city=Manaus&kind=email"),
+    ("owner_worker_diagnostics_private", "GET", "/api/contacts/worker-diagnostics"),
+    ("owner_discovery_jobs_private", "GET", "/api/contacts/discovery-jobs?limit=1&offset=0"),
 )
 
 
