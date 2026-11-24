@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select, func
 from app.db.models import Company, BusinessContact, Suppression
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
-from app.collectors.site_contacts import _role_box
+from app.collectors.site_contacts import _role_box, published_channels
+from html import escape
 from app.services.safe_http import validate_url
 
 DIRECT = ("email", "phone", "whatsapp", "linkedin", "instagram", "facebook")
@@ -24,11 +25,20 @@ def _institutional_contact(kind, value):
     if kind == "email":
         return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) and _role_box(value.split("@", 1)[0]))
     if kind in ("phone", "whatsapp"):
-        return 10 <= len(re.sub(r"\D", "", value)) <= 13
+        return bool(
+            re.fullmatch(r"\+?[0-9() .-]+", value)
+            and 10 <= len(re.sub(r"\D", "", value)) <= 13
+        )
     if kind in ("linkedin", "instagram", "facebook"):
         try:
             validate_url(value)
-            return True
+            # This parser already guards against profile look-alike domains,
+            # user-profile LinkedIn URLs and generic social-share links.
+            matches = published_channels(
+                f'<a href="{escape(value, quote=True)}">perfil institucional</a>',
+                value,
+            )
+            return any(link["kind"] == kind for link in matches)
         except ValueError:
             return False
     return False

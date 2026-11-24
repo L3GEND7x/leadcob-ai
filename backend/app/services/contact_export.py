@@ -9,7 +9,7 @@ import re
 from sqlalchemy import select, func, case
 from app.db.models import Company, BusinessContact, Suppression
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
-from app.collectors.site_contacts import _role_box
+from app.services.contact_readiness import _institutional_contact, _source_url
 
 CHANNELS = {"email", "phone", "whatsapp", "linkedin", "instagram", "facebook", "website"}
 STATUS = {"verificado", "a_verificar", "todos"}
@@ -101,11 +101,15 @@ def export_csv(db, *, uf="AM", city="Manaus", status="verificado", limit=1000, o
             if re.search(r"[0-9]{11}\s*$", company.name or ""):
                 continue
             value = (contact.value or "").strip()
-            if not value or value.casefold().startswith("anon:"):
+            # The CSV is an actionable owner artifact: never export a phone
+            # that fails syntax validation or a social profile for a different
+            # platform, even when the stored status says "verificado".
+            if contact.kind == "website":
+                if not _source_url(value):
+                    continue
+            elif not _institutional_contact(contact.kind, value):
                 continue
-            if contact.status != "verificado" and not contact.source_url:
-                continue
-            if contact.kind == "email" and not _role_box(value.split("@", 1)[0]):
+            if contact.status != "verificado" and not _source_url(contact.source_url):
                 continue
             key = (cnpj, contact.kind, value.casefold())
             if key in seen:
