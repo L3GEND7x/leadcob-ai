@@ -175,14 +175,14 @@ async function loadTargets(){
  const qs=new URLSearchParams(targetsQuery);qs.set('limit','50');qs.set('offset',String(targetsOffset));
  const r=await api('/api/contacts/discovery-targets?'+qs);
  const grid=el('div',undefined,'metrics');
- for(const [label,key] of [['CNPJs ativos únicos','active_unique_cnpjs'],['Com canal','with_channel'],['Com canal verificado','with_verified_channel'],['Sem canal','missing_channel'],['Com site para pesquisa','ready_for_site_discovery']]){
+ for(const [label,key] of [['CNPJs ativos únicos','active_unique_cnpjs'],['CNPJs empresariais elegíveis','active_corporate_cnpjs'],['Com canal institucional válido','with_channel'],['Com canal verificado','with_verified_channel'],['Verificado com URL de origem','with_verified_sourced_channel'],['Sem canal válido','missing_channel'],['Com site para pesquisa','ready_for_site_discovery']]){
   const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(r[key]).toLocaleString('pt-BR')));grid.append(card);
  }
  root.replaceChildren(grid,el('p',r.note));
  for(const x of r.items){
  const row=el('article',undefined,'record'),link=el('a','Revisar ficha e canais');
  link.href='/#/empresa/'+encodeURIComponent(x.company_id);
- row.append(el('strong',x.name),el('p',x.cnpj+' · '+({registered_site:'Site cadastrado — revisar',conflicting_sites:'Sites conflitantes',missing_site:'Sem site cadastrado'}[x.reason]||x.reason)),link);
+ row.append(el('strong',x.name),el('p',x.cnpj+' · '+({registered_site:'Site cadastrado — revisar',conflicting_sites:'Sites conflitantes',invalid_site:'URL de site inválida — revisar',missing_site:'Sem site cadastrado'}[x.reason]||x.reason)),link);
  if(x.discovery_ready){const label=el('label','Incluir após revisar titularidade'),check=el('input');check.type='checkbox';check.addEventListener('change',()=>{preparedIds=check.checked?[...new Set([...preparedIds,x.company_id])]:preparedIds.filter(id=>id!==x.company_id);$('targets-prepare').disabled=!preparedIds.length;});label.append(check);row.append(label);}
  root.append(row);
  }
