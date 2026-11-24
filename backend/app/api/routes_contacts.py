@@ -560,3 +560,15 @@ def export_business_contacts(uf: str = Query('AM',pattern='^[A-Za-z]{2}$'),
                              "Cache-Control":"no-store","X-Exported-Rows":str(n),
                              "X-Has-More": "true" if has_more else "false",
                              "X-Next-Offset": str(offset+n) if has_more else ""})
+
+
+@router.get("/contactability")
+def institutional_contactability(uf: str = Query("AM", pattern="^[A-Za-z]{2}$"),
+                                  city: str = Query("Manaus", min_length=1, max_length=100),
+                                  db: Session = Depends(get_db)):
+    """Owner-only aggregate, no CNPJ, company name or contact value in response."""
+    from app.services.contact_readiness import contactability
+    try:
+        return contactability(db, uf, city)
+    except ValueError as exc:
+        raise HTTPException(422, "UF ou município inválidos.") from exc
