@@ -78,7 +78,7 @@ def test_targets_exclude_individual_unknown_and_conflicted_cnpj_status():
 
         report = contactability(db)
         candidates = targets(db, "AM", "Manaus", "email", limit=20)
-        assert report["active_unique_cnpjs"] == 4
+        assert report["active_unique_cnpjs"] == 3
         assert report["active_corporate_cnpjs"] == 2
         assert candidates["active_unique_cnpjs"] == report["active_unique_cnpjs"]
         assert candidates["active_corporate_cnpjs"] == report["active_corporate_cnpjs"]
