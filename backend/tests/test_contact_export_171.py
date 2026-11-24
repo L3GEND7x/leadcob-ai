@@ -217,7 +217,7 @@ def test_csv_excludes_malformed_phones_fake_social_hosts_and_untraceable_unverif
             ("linkedin","https://linkedin.com.evil.test/company/corporate","verificado","https://corporate.example"),
             ("instagram","https://www.instagram.com/empresa/","verificado","https://corporate.example"),
             ("instagram","https://www.instagram.com/accounts/login","verificado","https://corporate.example"),
-            ("facebook","https://www.facebook.com/corporate/","a_verificar","not-a-real-source"),
+            ("facebook","https://www.facebook.com/unverified-no-source/","a_verificar","not-a-real-source"),
             ("facebook","https://www.facebook.com/corporate/","a_verificar","https://corporate.example/contact"),
             ("website","http://localhost:8080/admin","verificado","https://corporate.example"),
             ("website","https://corporate.example","verificado","https://corporate.example"),
