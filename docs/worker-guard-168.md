@@ -3,6 +3,7 @@
 ## Comportamento
 - `CONTACT_DISCOVERY_WORKER_ENABLED=false` por padrão. O worker **não chama sites nem retira itens da fila** quando esta variável está desativada.
 - `python -m app.jobs.discover_contacts --probe`: consulta somente métricas agregadas da fila; nenhuma coleta, criação de contato ou envio de mensagem. A revisão Alembic é checada em produção.
+- `python -m app.jobs.discover_contacts --probe --probe-coverage`: acrescenta contagens agregadas do inventário de CNPJs válidos, ativos e duplicados em Manaus e cobertura de canais empresariais. Não inclui CNPJ individual, nome, e-mail ou telefone. Esses dados não provam abrangência oficial da Receita nem qualificação dos leads.
 - `CONTACT_DISCOVERY_WORKER_ENABLED=true python -m app.jobs.discover_contacts --max-items 3`: até três tentativas por execução sobre lotes **incluídos manualmente pelo proprietário**. Não procura automaticamente todos os CNPJs e não envia mensagens por WhatsApp, e-mail ou outros canais.
 - Retenção dos registros históricos de heartbeat: 30 dias, sem excluir lotes ou resultados.
 - O processamento compartilha a proteção existente de CNPJ, supressão, site institucional já cadastrado, robots.txt, URLs públicas, fontes rastreáveis e contatos não verificados. Consumo real de rede só ocorre após habilitar expressamente o worker.
