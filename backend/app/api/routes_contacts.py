@@ -539,3 +539,22 @@ def manually_process_contact_job(job_id: int, db: Session = Depends(get_db)):
     return {"attempted":attempted, "job":progress(db, job_id),
             "note":"No máximo uma empresa do lote por acionamento. Pesquisa apenas site cadastrado, "
                    "sem envio de mensagens. Novos contatos permanecem a verificar."}
+
+
+@router.get('/export.csv')
+def export_business_contacts(uf: str = Query('AM',pattern='^[A-Za-z]{2}$'),
+                             city: str = Query('Manaus',min_length=1,max_length=100),
+                             status: str = Query('verificado',pattern='^(verificado|a_verificar|todos)$'),
+                             limit: int = Query(1000,ge=1,le=5000),
+                             offset: int = Query(0,ge=0,le=100000),
+                             db: Session = Depends(get_db)):
+    """Explicit owner CSV download; protected by session; no extra credentials or API calls."""
+    from fastapi import Response
+    from app.services.contact_export import export_csv
+    try:
+        contents, n = export_csv(db,uf=uf,city=city,status=status,limit=limit,offset=offset)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return Response(content=contents,media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition":"attachment; filename=leadcob-contatos-institucionais.csv",
+                             "Cache-Control":"no-store","X-Exported-Rows":str(n)})
