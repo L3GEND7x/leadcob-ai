@@ -234,3 +234,15 @@ def test_limit_is_per_scan_not_global_counter():
     rows=[est("11111111","6491300"),est("22222222","6491300")]
     assert len(list(J.filter_establishments(rows,None,{"AM"},limit=2,stats=stats)))==2
     assert stats["matched"]==102
+
+
+def test_municipal_subdivision_and_strict_layout():
+    rows = [est("11111111", "6491300", mun="0255"),
+            est("22222222", "6491300", mun="0256")]
+    selected = list(J.filter_establishments(rows, None, {"AM"}, municipality_codes={"0255"}))
+    assert len(selected) == 1 and selected[0]["municipio_codigo"] == "0255"
+
+
+def test_strict_mode_rejects_incomplete_identity_and_unknown_municipality(fake_rfb):
+    with pytest.raises(SystemExit):
+        J.main(["--uf", "AM", "--parts", "0", "--municipality-code", "9999", "--dry-run"])
