@@ -77,6 +77,7 @@ def main(argv=None):
     parser.add_argument("--part", required=True, type=int, choices=range(10))
     parser.add_argument("--release", required=True, help="Competência fixa AAAA-MM")
     parser.add_argument("--local-dir")
+    parser.add_argument("--municipality-code", help="Código municipal de quatro dígitos da Receita; subdivide a UF")
     parser.add_argument("--max-records", type=int, default=150000)
     parser.add_argument("--apply", action="store_true", help="Grava novas empresas; exige backup e escritor único")
     args = parser.parse_args(argv)
@@ -89,13 +90,20 @@ def main(argv=None):
     opts = ["--uf", args.uf, "--parts", str(args.part), "--release", args.release,
             "--include-branches", "--max-records", str(args.max_records),
             "--dry-run", "--summary-only", "--strict-layout"]
+    if args.municipality_code:
+        if not re.fullmatch(r"[0-9]{4}", args.municipality_code):
+            parser.error("Código municipal inválido.")
+        opts += ["--municipality-code", args.municipality_code]
     if args.local_dir:
         opts += ["--local-dir", args.local_dir]
     if args.apply:
         from app.db.database import check_schema_revision
         check_schema_revision()
     rows = prepare(import_cnpj.main(opts), args.uf)
+    if args.municipality_code and any(r.get("municipio_codigo") != args.municipality_code for r in rows):
+        raise ValueError("Registro fora da subdivisão municipal.")
     report = {"uf": args.uf, "part": args.part, "release": args.release,
+              "municipality_code": args.municipality_code,
               "eligible": len(rows), "mode": "apply" if args.apply else "preview",
               "coverage_complete": False, "profiles": dict(Counter(r["target_profile"] for r in rows))}
     if args.apply:
