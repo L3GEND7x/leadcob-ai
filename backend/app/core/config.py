@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     assistant_monthly_budget_usd: float = 0
     openai_input_usd_per_million: float = 0
     openai_output_usd_per_million: float = 0
+    contact_discovery_worker_enabled: bool = False
     workspace_registry_search_enabled: bool = False
     workspace_assistant_enabled: bool = False
     workspace_assistant_monthly_budget_usd: float = 0

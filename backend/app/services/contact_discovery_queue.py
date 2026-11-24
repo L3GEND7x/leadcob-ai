@@ -138,3 +138,15 @@ def record_heartbeat(db, worker_id, state, attempts_processed, now=None):
     row.state=state
     row.attempts_processed=attempts_processed
     db.commit()
+
+
+def prune_heartbeats(db, now=None, retention_days=30):
+    """Cap historical worker heartbeat storage without touching pending jobs."""
+    from sqlalchemy import delete
+    if not 1 <= retention_days <= 365:
+        raise ValueError("Invalid retention.")
+    now = now or datetime.now(timezone.utc)
+    result = db.execute(delete(ContactWorkerHeartbeat).where(
+        ContactWorkerHeartbeat.observed_at < now - timedelta(days=retention_days)))
+    db.commit()
+    return result.rowcount
