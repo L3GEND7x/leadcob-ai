@@ -35,9 +35,9 @@ def test_owner_export_is_bounded_private_and_cannot_execute_spreadsheet_formulas
     monkeypatch.setattr(settings,"public_url","")
     with Session() as db:
         db.add_all([
-            Company(id=1,cnpj=cnpj(1),name="=2+2 LTDA",state="AM",city="Manaus",registration_status="ATIVA"),
+            Company(id=1,cnpj=cnpj(1),name="=2+2 LTDA",state="AM",city="Manaus",registration_status="ATIVA",legal_nature="Sociedade Empresária Limitada"),
             Company(id=2,cnpj=cnpj(2),name="Empresa suprimida",state="AM",city="Manaus",registration_status="ATIVA"),
-            Company(id=3,cnpj=cnpj(3),name="Empresa baixada",state="AM",city="Manaus",registration_status="BAIXADA"),
+            Company(id=3,cnpj=cnpj(3),name="Empresa baixada",state="AM",city="Manaus",registration_status="BAIXADA",legal_nature="Sociedade Empresária Limitada"),
             Company(id=4,cnpj=cnpj(4),name="Empresa 4",state="AM",city="Manaus",registration_status="ATIVA")])
         db.flush()
         db.add(Suppression(company_id=2,reason="opt-out"))
