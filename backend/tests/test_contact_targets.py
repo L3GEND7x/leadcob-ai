@@ -148,3 +148,38 @@ def test_conflicting_duplicate_identity_quarantines_cnpj_across_reports():
                 assert item["channels"] == []
                 assert item["verified_channels"] == []
     engine.dispose()
+
+
+def test_targets_prioritize_formally_sourced_signals_without_claiming_demand():
+    from app.db.models import Opportunity
+    from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
+
+    def key(seed):
+        base = f"{seed:012d}"
+        first = _dv(base, WEIGHTS_1)
+        return base + first + _dv(base + first, WEIGHTS_2)
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        for n in range(1, 5):
+            db.add(Company(id=n, name=f"Empresa {n}", cnpj=key(n),
+                           state="AM", city="Manaus", registration_status="ATIVA",
+                           legal_nature="Sociedade Empresária Limitada",
+                           website="https://example.com" if n == 1 else None))
+        db.flush()
+        for cid, source, name, verified in [
+            (2, "https://example.com/vaga", "Portal", False),
+            (3, "http://localhost", "Portal", True),
+            (4, "https://example.com/edital", "Portal", True),
+        ]:
+            db.add(Opportunity(company_id=cid, kind="hiring", title="Sinal teste",
+                               source_url=source, source_name=name, status="review",
+                               is_verified=verified))
+        db.commit()
+        result=targets(db,"AM","Manaus","email")
+        assert [x["company_id"] for x in result["items"]] == [4,2,1,3]
+        assert result["with_sourced_signal_missing_channel"] == 2
+        assert result["items"][0]["has_reviewed_signal"] is True
+        assert result["items"][1]["has_reviewed_signal"] is False
+    engine.dispose()
