@@ -101,3 +101,37 @@ def test_labelled_phones_without_inferred_whatsapp():
     assert {(c["kind"],c["value"]) for c in channels}=={
         ("phone","559232324040"),("phone","5592999998888")}
     assert all(c["source_url"]==source for c in channels)
+
+
+def test_robots_applies_before_following_same_host_redirect():
+    requested = []
+
+    def redirect_to_blocked(request):
+        requested.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: LeadCobAI\\nDisallow: /privado\\n")
+        if request.url.path == "/":
+            return httpx.Response(302, headers={"location": "/privado/contato"})
+        raise AssertionError("Blocked destination must not receive a request")
+
+    with httpx.Client(transport=httpx.MockTransport(redirect_to_blocked)) as client:
+        result = discover("https://empresa.example/", client=client)
+    assert requested == ["/robots.txt", "/"]
+    assert result["pages_read"] == [] and result["emails"] == [] and result["channels"] == []
+
+
+def test_allowed_same_host_redirect_still_collects():
+    requested = []
+
+    def redirect_to_allowed(request):
+        requested.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: LeadCobAI\\nDisallow: /privado\\n")
+        if request.url.path == "/":
+            return httpx.Response(302, headers={"location": "/contato"})
+        return httpx.Response(200, text="<p>financeiro@empresa.example</p>", headers={"content-type":"text/html"})
+
+    with httpx.Client(transport=httpx.MockTransport(redirect_to_allowed)) as client:
+        result = discover("https://empresa.example/", client=client)
+    assert requested == ["/robots.txt", "/", "/contato"]
+    assert result["emails"] == [{"email":"financeiro@empresa.example", "source_url":"https://empresa.example/contato"}]

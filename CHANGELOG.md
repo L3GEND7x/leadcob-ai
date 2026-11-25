@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Coleta institucional: respeita robots.txt também antes de seguir redirecionamentos no site, sem acessar páginas proibidas.
+
 
 
 

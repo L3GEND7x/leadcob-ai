@@ -19,7 +19,7 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
-UA = "LeadCobAI/0.5 (contato institucional; respeita robots.txt)"
+UA = "LeadCobAI"
 MAX_BYTES = 400_000
 CONTACT_HINT = re.compile(r"contato|fale|atendimento|sac|sobre|institucional|empresa|ouvidoria|secretari|licitac|compras|financ|transparencia|contact|about", re.I)
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -172,7 +172,8 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
                 notes.append(f"robots.txt não permite ler {url}")
                 continue
             try:
-                resp = bounded_get(client, url, u.hostname, deadline)
+                resp = bounded_get(client, url, u.hostname, deadline,
+                                   allow_url=lambda target: robots.can_fetch(UA, target))
             except (httpx.HTTPError, ValueError) as exc:
                 notes.append(f"{url}: {type(exc).__name__}")
                 continue
