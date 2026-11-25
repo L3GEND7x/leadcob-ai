@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Acessibilidade: o campo de data de cada tarefa na Agenda ganhou nome acessível (axe-core apontava 2 campos sem rótulo).
 - **Encontrar empresas (P1)**: ordenado por pontuação, o total exibido passou a ser o real do filtro. Antes, a busca
   mostrava "de 3.000" mesmo com mais empresas na base, porque só as 3.000 de maior capital social são pontuadas por vez.
   A resposta traz `total` (real), `scored` e `partial`; o paginador mostra os dois números e a nota explica o limite.
