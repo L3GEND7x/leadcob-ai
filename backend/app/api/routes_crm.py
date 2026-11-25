@@ -115,16 +115,21 @@ def search_companies(q: str | None = None, uf: str | None = None, region: str | 
     if region:
         if region not in REGIONS:
             raise HTTPException(400, f"Região inválida. Use: {', '.join(REGIONS)}")
-        ufs = [u for u in REGIONS[region] if not ufs or u in ufs] or REGIONS[region]
-    if ufs:
+        ufs = [u for u in REGIONS[region] if not ufs or u in ufs]
+        # Contradictory filters must not broaden the result to an entire region.
+        query = query.filter(Company.state.in_(ufs))
+    elif ufs:
         query = query.filter(Company.state.in_(ufs))
     if municipio:
         query = query.filter(Company.city.ilike(f"%{municipio}%"))
     if cnae:
         code = re.sub(r"\D", "", cnae)
+        if not 1 <= len(code) <= 7 or not re.fullmatch(r"[0-9.\-/\s]+", cnae):
+            raise HTTPException(422, "CNAE inválido. Informe de 1 a 7 dígitos.")
         cond = Company.cnae_main.like(code + "%")
         if cnae_secundario:
-            cond = cond | Company.cnae_secondary.like(f"%{code}%")
+            # Match prefix at a comma-delimited token boundary, not arbitrary substrings.
+            cond = cond | ("," + func.coalesce(Company.cnae_secondary, "")).like(f"%,{code}%")
         query = query.filter(cond)
     if profile:
         query = query.filter(Company.target_profile == profile)
@@ -156,6 +161,12 @@ def search_companies(q: str | None = None, uf: str | None = None, region: str | 
         query = query.filter(Company.id.in_(sub) if has_signal else ~Company.id.in_(sub))
 
     settings, sup = get_settings(db), _suppressed_ids(db)
+    if not include_suppressed:
+        blocked_cnpjs, blocked_ids = sup
+        if blocked_ids:
+            query = query.filter(~Company.id.in_(blocked_ids))
+        if blocked_cnpjs:
+            query = query.filter(or_(Company.cnpj.is_(None), ~Company.cnpj.in_(blocked_cnpjs)))
     total = query.count()
     if sort in ("score", "recent") or band:
         rows = _with_relations(query.order_by(Company.capital_social.desc().nullslast(), Company.id)).limit(CANDIDATE_LIMIT).all()
