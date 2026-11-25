@@ -138,21 +138,22 @@ def search_gazettes(territory_ids: list[str], terms=None, size: int = PAGE_SIZE,
                 except (QueridoDiarioUnavailable, httpx.HTTPStatusError) as exc:
                     errors.append(f"'{term}' p.{page + 1}: {exc}")
                     break
-                pages_read += 1
-                gazettes = payload.get("gazettes") or []
-                if not isinstance(gazettes, list):
-                    errors.append(f"'{term}' p.{page + 1}: campo gazettes inválido")
+                gazettes = payload.get("gazettes")
+                total = payload.get("total_gazettes")
+                if (not isinstance(gazettes, list)
+                        or any(not isinstance(raw, dict) for raw in gazettes)
+                        or (total is not None and (type(total) is not int or total < 0))):
+                    errors.append(f"'{term}' p.{page + 1}: estrutura de diários inválida")
                     break
+                pages_read += 1
                 for raw in gazettes:
-                    if not isinstance(raw, dict):
-                        continue
                     item = normalize_gazette(raw, term)
                     key = (item.get("territory_id"), item.get("published"), item.get("url"), item.get("object"))
                     if key in seen:
                         continue
                     seen.add(key)
                     records.append(item)
-                total = int(payload.get("total_gazettes") or len(gazettes))
+                total = total if total is not None else len(gazettes)
                 if len(gazettes) < size or (page + 1) * size >= total:
                     break
                 time.sleep(pause)

@@ -51,13 +51,44 @@ def tribunal_for(uf: str) -> str:
     return "tjdft" if uf == "DF" else f"tj{uf.lower()}"
 
 
+def validate_search_response(data):
+    """Reject incomplete Elasticsearch responses before persisting market snapshots."""
+    if not isinstance(data, dict) or "error" in data or data.get("timed_out") is True:
+        raise DataJudError("DataJud retornou resposta inválida ou consulta incompleta.")
+    shards = data.get("_shards")
+    if shards is not None and (
+        not isinstance(shards, dict) or type(shards.get("failed")) is not int
+        or shards["failed"] != 0
+    ):
+        raise DataJudError("DataJud retornou falha em parte dos índices consultados.")
+    hits = data.get("hits")
+    total = hits.get("total") if isinstance(hits, dict) else None
+    if (not isinstance(total, dict) or type(total.get("value")) is not int
+            or total["value"] < 0 or total.get("relation", "eq") != "eq"):
+        raise DataJudError("DataJud não retornou total exato de processos.")
+    aggs = data.get("aggregations")
+    for key in ("classes", "assuntos", "municipios"):
+        group = aggs.get(key) if isinstance(aggs, dict) else None
+        buckets = group.get("buckets") if isinstance(group, dict) else None
+        if not isinstance(buckets, list) or any(
+            not isinstance(b, dict) or type(b.get("key")) not in (int, str)
+            or type(b.get("doc_count")) is not int or not 0 <= b["doc_count"] <= total["value"]
+            for b in buckets
+        ):
+            raise DataJudError("DataJud retornou agregações ausentes ou inválidas.")
+    return data
+
+
 def _post(client: httpx.Client, tribunal: str, body: dict, attempts: int = 5, pause: float = 8.0) -> dict:
     last = None
     for i in range(attempts):
         try:
             r = client.post(f"{BASE_URL}/api_publica_{tribunal}/_search", json=body)
             if r.status_code == 200:
-                return r.json()
+                try:
+                    return validate_search_response(r.json())
+                except ValueError as exc:
+                    raise DataJudError("DataJud retornou JSON inválido.") from exc
             if r.status_code in (401, 403):
                 raise DataJudError("Chave da API pública recusada: atualize DATAJUD_API_KEY "
                                    "(https://datajud-wiki.cnj.jus.br/api-publica/acesso).")

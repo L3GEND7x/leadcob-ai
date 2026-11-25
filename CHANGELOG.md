@@ -2,7 +2,7 @@
 
 ## Não lançado
 
-- Radar de vagas: respostas inválidas de Greenhouse/Lever e paginação Lever truncada não contam como boards consultados com sucesso, evitando encerramento incorreto de oportunidades.
+
 
 - Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.
 
