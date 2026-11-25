@@ -17,9 +17,10 @@ def sql_cnpj(column):
     return cleaned
 
 
-def is_suppressed(db, company):
+def matching_suppression(db, company):
+    """Return the matching opt-out row, including another record of the same CNPJ."""
     if company is None:
-        return True
+        return None
     value = clean_cnpj(company.cnpj)
     predicate = Suppression.company_id == company.id
     if value:
@@ -29,11 +30,16 @@ def is_suppressed(db, company):
             sql_cnpj(Company.cnpj) == value,
         )
     return db.scalar(
-        select(Suppression.id)
+        select(Suppression)
         .outerjoin(Company, Company.id == Suppression.company_id)
         .where(predicate)
+        .order_by(Suppression.id)
         .limit(1)
-    ) is not None
+    )
+
+
+def is_suppressed(db, company):
+    return company is None or matching_suppression(db, company) is not None
 
 
 def suppression_keys(db):

@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- CRM: aplica supressão por CNPJ normalizado a registros duplicados, busca, exportação e bloqueio de abordagem. Não altera histórico nem executa mensagens.
+
 
 
 - Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.
