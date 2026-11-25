@@ -1,6 +1,7 @@
 # Changelog
 
 ## Não lançado
+- Acessibilidade: o campo de data de cada tarefa na Agenda ganhou nome acessível (axe-core apontava 2 campos sem rótulo).
 
 - Assinaturas comerciais administrativas por organização, vigência, cancelamento e consulta privada. Migração inclui catálogo inicial inativo: Essential R$ 27, Professional R$ 117 e Enterprise R$ 397. Sem cobrança automática ou bloqueio por assinatura nesta etapa.
 - Catálogo administrativo de planos versionados em BRL, preços em centavos e limites configuráveis. Nenhum plano ou cobrança criado automaticamente; aplicação de limites depende da assinatura.
