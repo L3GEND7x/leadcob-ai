@@ -684,20 +684,20 @@ async function refreshMarket() {
 }
 
 // ------------------------------------------------------------------ fontes
-const ST_CLS = { 'Integrada e testada': 'integrada', 'Com erro de coleta': 'erro', 'Consultada': 'consultada', 'Indisponível': 'indisponivel', 'Planejada': 'planejada' };
+const ST_CLS = { 'Integrada e testada': 'integrada', 'Integrada — validação histórica': 'consultada', 'Sem coleta registrada': 'consultada', 'Coleta concluída': 'integrada', 'Coleta parcial': 'consultada', 'Coleta em andamento': 'consultada', 'Com erro de coleta': 'erro', 'Consultada': 'consultada', 'Indisponível': 'indisponivel', 'Planejada': 'planejada' };
 async function viewFontes() {
-  const [d, runs] = await Promise.all([api('/sources'), api('/capture/runs').catch(() => [])]);
+  const [d, runs] = await Promise.all([api('/sources'), api('/capture/runs').catch(() => null)]);
   const group = (cat, title) => {
     const items = d.sources.filter(s => s.category === cat);
     return panel(`${title} (${items.length})`, esc(d.legend[cat] || ''), items.map(s => {
       const url = s.url ? (s.url.includes('{') ? s.url.split('{')[0] : s.url) : null;
-      const ds = s.display_status || { integrada: 'Integrada e testada', consultada: 'Consultada', planejada: 'Planejada' }[cat];
-      return `<div class="source"><b>${esc(s.name.slice(0, 2).toUpperCase())}</b><span><strong>${url ? `<a class="src" href="${esc(url)}" target="_blank" rel="noopener">${esc(s.name)}</a>` : esc(s.name)}</strong><small>${esc(s.use || '')}</small><small>${esc(s.status)}</small>${s.last_error ? `<small style="color:var(--bad)">Última falha: ${esc(s.last_error)}</small>` : ''}</span><i class="st ${ST_CLS[ds] || ''}">${esc(ds)}</i></div>`;
+      const ds = s.display_status || { integrada: 'Integrada — validação histórica', consultada: 'Consultada', planejada: 'Planejada' }[cat];
+      return `<div class="source"><b>${esc(s.name.slice(0, 2).toUpperCase())}</b><span><strong>${url ? `<a class="src" href="${esc(url)}" target="_blank" rel="noopener">${esc(s.name)}</a>` : esc(s.name)}</strong><small>${esc(s.use || '')}</small><small>${esc(s.status)}</small>${s.last_run ? `<small>Último lote da família: ${when(s.last_run.started_at)} · ${fmt(s.last_run.records_seen)} lidos · ${fmt(s.last_run.records_created)} novos</small>` : (cat === 'integrada' ? '<small>Sem evidência de lote nesta consulta; validação histórica não confirma operação atual.</small>' : '')}${s.last_error ? `<small style="color:var(--bad)">Ocorrência: ${esc(s.last_error)}</small>` : ''}</span><i class="st ${ST_CLS[ds] || ''}">${esc(ds)}</i></div>`;
     }).join(''));
   };
-  V().innerHTML = head('Proveniência', 'Fontes de dados', `Verificado em ${esc(d.verified_at)}. Só aparece como “Integrada e testada” o conector testado com dados reais; “Com erro de coleta” indica que a última captação daquela fonte falhou.`)
+  V().innerHTML = head('Proveniência', 'Fontes de dados', `Catálogo verificado em ${esc(d.verified_at)}. O status de coleta representa o último lote da família de conectores, não uma verificação individual em tempo real.`)
     + `<div class="stack">${group('integrada', 'Integradas')}${group('consultada', 'Consultadas')}${group('planejada', 'Planejadas (não conectadas)')}
-    ${panel('Últimas captações', '', runs.length ? `<div class="tablebox"><table><thead><tr><th>Fonte</th><th>Início</th><th>Status</th><th>Lidos</th><th>Novos</th><th>Mensagem</th></tr></thead><tbody>${runs.slice(0, 15).map(r => `<tr><td>${esc(r.source_name)}</td><td>${when(r.started_at)}</td><td><span class="badge ${r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(r.status)}</span></td><td>${fmt(r.records_seen)}</td><td>${fmt(r.records_created)}</td><td><small>${esc(r.message)}</small></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nenhuma captação registrada.</p>')}</div>`;
+    ${panel('Últimas captações', '', runs === null ? '<p class="warnbox">Não foi possível consultar o histórico de captações. Tente novamente.</p>' : runs.length ? `<div class="tablebox"><table><thead><tr><th>Fonte</th><th>Início</th><th>Status</th><th>Lidos</th><th>Novos</th><th>Mensagem</th></tr></thead><tbody>${runs.slice(0, 15).map(r => `<tr><td>${esc(r.source_name)}</td><td>${when(r.started_at)}</td><td><span class="badge ${r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(r.status)}</span></td><td>${fmt(r.records_seen)}</td><td>${fmt(r.records_created)}</td><td><small>${esc(r.message)}</small></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nenhuma captação registrada.</p>')}</div>`;
 }
 
 // ------------------------------------------------------------------ configurações, supressão e LGPD
