@@ -12,10 +12,14 @@ import time
 import httpx
 
 from app.jobs.release_smoke import validate_base
+from app.services.safe_http import validate_url
 
 CHECKS = (
     ("command_center", "/api/command-center"),
     ("daily_intelligence", "/api/daily-intelligence?limit=1"),
+    ("radar_opportunities", "/api/opportunities"),
+    ("radar_sources", "/api/sources"),
+    ("radar_capture_runs", "/api/capture/runs"),
     ("company_search", "/api/companies/search?uf=AM&page=1&per_page=1"),
     ("registry", "/api/registry/coverage?uf=AM&city=Manaus"),
     ("qualification", "/api/registry/qualification?uf=AM&city=Manaus&limit=1"),
@@ -32,6 +36,40 @@ def integers(data, keys):
 
 def verify(name, data):
     metrics={}
+    if name=="radar_opportunities":
+        if not isinstance(data,list) or any(not isinstance(row,dict) for row in data):
+            return False,{}
+        valid=0
+        verified_sourced=0
+        for row in data:
+            try:
+                validate_url(str(row.get("source_url") or ""))
+                sourced=bool(str(row.get("source_name") or "").strip()) and str(row.get("source_name")).strip().casefold()!="demonstração"
+            except ValueError:
+                sourced=False
+            valid+=int(sourced)
+            verified_sourced+=int(sourced and row.get("is_verified") is True)
+        return True,{"sample_records":len(data),"with_formal_source":valid,
+                     "verified_with_formal_source":verified_sourced,
+                     "without_formal_source":len(data)-valid,"data_present":bool(data),
+                     "external_source_rechecked":False}
+    if name=="radar_sources":
+        if not isinstance(data,dict) or not isinstance(data.get("sources"),list):
+            return False,{}
+        sources=data["sources"]
+        categories=("integrada","consultada","planejada")
+        if any(not isinstance(row,dict) or row.get("category") not in categories for row in sources):
+            return False,{}
+        return True,{"catalog_entries":len(sources),
+                     **{k:sum(row["category"]==k for row in sources) for k in categories},
+                     "with_logged_run":sum(isinstance(row.get("last_run"),dict) for row in sources),
+                     "external_source_rechecked":False}
+    if name=="radar_capture_runs":
+        states=("running","completed","partial","failed")
+        if not isinstance(data,list) or any(not isinstance(row,dict) or row.get("status") not in states for row in data):
+            return False,{}
+        return True,{"sample_runs":len(data),**{k:sum(row["status"]==k for row in data) for k in states},
+                     "data_present":bool(data),"external_source_rechecked":False}
     if name=="registry":
         keys=("company_records","missing_cnpj_records","invalid_cnpj_records","valid_cnpj_records",
               "unique_valid_cnpjs","duplicate_valid_records","active_cnpjs","inactive_cnpjs",
