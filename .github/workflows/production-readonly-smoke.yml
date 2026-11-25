@@ -1,0 +1,62 @@
+name: Verificação real da produção
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: SHA completo da versão aprovada e implantada
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-readonly-smoke
+  cancel-in-progress: false
+
+jobs:
+  production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirmar versão aprovada na branch main
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Smoke HTTPS anônimo na Railway
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m app.jobs.release_smoke \
+            --base-url https://leadcob-web-production.up.railway.app \
+            --expected-sha "$EXPECTED_SHA" > "$RUNNER_TEMP/production-smoke.json"
+      - name: Publicar diagnóstico agregado
+        if: always()
+        shell: bash
+        run: |
+          if test -s "$RUNNER_TEMP/production-smoke.json"; then
+            echo '### Smoke real da Railway (anônimo)' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat "$RUNNER_TEMP/production-smoke.json" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-smoke-aggregate
+          path: ${{ runner.temp }}/production-smoke.json
+          if-no-files-found: warn
+          retention-days: 14
