@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Painel proprietário: retira Assistente IA do menu, carregamento de script e navegação; redireciona link antigo à Central. Preserva backend e histórico, sem consumo de IA pela interface. Central explica diferença entre base e CRM e carrega indicadores municipais automaticamente na versão instalada.
+
 
 
 - Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.

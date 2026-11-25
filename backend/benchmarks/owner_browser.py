@@ -16,7 +16,7 @@ ROUTES=(
     ("inicio","Central de comando"),("hoje","Cinco empresas para trabalhar hoje"),
     ("empresas","Encontrar empresas"),("contatos","Contatos empresariais"),
     ("crm","CRM comercial"),("cobranca","Inteligência de cobrança"),
-    ("negociacao","Laboratório de negociação"),("assistente","Assistente LeadCob"),
+    ("negociacao","Laboratório de negociação"),
     ("relatorios","Relatórios"),("radar","Radar de mercado"),
 )
 
@@ -33,6 +33,12 @@ def check(browser, width,height,password):
         page.locator('#login-form input[name="username"]').fill("owner-ci")
         page.locator('#login-form input[name="password"]').fill(password)
         page.locator("#login-form button").click()
+        expect(page.locator("#view h1")).to_have_text("Central de comando",timeout=20000)
+        expect(page.locator('#nav a[data-v="assistente"]')).to_have_count(0)
+        expect(page.locator('script[src="/static/assistant.js"]')).to_have_count(0)
+        expect(page.locator("#municipal-command-results")).to_contain_text("CNPJs válidos únicos",timeout=20000)
+        page.evaluate("location.hash = '#/assistente'")
+        page.wait_for_function("location.hash === '#/inicio'")
         expect(page.locator("#view h1")).to_have_text("Central de comando",timeout=20000)
         for route,title in ROUTES:
             if width<600:
