@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.database import get_db
 from app.db.models import Company, Interaction, MarketSnapshot, Opportunity, Setting, Suppression, Task
 from app.services.cnpj import clean_cnpj, format_cnpj, is_valid_cnpj
+from app.services.contact_suppression import suppression_keys, sql_cnpj
 from app.services.crm import (CHANNELS, CLOSED, CONTACTED, INTERACTION_KINDS, MANAUS, NOT_APPROACHED, OUTREACH_KINDS,
                               STAGE_LABEL, STAGES, as_utc, audit, blocked_reason, change_stage, get_settings,
                               last_outreach, log_interaction, stage_of, suppression_for, close_follow_up_tasks)
@@ -61,13 +62,13 @@ def _with_relations(q):
 
 
 def _suppressed_ids(db) -> tuple[set, set]:
-    rows = db.query(Suppression.cnpj, Suppression.company_id).all()
-    return {r[0] for r in rows if r[0]}, {r[1] for r in rows if r[1]}
+    ids, cnpjs = suppression_keys(db)
+    return cnpjs, ids
 
 
 def summarize(c, settings, sup) -> dict:
     sup_cnpj, sup_ids = sup
-    suppressed = (c.cnpj in sup_cnpj) or (c.id in sup_ids)
+    suppressed = (clean_cnpj(c.cnpj) in sup_cnpj) or (c.id in sup_ids)
     sc = score_company(c, settings, suppressed)
     signals = [o for o in c.opportunities if o.status != "discarded"]
     profile = c.target_profile or (profile_for(c.cnae_main) if c.cnae_main else None)
@@ -109,7 +110,7 @@ def search_companies(q: str | None = None, uf: str | None = None, region: str | 
         digits = clean_cnpj(q)
         cond = Company.name.ilike(f"%{q}%") | Company.trade_name.ilike(f"%{q}%")
         if len(digits) >= 8:
-            cond = cond | Company.cnpj.like(f"{digits}%")
+            cond = cond | sql_cnpj(Company.cnpj).like(f"{digits}%")
         query = query.filter(cond)
     ufs = [u.strip().upper() for u in (uf or "").split(",") if u.strip()]
     if region:
@@ -166,7 +167,7 @@ def search_companies(q: str | None = None, uf: str | None = None, region: str | 
         if blocked_ids:
             query = query.filter(~Company.id.in_(blocked_ids))
         if blocked_cnpjs:
-            query = query.filter(or_(Company.cnpj.is_(None), ~Company.cnpj.in_(blocked_cnpjs)))
+            query = query.filter(or_(Company.cnpj.is_(None), ~sql_cnpj(Company.cnpj).in_(blocked_cnpjs)))
     total = query.count()
     if sort in ("score", "recent") or band:
         rows = _with_relations(query.order_by(Company.capital_social.desc().nullslast(), Company.id)).limit(CANDIDATE_LIMIT).all()
@@ -737,7 +738,11 @@ def export_companies(uf: str | None = None, profile: str | None = None, stage: s
     if stage:
         q = q.filter(Company.pipeline_stage == stage)
     sup_cnpj, sup_ids = _suppressed_ids(db)
-    rows = [c for c in q.order_by(Company.name).limit(limit).all() if c.cnpj not in sup_cnpj and c.id not in sup_ids]
+    if sup_ids:
+        q = q.filter(~Company.id.in_(sup_ids))
+    if sup_cnpj:
+        q = q.filter(~sql_cnpj(Company.cnpj).in_(sup_cnpj))
+    rows = q.order_by(Company.name, Company.id).limit(limit).all()
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
     w.writerow(["cnpj", "razao_social", "nome_fantasia", "cnae", "descricao_cnae", "perfil", "municipio", "uf", "porte",
