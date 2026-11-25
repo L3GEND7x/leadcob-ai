@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Radar: DataJud recusa consultas incompletas, totais inexatos, agregações inválidas e JSON inválido antes de salvar fotografias; Querido Diário não considera páginas com estrutura inválida como lidas com sucesso.
+
 - Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.
 
 - Enriquecimento: prioriza empresas sem canal com sinais de fonte formal, incluindo sinais a confirmar, e permite registrar site institucional revisado com fonte e evidência antes de criar a fila. Sem coleta ou mensagens automáticas.

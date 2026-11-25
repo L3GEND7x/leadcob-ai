@@ -71,3 +71,37 @@ def test_auth_error_is_explicit(monkeypatch):
     monkeypatch.setattr(datajud.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(lambda r: httpx.Response(401))))
     with pytest.raises(datajud.DataJudError, match="DATAJUD_API_KEY"):
         datajud.market_map("SP", 1)
+
+
+@pytest.mark.parametrize("changes", [
+    {"timed_out": True},
+    {"_shards": {"failed": 1}},
+    {"hits": {"total": {"value": 1, "relation": "gte"}}},
+    {"hits": {"total": {"value": True}}},
+    {"aggregations": {}},
+    {"aggregations": {"classes": {"buckets": None}}},
+    {"error": "unavailable"},
+])
+def test_datajud_refuses_incomplete_response_before_snapshot(monkeypatch, changes):
+    payload = dict(AGG, **changes)
+    monkeypatch.setattr(datajud, "municipality_names", lambda uf: pytest.fail("incomplete response must stop before secondary lookup"))
+    with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=payload))) as client:
+        with pytest.raises(datajud.DataJudError):
+            datajud.market_map("AM", client=client)
+
+
+def test_datajud_distinguishes_valid_zero_from_unavailable(monkeypatch):
+    payload = {"hits": {"total": {"value": 0, "relation": "eq"}},
+               "aggregations": {k: {"buckets": []} for k in ("classes", "assuntos", "municipios")},
+               "timed_out": False, "_shards": {"failed": 0}}
+    monkeypatch.setattr(datajud, "municipality_names", lambda uf: {})
+    with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=payload))) as client:
+        result = datajud.market_map("AM", client=client)
+    assert result["total_processos"] == 0
+    assert result["classes"] == []
+
+
+def test_datajud_invalid_json_reports_controlled_error():
+    with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, text="not JSON"))) as client:
+        with pytest.raises(datajud.DataJudError, match="JSON inválido"):
+            datajud.market_map("AM", client=client)
