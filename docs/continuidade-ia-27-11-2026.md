@@ -96,3 +96,7 @@ Branch própria, PR pequeno, teste novo para regra nova, CI verde, descrição
 de evidências e limitações. Atualizar CHANGELOG se houver comportamento novo
 e esta fotografia quando a situação mudar. Nunca declarar implementação
 equivalente a homologação, nem aprovação sem logs. Sem commits diretos na main.
+
+## Decisão posterior do proprietário (25/11/2026)
+
+Assistente IA fora da interface e da entrega atual. Esta decisão prevalece sobre as instruções históricas de geração real e de navegação pelo Assistente. Não reintroduzir o menu ou chamar provedor sem autorização. Priorizar contatos reais, Radar, Central, CRM e expansão dimensionada. Backend e histórico preservados.
