@@ -2,7 +2,7 @@
 
 ## Não lançado
 
-- Radar: DataJud recusa consultas incompletas, totais inexatos, agregações inválidas e JSON inválido antes de salvar fotografias; Querido Diário não considera páginas com estrutura inválida como lidas com sucesso.
+
 
 - Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.
 
