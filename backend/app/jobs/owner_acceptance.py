@@ -67,6 +67,13 @@ def verify(name, data):
         ok=isinstance(checks,dict) and all(checks.get(k) is True for k in
                     ("api_key","model","monthly_budget","input_price","output_price")) and data.get("configured") is True
         return ok,{"provider_verified":False,"configured":ok}
+    if name=="commercial_readiness":
+        checks=data.get("configuration_checks") if isinstance(data,dict) else None
+        core=("production_mode","postgresql","https_origin","owner_auth_configured",
+              "demo_disabled","schema_tables_present")
+        ok=isinstance(checks,dict) and all(checks.get(k) is True for k in core)
+        return ok,{"owner_core":ok,"commercial_enabled":isinstance(checks,dict) and checks.get("commercial_auth_enabled") is True,
+                   "commercial_release_ready":False}
     if not isinstance(data,(dict,list)):
         return False,{}
     if name=="command_center":
