@@ -14,7 +14,7 @@ a carga nacional depende de volume, infraestrutura, fonte e aprovação.
    b376f8778dfec2d15d7e7c2740f84c50fbda2b18 em 24/11; redeploy da build antiga
    não atualiza a versão. Selecionar revisão aprovada, preservar variáveis,
    PostgreSQL privado e migrações. Não ligar deploy contínuo sem gate.
-4. Smoke anônimo com SHA esperado:
+4. Smoke anônimo com SHA esperado: executar o workflow manual **Verificação real da produção** na branch main, informando o SHA completo da versão implantada (deve coincidir com HEAD). O artefato agregado não contém credenciais. O workflow **Teste da implantação online** é um teste Docker isolado, não uma verificação da Railway. Alternativamente, executar localmente:
    PYTHONPATH=backend python -m app.jobs.release_smoke --base-url https://leadcob-web-production.up.railway.app --expected-sha SHA
 5. Homologação autenticada pelo proprietário, em terminal local:
    PYTHONPATH=backend python -m app.jobs.owner_acceptance --expected-sha SHA
