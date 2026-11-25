@@ -1,0 +1,32 @@
+name: Browser proprietario desktop e mobile
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  owner-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - name: Run isolated authenticated owner browser acceptance
+        env:
+          DATABASE_URL: sqlite:////tmp/leadcob-owner-browser.sqlite
+          APP_ENV: development
+          DEMO_SEED: 'false'
+          ADMIN_USERNAME: owner-ci
+          PUBLIC_URL: http://127.0.0.1:8765
+        run: PYTHONPATH=backend python backend/benchmarks/owner_browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-browser-synthetic
+          path: /tmp/owner-browser-artifacts/
+          if-no-files-found: warn
