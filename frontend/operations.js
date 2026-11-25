@@ -1,7 +1,7 @@
 async function viewAgenda() {
   const tasks = await api('/tasks?status=all');
   V().innerHTML = head('ACOMPANHAMENTO', 'Agenda comercial', 'Tarefas abertas, atrasadas e concluídas. Datas no horário do seu dispositivo.')
-    + panel('Atividades', '', tasks.map(t => `<article class="task"><div class="main"><strong>${esc(t.title)}</strong><small>${esc(t.company_name || '')} · ${t.done ? 'Concluída' : t.overdue ? 'Atrasada' : 'Pendente'}</small><input type="datetime-local" data-task-date="${t.id}" value="${toLocalInput(t.due_at)}"></div><button data-save-task="${t.id}">Reagendar</button><button data-done-task="${t.id}" data-done="${!t.done}">${t.done ? 'Reabrir' : 'Concluir'}</button></article>`).join('') || '<p>Nenhuma tarefa.</p>');
+    + panel('Atividades', '', tasks.map(t => `<article class="task"><div class="main"><strong>${esc(t.title)}</strong><small>${esc(t.company_name || '')} · ${t.done ? 'Concluída' : t.overdue ? 'Atrasada' : 'Pendente'}</small><input type="datetime-local" data-task-date="${t.id}" aria-label="Nova data da tarefa: ${esc(t.title)}" value="${toLocalInput(t.due_at)}"></div><button data-save-task="${t.id}">Reagendar</button><button data-done-task="${t.id}" data-done="${!t.done}">${t.done ? 'Reabrir' : 'Concluir'}</button></article>`).join('') || '<p>Nenhuma tarefa.</p>');
   document.querySelectorAll('[data-save-task]').forEach(b => b.onclick = async () => {
     await send('/tasks/' + b.dataset.saveTask, 'PATCH', {due_at: fromLocalInput(document.querySelector(`[data-task-date="${b.dataset.saveTask}"]`).value)}); viewAgenda();
   });
