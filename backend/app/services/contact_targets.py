@@ -11,7 +11,7 @@ from sqlalchemy import select, func
 from app.db.models import Company, BusinessContact
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
 from app.services.contact_readiness import (
-    _corporate, _institutional_contact, _source_url,
+    corporate_identity, _institutional_contact, _source_url,
 )
 from app.services.contact_suppression import suppression_keys
 
@@ -64,15 +64,10 @@ def targets(db, uf, city, kind, limit=50, offset=0):
                for row in rows):
             continue
         active += 1
-        eligible = [
-            row for row in rows
-            if _corporate(row.legal_nature)
-            and not re.search(r"[0-9]{11}\s*$", str(row.name or ""))
-        ]
-        if not eligible:
+        if not all(corporate_identity(row.legal_nature, row.name) for row in rows):
             continue
-        corporate_groups[key] = eligible
-        for row in eligible:
+        corporate_groups[key] = rows
+        for row in rows:
             corporate[row.id] = key
 
     present, verified, sourced_verified = set(), set(), set()
@@ -134,7 +129,7 @@ def targets(db, uf, city, kind, limit=50, offset=0):
         "items": items[offset:offset + limit],
         "note": (
             "Apenas CNPJs empresariais ativos, não suprimidos, com status consistente "
-            "e canais institucionais válidos na base local. Ausência de registro não "
+            "e identidade empresarial consistente na base local. Ausência de registro não "
             "comprova ausência do canal. Site exige revisão de titularidade; nenhuma "
             "coleta ocorre nesta consulta."
         ),

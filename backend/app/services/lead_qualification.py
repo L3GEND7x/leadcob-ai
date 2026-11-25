@@ -1,5 +1,4 @@
 """Prioritization, not a prediction of debt or hiring intent."""
-import re
 from collections import Counter, defaultdict
 from heapq import nsmallest
 from functools import lru_cache
@@ -8,7 +7,7 @@ from sqlalchemy import select, func
 from app.db.models import Company, Opportunity, BusinessContact, Suppression
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
 from app.services.segments import profile_for, SEGMENTS
-from app.services.contact_readiness import DIRECT, _institutional_contact, _corporate, _source_url
+from app.services.contact_readiness import DIRECT, _institutional_contact, corporate_identity, _source_url
 
 DIRECT_CHANNELS = set(DIRECT)
 
@@ -82,8 +81,7 @@ def qualification(db, uf, city, limit=50, offset=0, selected_tier=None):
             profile=next(iter(profiles)) if len(profiles)==1 else None
             active=all(str(x.registration_status or "").strip().upper()=="ATIVA" for x in rows)
             sourced=all(str(x.registry_source or '').strip() and x.registry_updated_at for x in rows)
-            corporate=all(_corporate(x.legal_nature) and
-                          not re.search(r"[0-9]{11}\s*$", str(x.name or "")) for x in rows)
+            corporate=all(corporate_identity(x.legal_nature, x.name) for x in rows)
             # Do not combine inconsistent duplicates into a qualified prospect.
             ids=[x.id for x in rows]
             ch=set().union(*(contacts.get(i, ()) for i in ids))

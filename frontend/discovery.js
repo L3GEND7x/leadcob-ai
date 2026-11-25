@@ -55,7 +55,7 @@ async function coverage(){
  try{
  const r=await api('/api/contacts/coverage?'+qs);
  const grid=el('div',undefined,'metrics');
- for(const [label,value] of [['Empresas elegíveis',r.eligible_company_records],['Com canal cadastrado',r.with_any_channel],['Sem canal cadastrado',r.without_registered_channel],['Com canal verificado',r.with_any_verified_channel]]){
+ for(const [label,value] of [['Registros de empresas (não CNPJs únicos)',r.eligible_company_records],['Registros com canal cadastrado',r.with_any_channel],['Registros sem canal cadastrado',r.without_registered_channel],['Registros com canal marcado como verificado',r.with_any_verified_channel]]){
  const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(value).toLocaleString('pt-BR')));grid.append(card);}
  root.replaceChildren(grid);
  for(const [kind,label] of Object.entries(channelNames)){
