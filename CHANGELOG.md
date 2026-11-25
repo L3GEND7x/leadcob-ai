@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Enriquecimento: prioriza empresas sem canal com sinais de fonte formal, incluindo sinais a confirmar, e permite registrar site institucional revisado com fonte e evidência antes de criar a fila. Sem coleta ou mensagens automáticas.
+
 - Fontes de dados: diferencia validação histórica, coleta concluída, parcial, em andamento e falha; mostra o último lote por família, horário e contagens. Falha ao consultar o histórico não é exibida como ausência de captações.
 - **Segurança do login atrás do proxy (P1)**: com `TRUSTED_PROXY_CIDRS` (ex.: `100.64.0.0/10` na Railway), o limite de
   tentativas do painel e das contas comerciais usa o `X-Real-IP` do visitante, e não o endereço do proxy, que muda a cada

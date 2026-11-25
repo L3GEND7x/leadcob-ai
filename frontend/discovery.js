@@ -167,6 +167,23 @@ $('qualification-next').addEventListener('click',()=>run(async()=>{qualification
 
 
 let targetsQuery=null,targetsOffset=0,preparedIds=[];
+function reviewedSiteForm(item){
+ const form=el('form'),website=el('input'),source=el('input'),evidence=el('textarea'),reviewed=el('input');
+ website.type='url';website.required=true;website.maxLength=500;website.placeholder='https://site-oficial.com.br';
+ source.type='url';source.required=true;source.maxLength=1000;source.placeholder='https://fonte-publica.com.br/pagina';
+ evidence.required=true;evidence.minLength=12;evidence.maxLength=1000;evidence.placeholder='Como o site foi vinculado ao CNPJ?';
+ reviewed.type='checkbox';reviewed.required=true;
+ for(const [title,input] of [['Site institucional',website],['URL da fonte',source],['Evidência de titularidade',evidence],['Conferi a titularidade em fonte pública',reviewed]]){
+  const label=el('label',title);label.append(input);form.append(label);
+ }
+ const submit=el('button','Registrar site revisado','secondary');submit.type='submit';form.append(submit);
+ form.addEventListener('submit',e=>{e.preventDefault();if(busy)return;run(async()=>{
+  await api('/api/contacts/reviewed-site/'+encodeURIComponent(item.company_id),'POST',{website:website.value,source_url:source.value,evidence:evidence.value,ownership_reviewed:reviewed.checked});
+  await loadTargets();return 'Site registrado. Selecione a empresa para preparar a fila; canais ainda não coletados.';
+ });});
+ return form;
+}
+
 async function loadTargets(){
  const root=$('targets-results');preparedIds=[];
  $('targets-prev').disabled=$('targets-next').disabled=$('targets-prepare').disabled=true;
@@ -175,7 +192,7 @@ async function loadTargets(){
  const qs=new URLSearchParams(targetsQuery);qs.set('limit','50');qs.set('offset',String(targetsOffset));
  const r=await api('/api/contacts/discovery-targets?'+qs);
  const grid=el('div',undefined,'metrics');
- for(const [label,key] of [['CNPJs ativos únicos','active_unique_cnpjs'],['CNPJs empresariais elegíveis','active_corporate_cnpjs'],['Com canal institucional válido','with_channel'],['Com canal verificado','with_verified_channel'],['Verificado com URL de origem','with_verified_sourced_channel'],['Sem canal válido','missing_channel'],['Com site para pesquisa','ready_for_site_discovery']]){
+ for(const [label,key] of [['CNPJs ativos únicos','active_unique_cnpjs'],['CNPJs empresariais elegíveis','active_corporate_cnpjs'],['Com canal institucional válido','with_channel'],['Com canal verificado','with_verified_channel'],['Verificado com URL de origem','with_verified_sourced_channel'],['Sem canal válido','missing_channel'],['Com site para pesquisa','ready_for_site_discovery'],['Com sinal e canal ausente','with_sourced_signal_missing_channel']]){
   const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(r[key]).toLocaleString('pt-BR')));grid.append(card);
  }
  root.replaceChildren(grid,el('p',r.note));
@@ -183,6 +200,11 @@ async function loadTargets(){
  const row=el('article',undefined,'record'),link=el('a','Revisar ficha e canais');
  link.href='/#/empresa/'+encodeURIComponent(x.company_id);
  row.append(el('strong',x.name),el('p',x.cnpj+' · '+({registered_site:'Site cadastrado — revisar',conflicting_sites:'Sites conflitantes',invalid_site:'URL de site inválida — revisar',missing_site:'Sem site cadastrado'}[x.reason]||x.reason)),link);
+ if(x.has_sourced_signal)row.append(el('p',x.has_reviewed_signal?'Sinal revisado com fonte registrada — priorizar pesquisa':'Sinal com fonte registrada — ainda a confirmar'));
+ if(x.reason==='missing_site'){
+  const search=el('a','Pesquisar site oficial (busca externa)');search.href='https://duckduckgo.com/?'+new URLSearchParams({q:'"'+x.name+'" "'+x.cnpj+'" site oficial contato'}).toString();search.target='_blank';search.rel='noopener noreferrer';
+  const details=el('details');details.append(el('summary','Registrar site após conferir'),reviewedSiteForm(x));row.append(search,details);
+ }
  if(x.discovery_ready){const label=el('label','Incluir após revisar titularidade'),check=el('input');check.type='checkbox';check.addEventListener('change',()=>{preparedIds=check.checked?[...new Set([...preparedIds,x.company_id])]:preparedIds.filter(id=>id!==x.company_id);$('targets-prepare').disabled=!preparedIds.length;});label.append(check);row.append(label);}
  root.append(row);
  }
