@@ -93,3 +93,19 @@ O script confere a configuração antes do dump e para com `ERRO de configuraç�
 `RESTIC_PASSWORD` é independente da chave B2. Não troque essa senha depois do primeiro backup: sem ela os snapshots não podem ser restaurados.
 
 O backup remoto não apaga snapshots automaticamente. Planeje retenção e proteção contra exclusão com o provedor, depois de ensaiar a compatibilidade com Restic. Não ative retenção padrão/Object Lock às cegas: o Restic precisa gerenciar arquivos de bloqueio. Os backups nativos de volumes da Railway não substituem essa cópia externa, pois a restauração deles é limitada ao mesmo projeto e ambiente.
+
+## Limite de tentativas de login atrás do proxy da Railway
+
+Na Railway, o app vê como origem o endereço interno do proxy (`100.64.0.x`), que muda a cada requisição. Por isso o
+limite de 5 tentativas erradas por visitante (painel da proprietária e contas comerciais) ficava espalhado entre
+vários endereços. A Railway documenta o cabeçalho `X-Real-IP` com o IP do cliente (Specs & Limits da rede pública).
+
+1. No serviço `leadcob-web`, em **Variables**, crie `TRUSTED_PROXY_CIDRS=100.64.0.0/10` e aplique o deploy.
+   Sem essa variável (padrão), nenhum cabeçalho é aceito e nada muda.
+2. Teste com um **usuário inexistente** (para não bloquear a sua conta): na tela de login, digite um usuário qualquer,
+   como `teste-bloqueio`, e uma senha errada 6 vezes. A 6ª deve responder "Muitas tentativas. Aguarde 15 minutos.".
+   Depois entre normalmente com o seu usuário: ele não pode estar bloqueado.
+3. Se a 6ª tentativa não for bloqueada, remova a variável e avise: o cabeçalho não chegou como esperado.
+
+Mesmo que um visitante consiga forjar `X-Real-IP`, a proteção não fica pior do que sem a variável: hoje as tentativas já
+se espalham entre os endereços do proxy. Conexões que não vêm da rede listada nunca usam o cabeçalho.

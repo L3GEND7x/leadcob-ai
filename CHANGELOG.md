@@ -1,6 +1,9 @@
 # Changelog
 
 ## Não lançado
+- **Segurança do login atrás do proxy (P1)**: com `TRUSTED_PROXY_CIDRS` (ex.: `100.64.0.0/10` na Railway), o limite de
+  tentativas do painel e das contas comerciais usa o `X-Real-IP` do visitante, e não o endereço do proxy, que muda a cada
+  requisição. Desligado por padrão; procedimento de ativação e teste em `docs/operacao-railway.md`.
 - Acessibilidade: o campo de data de cada tarefa na Agenda ganhou nome acessível (axe-core apontava 2 campos sem rótulo).
 - **Encontrar empresas (P1)**: ordenado por pontuação, o total exibido passou a ser o real do filtro. Antes, a busca
   mostrava "de 3.000" mesmo com mais empresas na base, porque só as 3.000 de maior capital social são pontuadas por vez.
