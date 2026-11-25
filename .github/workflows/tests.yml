@@ -2,7 +2,7 @@ name: Testes
 
 on:
   push:
-    branches: [main]
+    branches: [main, chatgpt/preflight-contact-verification-208]
   pull_request:
 
 jobs:
