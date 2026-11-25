@@ -4,6 +4,9 @@
 - **Segurança do login atrás do proxy (P1)**: com `TRUSTED_PROXY_CIDRS` (ex.: `100.64.0.0/10` na Railway), o limite de
   tentativas do painel e das contas comerciais usa o `X-Real-IP` do visitante, e não o endereço do proxy, que muda a cada
   requisição. Desligado por padrão; procedimento de ativação e teste em `docs/operacao-railway.md`.
+- **Encontrar empresas (P1)**: ordenado por pontuação, o total exibido passou a ser o real do filtro. Antes, a busca
+  mostrava "de 3.000" mesmo com mais empresas na base, porque só as 3.000 de maior capital social são pontuadas por vez.
+  A resposta traz `total` (real), `scored` e `partial`; o paginador mostra os dois números e a nota explica o limite.
 
 - Assinaturas comerciais administrativas por organização, vigência, cancelamento e consulta privada. Migração inclui catálogo inicial inativo: Essential R$ 27, Professional R$ 117 e Enterprise R$ 397. Sem cobrança automática ou bloqueio por assinatura nesta etapa.
 - Catálogo administrativo de planos versionados em BRL, preços em centavos e limites configuráveis. Nenhum plano ou cobrança criado automaticamente; aplicação de limites depende da assinatura.
