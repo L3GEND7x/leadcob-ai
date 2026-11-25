@@ -100,3 +100,7 @@ equivalente a homologação, nem aprovação sem logs. Sem commits diretos na ma
 ## Decisão posterior do proprietário (25/11/2026)
 
 Assistente IA fora da interface e da entrega atual. Esta decisão prevalece sobre as instruções históricas de geração real e de navegação pelo Assistente. Não reintroduzir o menu ou chamar provedor sem autorização. Priorizar contatos reais, Radar, Central, CRM e expansão dimensionada. Backend e histórico preservados.
+
+### Bloqueio de CI após #212
+
+O teste duplicado em backend/browser_tests/test_commercial_browser.py ainda esperava Assistente IA. Branch chatgpt/assistant-removal-browser-regression-213 ajusta a expectativa, sem restaurar o menu. Validar todos os workflows, depois merge pelo proprietário e deploy da revisão aprovada. Próximas prioridades: piloto institucional e diagnóstico de coletas parciais reais.
