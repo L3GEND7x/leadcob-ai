@@ -1,0 +1,51 @@
+name: Homologacao externa da revisao
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release-verification.yml'
+      - 'docs/release-candidate.sha'
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: 'SHA completo da revisão efetivamente autorizada'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-verification-external
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check exact deployment revision and anonymous authorization
+        env:
+          INPUT_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -eu
+          expected_sha="$INPUT_SHA"
+          if [ -z "$expected_sha" ]; then
+            expected_sha="$(cat docs/release-candidate.sha)"
+          fi
+          case "$expected_sha" in
+            *[!0-9a-f]*|'') echo "Invalid SHA"; exit 1 ;;
+          esac
+          test "${#expected_sha}" -eq 40
+          for attempt in 1 2 3 4 5; do
+            if PYTHONPATH=backend python -m app.jobs.release_smoke --base-url https://leadcob-web-production.up.railway.app --expected-sha "$expected_sha" > /tmp/release-verification.json; then
+              cat /tmp/release-verification.json
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then sleep 10; fi
+          done
+          cat /tmp/release-verification.json
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-verification
+          path: /tmp/release-verification.json
+          if-no-files-found: warn
