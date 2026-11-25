@@ -179,10 +179,14 @@ def search_companies(q: str | None = None, uf: str | None = None, region: str | 
         items.sort(key=key, reverse=True)
         total_scored = len(items)
         page_items = items[(page - 1) * per_page: page * per_page]
-        note = (f"Pontuação calculada sobre as {CANDIDATE_LIMIT} primeiras empresas do filtro (por capital social); "
-                "refine os filtros para ver o restante.") if total > CANDIDATE_LIMIT else None
-        return {"items": page_items, "total": total_scored if (band or not include_suppressed) else total,
-                "page": page, "per_page": per_page, "note": note}
+        partial = total > CANDIDATE_LIMIT
+        limit_txt = f"{CANDIDATE_LIMIT:,}".replace(",", ".")
+        note = (f"A ordenação por pontuação considera as {limit_txt} empresas de maior capital social. Refine os "
+                "filtros (município, perfil, CNAE) ou ordene por capital ou nome para percorrer todas.") if partial else None
+        # "total" é sempre a quantidade real do filtro (não a amostra pontuada); "scored" diz quantas foram
+        # ordenadas por pontuação e podem ser paginadas nesta ordenação. Com faixa (band), só as pontuadas contam.
+        return {"items": page_items, "total": total_scored if band else total, "scored": total_scored,
+                "partial": partial, "page": page, "per_page": per_page, "note": note}
     order = {"capital": Company.capital_social.desc().nullslast(), "name": Company.name.asc(),
              "opened": Company.opened_at.asc().nullslast()}[sort]
     rows = _with_relations(query.order_by(order, Company.id)).offset((page - 1) * per_page).limit(per_page).all()

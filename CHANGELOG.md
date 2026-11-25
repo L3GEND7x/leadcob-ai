@@ -1,6 +1,9 @@
 # Changelog
 
 ## Não lançado
+- **Encontrar empresas (P1)**: ordenado por pontuação, o total exibido passou a ser o real do filtro. Antes, a busca
+  mostrava "de 3.000" mesmo com mais empresas na base, porque só as 3.000 de maior capital social são pontuadas por vez.
+  A resposta traz `total` (real), `scored` e `partial`; o paginador mostra os dois números e a nota explica o limite.
 
 - Assinaturas comerciais administrativas por organização, vigência, cancelamento e consulta privada. Migração inclui catálogo inicial inativo: Essential R$ 27, Professional R$ 117 e Enterprise R$ 397. Sem cobrança automática ou bloqueio por assinatura nesta etapa.
 - Catálogo administrativo de planos versionados em BRL, preços em centavos e limites configuráveis. Nenhum plano ou cobrança criado automaticamente; aplicação de limites depende da assinatura.
