@@ -22,6 +22,8 @@ def fake_response(enabled=False, revision=SHA):
         "owner_discovery_targets_private":401,
         "owner_worker_diagnostics_private":401,
         "owner_discovery_jobs_private":401}
+    statuses.update({name:401 for name,_,_ in CHECKS if name.endswith("_private")})
+    statuses["owner_session_anonymous"]=200
     def transport(base,method,path):
         name=next(name for name,m,p in CHECKS if p==path)
         assert method=="GET"
@@ -29,6 +31,8 @@ def fake_response(enabled=False, revision=SHA):
         body=b""
         if name=="health":
             body=('{"status":"ok","revision":"'+revision+'"}').encode()
+        if name=="owner_session_anonymous":
+            body=b'{"authenticated":false,"username":null,"csrf_token":"","mode":"cloud"}'
         if name=="commercial_session" and enabled:
             body=b'{"authenticated":false}'
         return statuses[name],body
@@ -95,3 +99,32 @@ def test_private_prospecting_routes_fail_smoke_on_anonymous_success(check, path)
     result = run("https://example.test", request=leaky)
     assert not result["checks_passed"]
     assert check in result["failures"]
+
+@pytest.mark.parametrize("check,path", [
+    (name,path) for name,_,path in CHECKS if name.endswith("_private")
+])
+def test_every_private_surface_rejects_anonymous_200(check,path):
+    def transport(base,method,target):
+        if target==path:
+            return 200,b"do not expose this body"
+        return fake_response()(base,method,target)
+    result=run("https://example.test",request=transport)
+    assert check in result["failures"]
+    assert "do not expose this body" not in str(result)
+
+
+@pytest.mark.parametrize("body", [
+    b'{"authenticated":true,"mode":"local"}',
+    b'{"authenticated":false,"mode":"cloud","csrf_token":"leaked"}',
+    b'{"authenticated":false,"mode":"cloud","username":"owner"}',
+    b'{"authenticated":false}',
+    b'not json',
+])
+def test_owner_session_must_be_anonymous_and_cloud(body):
+    def transport(base,method,path):
+        if path=="/api/auth/session":
+            return 200,body
+        return fake_response()(base,method,path)
+    result=run("https://example.test",request=transport)
+    assert "owner_session_anonymous" in result["failures"]
+    assert "leaked" not in str(result)
