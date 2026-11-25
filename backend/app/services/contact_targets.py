@@ -94,7 +94,7 @@ def targets(db, uf, city, kind, limit=50, offset=0):
     # Signals are evidence for research, never proof of a hiring or outsourcing intent.
     signal_keys = set()
     verified_signal_keys = set()
-    for company_id, source, name, verified in db.execute(select(
+    for company_id, source, name, signal_verified in db.execute(select(
         Opportunity.company_id, Opportunity.source_url, Opportunity.source_name,
         Opportunity.is_verified,
     ).join(Company, Company.id == Opportunity.company_id).where(
@@ -104,7 +104,7 @@ def targets(db, uf, city, kind, limit=50, offset=0):
         key = corporate.get(company_id)
         if key and _source_url(source) and str(name or "").strip() and str(name).strip().casefold() != "demonstração":
             signal_keys.add(key)
-            if verified is True:
+            if signal_verified is True:
                 verified_signal_keys.add(key)
 
     items = []

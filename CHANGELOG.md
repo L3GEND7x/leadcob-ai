@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.
+
 - Enriquecimento: prioriza empresas sem canal com sinais de fonte formal, incluindo sinais a confirmar, e permite registrar site institucional revisado com fonte e evidência antes de criar a fila. Sem coleta ou mensagens automáticas.
 
 - Fontes de dados: diferencia validação histórica, coleta concluída, parcial, em andamento e falha; mostra o último lote por família, horário e contagens. Falha ao consultar o histórico não é exibida como ausência de captações.

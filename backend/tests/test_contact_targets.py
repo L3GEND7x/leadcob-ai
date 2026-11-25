@@ -183,3 +183,41 @@ def test_targets_prioritize_formally_sourced_signals_without_claiming_demand():
         assert result["items"][0]["has_reviewed_signal"] is True
         assert result["items"][1]["has_reviewed_signal"] is False
     engine.dispose()
+
+
+def test_verified_contact_count_is_independent_of_opportunity_verification():
+    from app.db.models import Opportunity
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        with_contact = Company(name="Empresa teste A", cnpj="11222333000181",
+                               state="AM", city="Manaus", registration_status="ATIVA",
+                               legal_nature="Sociedade Empresária Limitada")
+        from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
+        base = "123456780001"
+        first = _dv(base, WEIGHTS_1)
+        other = Company(name="Empresa teste B", cnpj=base+first+_dv(base+first,WEIGHTS_2),
+                        state="AM", city="Manaus", registration_status="ATIVA",
+                        legal_nature="Sociedade Empresária Limitada")
+        db.add_all([with_contact,other])
+        db.flush()
+        db.add(BusinessContact(company_id=with_contact.id,kind="email",
+                               value="financeiro@example.com",status="verificado",
+                               source_name="Fixture",source_url="https://example.com/contato"))
+        signal = Opportunity(company_id=other.id,kind="hiring",title="Sinal teste",
+                             source_url="https://example.com/vaga",source_name="Fixture",
+                             status="review",is_verified=False)
+        db.add(signal)
+        db.commit()
+        for value in (False, True):
+            signal.is_verified = value
+            db.commit()
+            result = targets(db,"AM","Manaus","email")
+            assert result["with_channel"] == 1
+            assert result["with_verified_channel"] == 1
+            assert result["with_verified_sourced_channel"] == 1
+            assert result["missing_channel"] == 1
+            assert result["items"][0]["company_id"] == other.id
+            assert result["items"][0]["has_reviewed_signal"] is value
+    engine.dispose()
