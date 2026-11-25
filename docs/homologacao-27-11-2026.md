@@ -24,8 +24,8 @@ a carga nacional depende de volume, infraestrutura, fonte e aprovação.
 6. Testar no navegador desktop e celular: login/logout, filtros e páginas,
    detalhe real de empresa, contatos e fontes, central, CRM/tarefas, exportação.
    Conferir que contatos fictícios/ausentes não são exibidos como verificados.
-7. Teste da IA com uma solicitação curta e orçamento previamente aprovado;
-   conferir resposta baseada em ferramentas e erro de quota/modelo tratável.
+7. Assistente IA retirado da interface por decisão do proprietário (25/11/2026).
+   Geração real fora do aceite atual. Preservar backend/histórico; não reativar sem autorização.
 8. Revisar dados reais da base, amostra de contatos institucionais e opt-out.
    Nenhum envio automático, faturamento real ou importação nacional maciça.
 9. Registrar resultados, revisão, horário, responsável, defeitos e decisão

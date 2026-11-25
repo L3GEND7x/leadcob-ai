@@ -2,7 +2,7 @@
 
 ## Não lançado
 
-- CRM: aplica supressão por CNPJ normalizado a registros duplicados, busca, exportação e bloqueio de abordagem. Não altera histórico nem executa mensagens.
+
 
 
 

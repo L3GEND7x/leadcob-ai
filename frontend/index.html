@@ -8,7 +8,6 @@
     <label>OPERAÇÃO DIÁRIA</label>
     <a href="#/inicio" data-v="inicio"><span>▦</span>Central de comando</a>
     <a href="#/hoje" data-v="hoje"><span>✦</span>Inteligência do dia</a>
-    <a href="#/assistente" data-v="assistente"><span>✧</span>Assistente IA</a>
     <label>PROSPECÇÃO</label>
     <a href="#/sinais" data-v="sinais"><span>◎</span>Sinais e oportunidades</a>
     <a href="#/empresas" data-v="empresas"><span>⌕</span>Encontrar empresas</a>
@@ -43,4 +42,4 @@
 <dialog id="dlg-company"><form id="companyform"><div class="modalhead"><h2>Adicionar empresa</h2><button type="button" onclick="this.closest('dialog').close()">×</button></div><div class="formgrid"><label>Razão social<input name="name" required minlength="2"></label><label>CNPJ<input name="cnpj" placeholder="só PJ — nunca CPF"></label><label>Município<input name="city"></label><label>UF<input name="state" maxlength="2"></label><label>CNAE principal (7 dígitos)<input name="cnae_main" maxlength="7" pattern="[0-9]{7}"></label><label>Segmento<input name="segment"></label><label>Site institucional<input name="website" type="url"></label><label>E-mail institucional<input name="institutional_email" type="email"></label><label class="full">Observações<textarea name="notes"></textarea></label></div><p class="note pad">Cadastre só dados de pessoa jurídica. O CNPJ evita duplicidade: se já existir, o sistema avisa.</p><div class="modalactions"><button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancelar</button><button class="primary">Adicionar</button></div></form></dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script src="/static/session.js"></script><script src="/static/operations.js"></script><script src="/static/assistant.js"></script><script src="/static/navigation.js"></script><script src="/static/app.js"></script></body></html>
+<script src="/static/session.js"></script><script src="/static/operations.js"></script><script src="/static/navigation.js"></script><script src="/static/app.js"></script></body></html>
