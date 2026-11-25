@@ -18,6 +18,18 @@ CHECKS = (
     ("commercial_asset", "GET", "/static/commercial.js"),
     ("commercial_page", "GET", "/commercial"),
     ("commercial_session", "GET", "/api/commercial/auth/session?organization_id=1"),
+    ("owner_session_anonymous", "GET", "/api/auth/session"),
+    ("owner_dashboard_private", "GET", "/api/dashboard/summary"),
+    ("owner_command_center_private", "GET", "/api/command-center"),
+    ("owner_daily_intelligence_private", "GET", "/api/daily-intelligence?limit=1"),
+    ("owner_company_search_private", "GET", "/api/companies/search?uf=AM&page=1&per_page=1"),
+    ("owner_company_export_private", "GET", "/api/export/companies.csv"),
+    ("owner_pipeline_private", "GET", "/api/pipeline"),
+    ("owner_tasks_private", "GET", "/api/tasks"),
+    ("owner_portfolios_private", "GET", "/api/portfolios"),
+    ("owner_reports_private", "GET", "/api/reports/summary"),
+    ("owner_assistant_status_private", "GET", "/api/assistant/status"),
+    ("owner_assistant_history_private", "GET", "/api/assistant/conversations"),
     ("owner_admin_private", "GET", "/owner/commercial"),
     ("owner_discovery_private", "GET", "/owner/discovery"),
     ("owner_readiness_private", "GET", "/api/owner/commercial/readiness"),
@@ -45,7 +57,7 @@ def transport(base, method, path, timeout=8):
     try:
         with opener.open(req, timeout=timeout) as response:
             status = response.status
-            body = response.read(8192) if path == "/api/health" or "commercial/auth/session" in path else b""
+            body = response.read(8192) if path in ("/api/health", "/api/auth/session") or "commercial/auth/session" in path else b""
     except urllib.error.HTTPError as exc:
         status = exc.code
         body = b""
@@ -76,6 +88,8 @@ def run(base_url, *, commercial_enabled=False, expected_sha=None, request=None):
             status,body=request(base,method,path)
             if name in ("health","dashboard","styles","commercial_asset"):
                 ok=status==200
+            elif name=="owner_session_anonymous":
+                ok=status==200
             elif name=="commercial_page":
                 ok=status==(200 if commercial_enabled else 404)
             elif name=="commercial_session":
@@ -90,10 +104,12 @@ def run(base_url, *, commercial_enabled=False, expected_sha=None, request=None):
                         ok=ok and health.get("revision","").lower()==expected_sha.lower()
                 except (ValueError,AttributeError,TypeError):
                     ok=False
-            if name=="commercial_session" and status==200:
+            if name in ("commercial_session","owner_session_anonymous") and status==200:
                 try:
                     session=json.loads(body)
                     ok=ok and session.get("authenticated") is False
+                    if name=="owner_session_anonymous":
+                        ok=ok and session.get("mode")=="cloud" and not session.get("csrf_token") and not session.get("username")
                 except (ValueError,AttributeError,TypeError):
                     ok=False
         except Exception:
