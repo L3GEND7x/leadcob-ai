@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     workspace_assistant_enabled: bool = False
     workspace_assistant_monthly_budget_usd: float = 0
     brave_search_api_key: str = ""
+    # Redes do proxy de entrada que podem informar o IP real do visitante em X-Real-IP (ex.: "100.64.0.0/10" na
+    # Railway). Vazio = não confiar em cabeçalho nenhum (padrão). Usado só para limitar tentativas de login.
+    trusted_proxy_cidrs: str = ""
     # exemplos fictícios só quando pedidos explicitamente (nunca em uso real)
     demo_seed: bool = False
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

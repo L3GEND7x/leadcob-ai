@@ -14,6 +14,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.client_ip import client_ip
 from app.db.database import SessionLocal
 from app.db.models import LoginSession, LoginAttempt, AuditLog
 
@@ -157,7 +158,7 @@ def login(payload: Credentials, request: Request):
     # Partition attempts by submitted account and transport peer; do not trust arbitrary forwarded headers.
     # This is a first layer, not a substitute for a trusted edge rate limiter.
     with SessionLocal() as db:
-        peer = request.client.host if request.client else 'unknown'
+        peer = client_ip(request)
         key = 'login:' + hashlib.sha256((peer + '\0' + payload.username.casefold()).encode()).hexdigest()
         attempt = db.get(LoginAttempt, key)
         if attempt and stamp(attempt.started_at) < now - timedelta(minutes=15):
