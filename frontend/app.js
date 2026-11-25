@@ -249,6 +249,7 @@ async function searchCompanies() {
   try {
     const d = await api('/companies/search?' + p);
     const from = d.total ? (d.page - 1) * d.per_page + 1 : 0, to = (d.page - 1) * d.per_page + d.items.length;
+    const reach = d.partial ? d.scored : d.total;   // até onde a paginação vai nesta ordenação
     box.innerHTML = `<div class="tablebox"><table><thead><tr><th>Empresa</th><th>Localização</th><th>Perfil / CNAE</th><th>Porte / capital</th><th>Atividade</th><th>Sinais</th><th>Contato</th><th>Etapa</th><th>Pontuação</th></tr></thead><tbody>
       ${d.items.length ? d.items.map(c => `<tr>
         <td><a class="name" href="#/empresa/${c.id}"><strong>${esc(c.name)}</strong></a><small>${esc(c.cnpj_formatted || 'sem CNPJ')}${c.trade_name ? ' · ' + esc(c.trade_name) : ''}</small>${c.registration_status && c.registration_status !== 'ATIVA' ? `<div class="badges"><span class="badge bad">${esc(c.registration_status)}</span></div>` : ''}</td>
@@ -262,8 +263,8 @@ async function searchCompanies() {
         <td>${pill(c.score, c.band, c.band_label)}<small>${esc(c.band_label)}</small></td></tr>`).join('')
       : '<tr><td colspan="9">Nenhuma empresa com esses filtros. Amplie a busca ou importe a base de CNPJ da UF (job em lote).</td></tr>'}
       </tbody></table></div>
-      <div class="pager"><span class="note">${d.total ? `Mostrando ${fmt(from)}–${fmt(to)} de ${fmt(d.total)}` : 'Nenhum resultado'}${d.note ? ' · ' + esc(d.note) : ''}</span>
-        <span class="actions"><button class="small" ${d.page <= 1 ? 'disabled' : ''} onclick="goPage(${d.page - 1})">← Anterior</button><button class="small" ${to >= d.total ? 'disabled' : ''} onclick="goPage(${d.page + 1})">Próxima →</button></span></div>`;
+      <div class="pager"><span class="note">${d.total ? `Mostrando ${fmt(from)}–${fmt(to)} de ${fmt(reach)}${d.partial ? ` ordenadas por pontuação (${fmt(d.total)} no filtro)` : ''}` : 'Nenhum resultado'}${d.note ? ' · ' + esc(d.note) : ''}</span>
+        <span class="actions"><button class="small" ${d.page <= 1 ? 'disabled' : ''} onclick="goPage(${d.page - 1})">← Anterior</button><button class="small" ${to >= reach ? 'disabled' : ''} onclick="goPage(${d.page + 1})">Próxima →</button></span></div>`;
   } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Falha na busca.'))}</p>`; }
 }
 function exportCSV() {
