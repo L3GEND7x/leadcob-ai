@@ -109,7 +109,7 @@ def test_robots_applies_before_following_same_host_redirect():
     def redirect_to_blocked(request):
         requested.append(request.url.path)
         if request.url.path == "/robots.txt":
-            return httpx.Response(200, text="User-agent: LeadCobAI\\nDisallow: /privado\\n")
+            return httpx.Response(200, text="User-agent: LeadCobAI\nDisallow: /privado\n")
         if request.url.path == "/":
             return httpx.Response(302, headers={"location": "/privado/contato"})
         raise AssertionError("Blocked destination must not receive a request")
@@ -126,7 +126,7 @@ def test_allowed_same_host_redirect_still_collects():
     def redirect_to_allowed(request):
         requested.append(request.url.path)
         if request.url.path == "/robots.txt":
-            return httpx.Response(200, text="User-agent: LeadCobAI\\nDisallow: /privado\\n")
+            return httpx.Response(200, text="User-agent: LeadCobAI\nDisallow: /privado\n")
         if request.url.path == "/":
             return httpx.Response(302, headers={"location": "/contato"})
         return httpx.Response(200, text="<p>financeiro@empresa.example</p>", headers={"content-type":"text/html"})
