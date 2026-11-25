@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Radar de vagas: respostas inválidas de Greenhouse/Lever e paginação Lever truncada não contam como boards consultados com sucesso, evitando encerramento incorreto de oportunidades.
+
 - Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.
 
 - Enriquecimento: prioriza empresas sem canal com sinais de fonte formal, incluindo sinais a confirmar, e permite registrar site institucional revisado com fonte e evidência antes de criar a fila. Sem coleta ou mensagens automáticas.

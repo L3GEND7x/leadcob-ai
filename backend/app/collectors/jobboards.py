@@ -27,6 +27,7 @@ from app.services.jobs import classify_job, strip_html
 CONFIG_FILE = Path(os.getenv("JOB_BOARDS_FILE", Path(__file__).resolve().parents[3] / "config" / "job_boards.json"))
 PROVIDERS = {"greenhouse", "lever"}
 LEVER_PAGE = 100
+LEVER_MAX_PAGES = 50
 
 
 def configured_boards(raw: str | None = None, path: Path | None = None) -> list[dict]:
@@ -75,23 +76,27 @@ def _get(client: httpx.Client, url: str, params: dict, attempts: int = 3):
 def fetch_board(client: httpx.Client, board: dict) -> list[dict]:
     if board["provider"] == "greenhouse":
         data = _get(client, f"https://boards-api.greenhouse.io/v1/boards/{board['token']}/jobs", {"content": "true"})
+        if not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
+            raise ValueError("Resposta Greenhouse sem lista de vagas válida.")
+        if any(not isinstance(j, dict) for j in data["jobs"]):
+            raise ValueError("Resposta Greenhouse com registros inválidos.")
         return [{"id": j.get("id"), "title": j.get("title") or "", "location": (j.get("location") or {}).get("name") or "",
                  "description": strip_html(j.get("content") or ""), "url": j.get("absolute_url") or "",
-                 "published": j.get("first_published") or j.get("updated_at")} for j in data.get("jobs", [])]
+                 "published": j.get("first_published") or j.get("updated_at")} for j in data["jobs"]]
     jobs, skip = [], 0
-    while True:
+    for _ in range(LEVER_MAX_PAGES):
         page = _get(client, f"https://api.lever.co/v0/postings/{board['token']}", {"mode": "json", "skip": skip, "limit": LEVER_PAGE})
-        if not isinstance(page, list):
-            break
+        if not isinstance(page, list) or any(not isinstance(j, dict) for j in page):
+            raise ValueError("Resposta Lever sem lista de vagas válida.")
         for j in page:
             cat = j.get("categories") or {}
             jobs.append({"id": j.get("id"), "title": j.get("text") or "", "location": cat.get("location") or "",
                          "description": strip_html(j.get("descriptionPlain") or j.get("description") or ""),
                          "url": j.get("hostedUrl") or j.get("applyUrl") or "", "published": j.get("createdAt")})
         if len(page) < LEVER_PAGE:
-            break
+            return jobs
         skip += LEVER_PAGE
-    return jobs
+    raise ValueError("Limite de páginas Lever atingido; coleta incompleta, sem encerrar vagas.")
 
 
 def fetch_job_opportunities(boards: list[dict] | None = None) -> dict:
