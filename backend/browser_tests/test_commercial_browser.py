@@ -38,7 +38,7 @@ def test_commercial_workspace(viewport):
 
 
 @pytest.mark.parametrize("viewport", [{"width":1280,"height":800},{"width":390,"height":844}])
-def test_owner_assistant_navigation(viewport):
+def test_owner_assistant_removed_navigation(viewport):
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport=viewport)
@@ -52,10 +52,15 @@ def test_owner_assistant_navigation(viewport):
         if viewport["width"] < 860:
             page.locator("#nav-toggle").click()
             expect(page.locator("#nav-toggle")).to_have_attribute("aria-expanded","true")
-        page.locator('#nav [data-v="assistente"]').click()
-        expect(page.get_by_role("heading",name="Assistente LeadCob",exact=True)).to_be_visible()
-        expect(page.locator("#ai-form")).to_be_visible()
-        expect(page.locator("#ai-form button")).to_be_disabled()
+        expect(page.locator('#nav [data-v="assistente"]')).to_have_count(0)
+        expect(page.locator('script[src="/static/assistant.js"]')).to_have_count(0)
+        page.locator('#nav [data-v="empresas"]').click()
+        expect(page.get_by_role("heading",name="Encontrar empresas",exact=True)).to_be_visible()
+        page.evaluate("location.hash = '#/assistente'")
+        page.wait_for_function("location.hash === '#/inicio'")
+        expect(page.get_by_role("heading",name="Central de comando",exact=True)).to_be_visible()
+        expect(page.locator("#ai-form")).to_have_count(0)
+        expect(page.locator("#municipal-command-results")).to_contain_text("CNPJs válidos únicos",timeout=20000)
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert not errors, errors
         browser.close()
