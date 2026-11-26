@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Acesso: links diretos às páginas privadas de enriquecimento e administração direcionam o navegador ao login e retornam ao destino autorizado; APIs e clientes de diagnóstico continuam com 401 sem sessão.
+
 - Enriquecimento: importação de até cinco sites institucionais pesquisados com conciliação exata por CNPJ, prévia sem gravação e criação de fila após revisão explícita; sem coleta automática.
 
 - Coleta institucional: respeita robots.txt também antes de seguir redirecionamentos no site, sem acessar páginas proibidas.

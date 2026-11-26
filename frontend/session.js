@@ -1,10 +1,17 @@
 let csrfToken = '';
+// Fixed internal destinations only; never navigate to a URL supplied in the query.
+function resumeOwnerPage() {
+  const next = new URLSearchParams(location.search).get('next');
+  const path = next === 'discovery' ? '/owner/discovery' : next === 'commercial' ? '/owner/commercial' : null;
+  if (!path || location.pathname !== '/') return false;
+  location.replace(path); return true;
+}
 async function sessionReady() {
   const response = await fetch('/api/auth/session');
   if (!response.ok) throw Error('Não foi possível verificar o acesso.');
   const session = await response.json();
   csrfToken = session.csrf_token || '';
-  if (session.authenticated) return true;
+  if (session.authenticated) return !(session.mode === 'cloud' && resumeOwnerPage());
   const layout = document.querySelector('.layout');
   layout.hidden = true;
   let box = document.getElementById('login-box');
@@ -19,7 +26,9 @@ async function sessionReady() {
       const r = await fetch('/api/auth/login', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Object.fromEntries(new FormData(form)))});
       const data = await r.json();
       if (!r.ok) throw Error(data.detail || 'Falha no acesso.');
-      csrfToken = data.csrf_token; box.remove(); layout.hidden = false; route();
+      csrfToken = data.csrf_token;
+      if (resumeOwnerPage()) return;
+      box.remove(); layout.hidden = false; route();
     } catch (error) { document.getElementById('login-error').textContent = error.message; }
     finally { form.querySelector('button').disabled = false; }
   };

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import event
 from sqlalchemy.engine import make_url
@@ -114,6 +114,17 @@ async def access_middleware(request, call_next):
             with SessionLocal() as db:
                 session = current_session(request, db)
                 if not public and not session:
+                    # Only browser navigation to these two exact HTML pages
+                    # redirects. API clients retain 401, including release smoke.
+                    owner_pages = {'/owner/discovery': 'discovery', '/owner/commercial': 'commercial'}
+                    destination = owner_pages.get(request.url.path)
+                    html_navigation = (request.headers.get('sec-fetch-mode') == 'navigate'
+                                       or request.headers.get('accept', '').split(',')[0].strip().lower() == 'text/html')
+                    if request.method in {'GET', 'HEAD'} and destination and html_navigation:
+                        return RedirectResponse('/?next=' + destination, status_code=303,
+                                                headers={'Cache-Control': 'no-store',
+                                                         'X-Content-Type-Options': 'nosniff',
+                                                         'Referrer-Policy': 'same-origin'})
                     return JSONResponse({'detail': 'Entre para acessar o painel.'}, status_code=401)
                 if session:
                     request.state.user = session.username
