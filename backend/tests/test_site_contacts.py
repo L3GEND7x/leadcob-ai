@@ -135,3 +135,39 @@ def test_allowed_same_host_redirect_still_collects():
         result = discover("https://empresa.example/", client=client)
     assert requested == ["/robots.txt", "/", "/contato"]
     assert result["emails"] == [{"email":"financeiro@empresa.example", "source_url":"https://empresa.example/contato"}]
+
+
+def test_robots_http_and_transport_errors_have_safe_reason_codes():
+    import pytest
+    from app.collectors.site_contacts import DiscoveryUnavailable
+    for status in (403, 429, 503):
+        seen = []
+        def handler(request):
+            seen.append(request.url.path)
+            return httpx.Response(status, text="private response body")
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(DiscoveryUnavailable) as exc:
+                discover("https://empresa.example/contato", client=client)
+        assert exc.value.code == f"robots_http_{status}"
+        assert "private response body" not in str(exc.value)
+        assert seen == ["/robots.txt"]
+    def timeout(request):
+        raise httpx.ConnectTimeout("do not expose")
+    with httpx.Client(transport=httpx.MockTransport(timeout)) as client:
+        with pytest.raises(DiscoveryUnavailable) as exc:
+            discover("https://empresa.example/", client=client)
+    assert exc.value.code == "robots_timeout"
+    assert "do not expose" not in str(exc.value)
+
+
+def test_denied_content_reports_reason_without_fetching():
+    seen = []
+    def handler(request):
+        seen.append(request.url.path)
+        assert request.url.path == "/robots.txt"
+        return httpx.Response(200, text="User-agent: *\nDisallow: /\n")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        report = discover("https://empresa.example/", client=client)
+    assert seen == ["/robots.txt"]
+    assert report["reason_codes"] == ["robots_denied"]
+    assert not report["emails"] and not report["pages_read"]
