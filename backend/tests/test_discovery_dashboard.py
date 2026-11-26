@@ -40,3 +40,17 @@ def test_owner_page(monkeypatch):
         assert 'progress' in page.text
         assert c.get('/static/discovery.js').status_code==200
         assert c.get('/api/contacts/discovery-jobs').status_code==200
+
+
+def test_owner_browser_navigation_redirects_only_to_fixed_login_destinations(monkeypatch):
+    monkeypatch.setattr(settings, "admin_password_hash", password_hash("owner-test-password-long"))
+    monkeypatch.setattr(settings, "admin_username", "owner-"+uuid4().hex)
+    with TestClient(app) as c:
+        for page, target in (("/owner/discovery", "discovery"), ("/owner/commercial", "commercial")):
+            response = c.get(page+"?next=https://example.test", headers={"Accept":"text/html"}, follow_redirects=False)
+            assert response.status_code == 303
+            assert response.headers["location"] == "/?next="+target
+            assert response.headers["cache-control"] == "no-store"
+            assert c.get(page, headers={"Accept":"application/json"}, follow_redirects=False).status_code == 401
+        assert c.get("/api/contacts/discovery-jobs", headers={"Accept":"text/html"}, follow_redirects=False).status_code == 401
+        assert c.get("/api/owner/commercial/readiness", headers={"Sec-Fetch-Mode":"navigate"}, follow_redirects=False).status_code == 401

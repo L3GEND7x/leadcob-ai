@@ -2,7 +2,7 @@
 
 ## Não lançado
 
-- Fila institucional: valida situação ativa, natureza empresarial, opt-out, concorrentes e consistência dos sites antes de coletar e antes de gravar; cadastros inelegíveis não são pesquisados novamente.
+
 
 - Enriquecimento: importação de até cinco sites institucionais pesquisados com conciliação exata por CNPJ, prévia sem gravação e criação de fila após revisão explícita; sem coleta automática.
 
