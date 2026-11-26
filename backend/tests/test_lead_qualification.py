@@ -99,7 +99,7 @@ def test_qualification_requires_corporate_registry_and_public_evidence_url():
                 registry_updated_at=datetime.now(timezone.utc), cnae_main="4631100", legal_nature=nature))
             db.flush()
             db.add(BusinessContact(company_id=i, kind="email", value="financeiro@example.test",
-                status="verificado", source_name="Fixture", department="geral"))
+                status="verificado", source_name="Fixture", source_url="https://example.test/contato", department="geral"))
             db.add(Opportunity(company_id=i, kind="hiring", title="Fixture",
                 status="qualified", is_verified=True, source_name="Fixture", source_url=url))
         db.commit()
@@ -115,4 +115,55 @@ def test_qualification_requires_corporate_registry_and_public_evidence_url():
             assert rows[i]["name"] == "Cadastro empresarial a revisar"
         assert result["contact_coverage"]["active_sourced_cnpjs"] == 3
         assert result["contact_coverage"]["with_verified_channel"] == 3
+    engine.dispose()
+
+
+def test_priority_requires_contact_provenance_and_current_deadline():
+    from datetime import datetime, timedelta, timezone
+    from app.db.models import BusinessContact, Opportunity
+    now = datetime.now(timezone.utc)
+    engine = create_engine('sqlite://')
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        c=Company(name='Fixture PJ',cnpj='11222333000181',state='AM',city='Manaus',
+            registration_status='ATIVA',registry_source='Fixture',registry_updated_at=now,
+            cnae_main='4631100',legal_nature='2062')
+        db.add(c);db.flush()
+        contact=BusinessContact(company_id=c.id,kind='email',value='contato@example.test',
+            status='verificado',source_name='Fixture')
+        evidence=Opportunity(company_id=c.id,kind='hiring',title='Fixture',source_name='Fixture',
+            source_url='https://example.test/vaga',status='qualified',is_verified=True,deadline=now+timedelta(days=1))
+        db.add_all([contact,evidence]);db.commit()
+        def row():
+            return qualification(db,'AM','Manaus')['items'][0]
+        assert row()['tier']=='evidence_contact_needed'
+        for source in ('http://127.0.0.1/', 'not-a-url'):
+            contact.source_url=source;db.commit()
+            assert row()['tier']=='evidence_contact_needed'
+        contact.source_url='https://example.test/contato';db.commit()
+        assert row()['tier']=='priority_review'
+        assert row()['verified_sourced_channels']==['email']
+        evidence.deadline=now-timedelta(seconds=1);db.commit()
+        assert row()['tier']=='contactable_prospect' and row()['evidence_ids']==[]
+        contact.source_name='Demonstração';evidence.deadline=None;db.commit()
+        assert row()['tier']=='evidence_contact_needed'
+    engine.dispose()
+
+
+def test_global_duplicate_cannot_escape_qualification_or_opt_out():
+    from datetime import datetime, timezone
+    common=dict(cnpj='11222333000181',registration_status='ATIVA',registry_source='Fixture',
+        registry_updated_at=datetime.now(timezone.utc),cnae_main='4631100',legal_nature='2062')
+    engine=create_engine('sqlite://');Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(Company(name='Fixture AM',city='Manaus',state='AM',**common))
+        peer=Company(name='Fixture SP',city='São Paulo',state='SP',**common)
+        db.add(peer);db.commit()
+        assert qualification(db,'AM','Manaus')['counts']=={'prospect_research':1}
+        peer.registration_status='BAIXADA';db.commit()
+        assert qualification(db,'AM','Manaus')['counts']=={'registry_review':1}
+        peer.registration_status='ATIVA';peer.legal_nature='2135 Empresário Individual';db.commit()
+        assert qualification(db,'AM','Manaus')['items'][0]['name']=='Cadastro empresarial a revisar'
+        peer.legal_nature='2062';peer.pipeline_stage='nao_contatar';db.commit()
+        assert qualification(db,'AM','Manaus')['items']==[]
     engine.dispose()
