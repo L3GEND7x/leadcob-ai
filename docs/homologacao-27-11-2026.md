@@ -14,7 +14,7 @@ a carga nacional depende de volume, infraestrutura, fonte e aprovação.
    b376f8778dfec2d15d7e7c2740f84c50fbda2b18 em 24/11; redeploy da build antiga
    não atualiza a versão. Selecionar revisão aprovada, preservar variáveis,
    PostgreSQL privado e migrações. Não ligar deploy contínuo sem gate.
-4. Smoke anônimo com SHA esperado:
+4. Smoke anônimo com SHA esperado: executar o workflow manual **Verificação real da produção** na branch main, informando o SHA completo da versão implantada (deve coincidir com HEAD). O artefato agregado não contém credenciais. O workflow **Teste da implantação online** é um teste Docker isolado, não uma verificação da Railway. Alternativamente, executar localmente:
    PYTHONPATH=backend python -m app.jobs.release_smoke --base-url https://leadcob-web-production.up.railway.app --expected-sha SHA
 5. Homologação autenticada pelo proprietário, em terminal local:
    PYTHONPATH=backend python -m app.jobs.owner_acceptance --expected-sha SHA
@@ -24,8 +24,8 @@ a carga nacional depende de volume, infraestrutura, fonte e aprovação.
 6. Testar no navegador desktop e celular: login/logout, filtros e páginas,
    detalhe real de empresa, contatos e fontes, central, CRM/tarefas, exportação.
    Conferir que contatos fictícios/ausentes não são exibidos como verificados.
-7. Teste da IA com uma solicitação curta e orçamento previamente aprovado;
-   conferir resposta baseada em ferramentas e erro de quota/modelo tratável.
+7. Assistente IA retirado da interface por decisão do proprietário (25/11/2026).
+   Geração real fora do aceite atual. Preservar backend/histórico; não reativar sem autorização.
 8. Revisar dados reais da base, amostra de contatos institucionais e opt-out.
    Nenhum envio automático, faturamento real ou importação nacional maciça.
 9. Registrar resultados, revisão, horário, responsável, defeitos e decisão

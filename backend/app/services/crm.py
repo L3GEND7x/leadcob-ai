@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from app.db.models import AuditLog, Company, Interaction, Setting, Suppression, Task
+from app.services.contact_suppression import matching_suppression
 
 MANAUS = timezone(timedelta(hours=-4))
 
@@ -82,12 +83,7 @@ def get_settings(db) -> dict:
 
 
 def suppression_for(db, c: Company) -> Suppression | None:
-    q = db.query(Suppression)
-    if c.cnpj:
-        hit = q.filter(Suppression.cnpj == c.cnpj).first()
-        if hit:
-            return hit
-    return q.filter(Suppression.company_id == c.id).first()
+    return matching_suppression(db, c)
 
 
 def blocked_reason(db, c: Company) -> str | None:

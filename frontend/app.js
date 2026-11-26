@@ -51,13 +51,17 @@ function coRow(s, extra = '') {
 const rows = (items, emptyMsg, extra) => items.length ? `<div class="rows">${items.map(s => coRow(s, extra ? esc(extra(s)) : '')).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`;
 
 // ------------------------------------------------------------------ rotas
-const ROUTES = { relatorios: viewRelatorios, assistente: viewAssistente, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
+const ROUTES = { relatorios: viewRelatorios, agenda: viewAgenda, inicio: viewInicio, hoje: viewHoje, empresas: viewEmpresas, sinais: viewSinais, crm: viewCRM,
   empresa: viewEmpresa, contatos: viewContatos, cobranca: viewCobranca, negociacao: viewNegociacao, scripts: viewScripts, radar: viewRadar, fontes: viewFontes, config: viewConfig };
 let CUR = { v: 'inicio', arg: null };
 async function route() {
   if (typeof sessionReady === 'function' && !await sessionReady()) return;
   const [v, arg] = location.hash.replace(/^#\/?/, '').split('/');
-  CUR = { v: ROUTES[v] ? v : 'inicio', arg: arg ? decodeURIComponent(arg) : null };
+  // Retired owner UI route; preserve history and backend for future explicit decision.
+  if (v === 'assistente') {
+    history.replaceState(null, '', '#/inicio');
+  }
+  CUR = { v: Object.prototype.hasOwnProperty.call(ROUTES, v) ? v : 'inicio', arg: v === 'assistente' ? null : (arg ? decodeURIComponent(arg) : null) };
   const navKey = CUR.v === 'empresa' ? 'crm' : CUR.v;
   document.querySelectorAll('#nav a').forEach(a => { const active=a.dataset.v === navKey; a.classList.toggle('active',active); if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current'); });
   try { await ROUTES[CUR.v](CUR.arg); }
@@ -83,6 +87,7 @@ async function viewInicio() {
     : '<p class="empty">Nenhuma tarefa pendente.</p>';
   V().innerHTML = head('Operação diária · ' + esc(today()), 'Central de comando', 'Quem abordar, quem cobrar resposta e o que mudou na base. Tudo calculado sobre os dados do banco.',
     '<a class="btn primary" href="#/hoje">✦ Inteligência do dia</a><a class="btn" href="#/empresas">⌕ Encontrar empresas</a>')
+    + '<section class="panel"><h2>Prospecção e operação comercial</h2><p class="note">Empresas cadastradas não são leads qualificados. Os indicadores de contatos realizados, respostas, reuniões, propostas e contratos representam ações registradas no CRM. Não medem canais disponíveis na base.</p><div class="actions"><a class="btn primary" href="/owner/discovery">Localizar canais institucionais</a><a class="btn" href="#/sinais">Consultar sinais e oportunidades</a></div></section>'
     + `<section class="kpis">${[
       kp('Empresas na base', fmt(k.empresas_total), `${fmt(k.empresas_novas_hoje)} nova(s) hoje`),
       kp('Sinais novos hoje', fmt(k.oportunidades_novas_hoje), 'editais, vagas e cadastros'),
@@ -96,7 +101,7 @@ async function viewInicio() {
       kp('Conversão', k.taxa_conversao == null ? '—' : k.taxa_conversao.toLocaleString('pt-BR') + '%', 'contratos ÷ contatadas'),
       kp('Valor potencial', k.valor_potencial ? money(k.valor_potencial) : '—', 'soma do que você informou'),
     ].join('')}</section>`
-    + '<section class="panel" id="municipal-command"><h2>Inteligência municipal</h2><p class="note">CNPJs únicos da base local; não representa censo ou demanda confirmada.</p><form id="municipal-command-form" class="form"><label class="f">UF<input name="uf" value="AM" maxlength="2" required></label><label class="f">Município<input name="city" value="Manaus" maxlength="100" required></label><button class="primary">Consultar indicadores</button></form><div id="municipal-command-results" aria-live="polite"></div><a class="btn" href="/owner/discovery">Abrir enriquecimento</a></section>'
+    + '<section class="panel" id="municipal-command"><h2>Inteligência municipal</h2><p class="note">CNPJs únicos da base local; não representa censo ou demanda confirmada.</p><form id="municipal-command-form" class="form"><label class="f">UF<input name="uf" value="AM" maxlength="2" required></label><label class="f">Município<input name="city" value="Manaus" maxlength="100" required></label><button class="primary">Consultar indicadores</button></form><div id="municipal-command-results" aria-live="polite"><p class="note">Consulte os indicadores do município para identificar canais e prioridades.</p></div><a class="btn" href="/owner/discovery">Abrir enriquecimento</a></section>'
     + `<h2>Funil comercial</h2><div class="funnel">${d.pipeline.map(p => `<a href="#/crm" class="${['perdido', 'nao_contatar', 'acompanhar_futuramente'].includes(p.key) ? 'closed' : ''}"><b>${fmt(p.count)}</b><span>${esc(p.label)}</span></a>`).join('')}</div>`
     + `<div class="grid2">
       ${panel('Precisam de abordagem', 'Qualificadas ou prontas, ainda sem contato', rows(d.precisam_abordagem, 'Nenhuma empresa marcada como qualificada ou pronta. Comece pela Inteligência do dia.'))}
@@ -109,6 +114,7 @@ async function viewInicio() {
     <p class="note">Listas calculadas sobre ${fmt(d.base_avaliada)} empresas (com sinal, no funil ou de maior capital). ${esc(k.notas.valor_potencial)} ${esc(k.notas.taxa_conversao)}</p>`;
   const municipalForm = document.getElementById('municipal-command-form');
   municipalForm.addEventListener('submit', e => {e.preventDefault(); loadMunicipalCommand(municipalForm);});
+  if (!PUBLISHED) await loadMunicipalCommand(municipalForm);
 }
 
 async function loadMunicipalCommand(form){
@@ -249,6 +255,7 @@ async function searchCompanies() {
   try {
     const d = await api('/companies/search?' + p);
     const from = d.total ? (d.page - 1) * d.per_page + 1 : 0, to = (d.page - 1) * d.per_page + d.items.length;
+    const reach = d.partial ? d.scored : d.total;   // até onde a paginação vai nesta ordenação
     box.innerHTML = `<div class="tablebox"><table><thead><tr><th>Empresa</th><th>Localização</th><th>Perfil / CNAE</th><th>Porte / capital</th><th>Atividade</th><th>Sinais</th><th>Contato</th><th>Etapa</th><th>Pontuação</th></tr></thead><tbody>
       ${d.items.length ? d.items.map(c => `<tr>
         <td><a class="name" href="#/empresa/${c.id}"><strong>${esc(c.name)}</strong></a><small>${esc(c.cnpj_formatted || 'sem CNPJ')}${c.trade_name ? ' · ' + esc(c.trade_name) : ''}</small>${c.registration_status && c.registration_status !== 'ATIVA' ? `<div class="badges"><span class="badge bad">${esc(c.registration_status)}</span></div>` : ''}</td>
@@ -262,8 +269,8 @@ async function searchCompanies() {
         <td>${pill(c.score, c.band, c.band_label)}<small>${esc(c.band_label)}</small></td></tr>`).join('')
       : '<tr><td colspan="9">Nenhuma empresa com esses filtros. Amplie a busca ou importe a base de CNPJ da UF (job em lote).</td></tr>'}
       </tbody></table></div>
-      <div class="pager"><span class="note">${d.total ? `Mostrando ${fmt(from)}–${fmt(to)} de ${fmt(d.total)}` : 'Nenhum resultado'}${d.note ? ' · ' + esc(d.note) : ''}</span>
-        <span class="actions"><button class="small" ${d.page <= 1 ? 'disabled' : ''} onclick="goPage(${d.page - 1})">← Anterior</button><button class="small" ${to >= d.total ? 'disabled' : ''} onclick="goPage(${d.page + 1})">Próxima →</button></span></div>`;
+      <div class="pager"><span class="note">${d.total ? `Mostrando ${fmt(from)}–${fmt(to)} de ${fmt(reach)}${d.partial ? ` ordenadas por pontuação (${fmt(d.total)} no filtro)` : ''}` : 'Nenhum resultado'}${d.note ? ' · ' + esc(d.note) : ''}</span>
+        <span class="actions"><button class="small" ${d.page <= 1 ? 'disabled' : ''} onclick="goPage(${d.page - 1})">← Anterior</button><button class="small" ${to >= reach ? 'disabled' : ''} onclick="goPage(${d.page + 1})">Próxima →</button></span></div>`;
   } catch (e) { box.innerHTML = `<p class="note">${esc(errMsg(e, 'Falha na busca.'))}</p>`; }
 }
 function exportCSV() {
@@ -683,20 +690,20 @@ async function refreshMarket() {
 }
 
 // ------------------------------------------------------------------ fontes
-const ST_CLS = { 'Integrada e testada': 'integrada', 'Com erro de coleta': 'erro', 'Consultada': 'consultada', 'Indisponível': 'indisponivel', 'Planejada': 'planejada' };
+const ST_CLS = { 'Integrada e testada': 'integrada', 'Integrada — validação histórica': 'consultada', 'Sem coleta registrada': 'consultada', 'Coleta concluída': 'integrada', 'Coleta parcial': 'consultada', 'Coleta em andamento': 'consultada', 'Com erro de coleta': 'erro', 'Consultada': 'consultada', 'Indisponível': 'indisponivel', 'Planejada': 'planejada' };
 async function viewFontes() {
-  const [d, runs] = await Promise.all([api('/sources'), api('/capture/runs').catch(() => [])]);
+  const [d, runs] = await Promise.all([api('/sources'), api('/capture/runs').catch(() => null)]);
   const group = (cat, title) => {
     const items = d.sources.filter(s => s.category === cat);
     return panel(`${title} (${items.length})`, esc(d.legend[cat] || ''), items.map(s => {
       const url = s.url ? (s.url.includes('{') ? s.url.split('{')[0] : s.url) : null;
-      const ds = s.display_status || { integrada: 'Integrada e testada', consultada: 'Consultada', planejada: 'Planejada' }[cat];
-      return `<div class="source"><b>${esc(s.name.slice(0, 2).toUpperCase())}</b><span><strong>${url ? `<a class="src" href="${esc(url)}" target="_blank" rel="noopener">${esc(s.name)}</a>` : esc(s.name)}</strong><small>${esc(s.use || '')}</small><small>${esc(s.status)}</small>${s.last_error ? `<small style="color:var(--bad)">Última falha: ${esc(s.last_error)}</small>` : ''}</span><i class="st ${ST_CLS[ds] || ''}">${esc(ds)}</i></div>`;
+      const ds = s.display_status || { integrada: 'Integrada — validação histórica', consultada: 'Consultada', planejada: 'Planejada' }[cat];
+      return `<div class="source"><b>${esc(s.name.slice(0, 2).toUpperCase())}</b><span><strong>${url ? `<a class="src" href="${esc(url)}" target="_blank" rel="noopener">${esc(s.name)}</a>` : esc(s.name)}</strong><small>${esc(s.use || '')}</small><small>${esc(s.status)}</small>${s.last_run ? `<small>Último lote da família: ${when(s.last_run.started_at)} · ${fmt(s.last_run.records_seen)} lidos · ${fmt(s.last_run.records_created)} novos</small>` : (cat === 'integrada' ? '<small>Sem evidência de lote nesta consulta; validação histórica não confirma operação atual.</small>' : '')}${s.last_error ? `<small style="color:var(--bad)">Ocorrência: ${esc(s.last_error)}</small>` : ''}</span><i class="st ${ST_CLS[ds] || ''}">${esc(ds)}</i></div>`;
     }).join(''));
   };
-  V().innerHTML = head('Proveniência', 'Fontes de dados', `Verificado em ${esc(d.verified_at)}. Só aparece como “Integrada e testada” o conector testado com dados reais; “Com erro de coleta” indica que a última captação daquela fonte falhou.`)
+  V().innerHTML = head('Proveniência', 'Fontes de dados', `Catálogo verificado em ${esc(d.verified_at)}. O status de coleta representa o último lote da família de conectores, não uma verificação individual em tempo real.`)
     + `<div class="stack">${group('integrada', 'Integradas')}${group('consultada', 'Consultadas')}${group('planejada', 'Planejadas (não conectadas)')}
-    ${panel('Últimas captações', '', runs.length ? `<div class="tablebox"><table><thead><tr><th>Fonte</th><th>Início</th><th>Status</th><th>Lidos</th><th>Novos</th><th>Mensagem</th></tr></thead><tbody>${runs.slice(0, 15).map(r => `<tr><td>${esc(r.source_name)}</td><td>${when(r.started_at)}</td><td><span class="badge ${r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(r.status)}</span></td><td>${fmt(r.records_seen)}</td><td>${fmt(r.records_created)}</td><td><small>${esc(r.message)}</small></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nenhuma captação registrada.</p>')}</div>`;
+    ${panel('Últimas captações', '', runs === null ? '<p class="warnbox">Não foi possível consultar o histórico de captações. Tente novamente.</p>' : runs.length ? `<div class="tablebox"><table><thead><tr><th>Fonte</th><th>Início</th><th>Status</th><th>Lidos</th><th>Novos</th><th>Mensagem</th></tr></thead><tbody>${runs.slice(0, 15).map(r => `<tr><td>${esc(r.source_name)}</td><td>${when(r.started_at)}</td><td><span class="badge ${r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}">${esc(r.status)}</span></td><td>${fmt(r.records_seen)}</td><td>${fmt(r.records_created)}</td><td><small>${esc(r.message)}</small></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nenhuma captação registrada.</p>')}</div>`;
 }
 
 // ------------------------------------------------------------------ configurações, supressão e LGPD

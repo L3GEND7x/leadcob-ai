@@ -96,3 +96,128 @@ def test_targets_exclude_individual_unknown_and_conflicted_cnpj_status():
         assert all(row["company_id"] not in (13, 14, 15, 16, 17)
                    for row in website_candidates["items"])
     engine.dispose()
+
+
+def test_conflicting_duplicate_identity_quarantines_cnpj_across_reports():
+    from datetime import datetime, timezone
+    from app.services.contact_readiness import contactability
+    from app.services.lead_qualification import qualification
+    from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
+
+    def key(seed):
+        base = f"{seed:012d}"
+        first = _dv(base, WEIGHTS_1)
+        return base + first + _dv(base + first, WEIGHTS_2)
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        corp = "Sociedade Empresária Limitada"
+        for id_, seed, nature, name, website in [
+            (1, 1, corp, "Empresa A", "https://valid.example"),
+            (2, 1, "Empresário Individual", "Cadastro conflitante", None),
+            (3, 2, corp, "Empresa B", "http://localhost:80"),
+            (4, 3, corp, "Empresa C", "https://valid.example"),
+            (5, 4, corp, "Empresa D", None),
+            (6, 4, None, "Cadastro sem natureza", None),
+        ]:
+            db.add(Company(id=id_, cnpj=key(seed), name=name, legal_nature=nature,
+                           registration_status="ATIVA", state="AM", city="Manaus",
+                           cnae_main="4631100", website=website,
+                           registry_source="Fixture", registry_updated_at=datetime.now(timezone.utc)))
+        db.flush()
+        db.add(BusinessContact(company_id=1, kind="email", value="financeiro@valid.example",
+                               status="verificado", source_name="Fixture",
+                               source_url="https://valid.example"))
+        db.commit()
+        contacts = contactability(db)
+        discovery = targets(db, "AM", "Manaus", "email")
+        leads = qualification(db, "AM", "Manaus")
+        assert contacts["active_unique_cnpjs"] == 4
+        assert contacts["active_corporate_cnpjs"] == 2
+        assert contacts["with_consistent_registered_site"] == 1
+        assert contacts["with_any_direct_channel"] == 0
+        assert discovery["active_corporate_cnpjs"] == 2
+        assert discovery["missing_channel"] == 2
+        assert {item["company_id"] for item in discovery["items"]} == {3, 4}
+        assert discovery["ready_for_site_discovery"] == 1
+        assert leads["contact_coverage"]["active_sourced_cnpjs"] == 2
+        for item in leads["items"]:
+            if item["cnpj"] in (key(1), key(4)):
+                assert item["tier"] == "registry_review"
+                assert item["channels"] == []
+                assert item["verified_channels"] == []
+    engine.dispose()
+
+
+def test_targets_prioritize_formally_sourced_signals_without_claiming_demand():
+    from app.db.models import Opportunity
+    from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
+
+    def key(seed):
+        base = f"{seed:012d}"
+        first = _dv(base, WEIGHTS_1)
+        return base + first + _dv(base + first, WEIGHTS_2)
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        for n in range(1, 5):
+            db.add(Company(id=n, name=f"Empresa {n}", cnpj=key(n),
+                           state="AM", city="Manaus", registration_status="ATIVA",
+                           legal_nature="Sociedade Empresária Limitada",
+                           website="https://example.com" if n == 1 else None))
+        db.flush()
+        for cid, source, name, verified in [
+            (2, "https://example.com/vaga", "Portal", False),
+            (3, "http://localhost", "Portal", True),
+            (4, "https://example.com/edital", "Portal", True),
+        ]:
+            db.add(Opportunity(company_id=cid, kind="hiring", title="Sinal teste",
+                               source_url=source, source_name=name, status="review",
+                               is_verified=verified))
+        db.commit()
+        result=targets(db,"AM","Manaus","email")
+        assert [x["company_id"] for x in result["items"]] == [4,2,1,3]
+        assert result["with_sourced_signal_missing_channel"] == 2
+        assert result["items"][0]["has_reviewed_signal"] is True
+        assert result["items"][1]["has_reviewed_signal"] is False
+    engine.dispose()
+
+
+def test_verified_contact_count_is_independent_of_opportunity_verification():
+    from app.db.models import Opportunity
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        with_contact = Company(name="Empresa teste A", cnpj="11222333000181",
+                               state="AM", city="Manaus", registration_status="ATIVA",
+                               legal_nature="Sociedade Empresária Limitada")
+        from app.services.cnpj import _dv, WEIGHTS_1, WEIGHTS_2
+        base = "123456780001"
+        first = _dv(base, WEIGHTS_1)
+        other = Company(name="Empresa teste B", cnpj=base+first+_dv(base+first,WEIGHTS_2),
+                        state="AM", city="Manaus", registration_status="ATIVA",
+                        legal_nature="Sociedade Empresária Limitada")
+        db.add_all([with_contact,other])
+        db.flush()
+        db.add(BusinessContact(company_id=with_contact.id,kind="email",
+                               value="financeiro@example.com",status="verificado",
+                               source_name="Fixture",source_url="https://example.com/contato"))
+        signal = Opportunity(company_id=other.id,kind="hiring",title="Sinal teste",
+                             source_url="https://example.com/vaga",source_name="Fixture",
+                             status="review",is_verified=False)
+        db.add(signal)
+        db.commit()
+        for value in (False, True):
+            signal.is_verified = value
+            db.commit()
+            result = targets(db,"AM","Manaus","email")
+            assert result["with_channel"] == 1
+            assert result["with_verified_channel"] == 1
+            assert result["with_verified_sourced_channel"] == 1
+            assert result["missing_channel"] == 1
+            assert result["items"][0]["company_id"] == other.id
+            assert result["items"][0]["has_reviewed_signal"] is value
+    engine.dispose()

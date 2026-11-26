@@ -346,8 +346,176 @@ def confirm_domain(candidate_id: int, db: Session = Depends(get_db)):
     return {'website': candidate.website}
 
 
+class ReviewedSiteIn(BaseModel):
+    website: str = Field(min_length=8, max_length=500)
+    source_url: str = Field(min_length=8, max_length=1000)
+    evidence: str = Field(min_length=12, max_length=1000)
+    ownership_reviewed: bool = False
+
+
+def _reviewed_site_context(company_id: int, payload: ReviewedSiteIn, db: Session):
+    """Validate the proposed site without changing the database or using the network."""
+    from app.services.cnpj import clean_cnpj, is_valid_cnpj
+    from app.services.contact_readiness import corporate_identity
+    from app.services.safe_http import validate_url
+
+    website = payload.website.strip().rstrip("/")
+    source = payload.source_url.strip()
+    evidence = payload.evidence.strip()
+    try:
+        validate_url(website)
+        validate_url(source)
+        if len(evidence) < 12:
+            raise ValueError("Evidência insuficiente.")
+    except ValueError as exc:
+        raise HTTPException(422, "Informe URLs públicas válidas e evidência da titularidade.") from exc
+
+    company = db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(404, "Empresa não encontrada.")
+    if is_blocked(db, company):
+        raise HTTPException(403, "Empresa em lista de supressão.")
+    cnpj = clean_cnpj(company.cnpj)
+    if not is_valid_cnpj(cnpj):
+        raise HTTPException(422, "CNPJ inválido.")
+    # Do not replace an existing or conflicting site via this initial-registration flow.
+    peers = db.query(Company).filter(sql_cnpj(Company.cnpj) == cnpj).all()
+    if not peers or any(
+        str(peer.registration_status or "").strip().upper() != "ATIVA"
+        or not corporate_identity(peer.legal_nature, peer.name)
+        for peer in peers
+    ):
+        raise HTTPException(422, "Cadastro empresarial inconsistente; revise a ficha.")
+    if any(str(peer.website or "").strip().rstrip("/") not in ("", website) for peer in peers):
+        raise HTTPException(409, "Site já cadastrado ou conflitante; revise a ficha antes de substituir.")
+    return company, website, source, evidence
+
+
+def _persist_reviewed_site(db, company, website, source, evidence):
+    company_id = company.id
+    candidate = db.query(DomainCandidate).filter_by(company_id=company_id, website=website).first()
+    if candidate is None:
+        candidate = DomainCandidate(company_id=company_id, website=website,
+                                    source_url=source, evidence=evidence)
+        db.add(candidate)
+    candidate.source_url = source
+    candidate.evidence = evidence
+    candidate.status = "verificado"
+    candidate.checked_at = datetime.now(timezone.utc)
+    company.website = website
+    # Review of ownership is not a verification of direct contact channels.
+    db.add(AuditLog(event="domain_reviewed_manually", entity_type="company", entity_id=company_id,
+                    details={"website": website, "source": source, "evidence": evidence}))
+
+
+@router.post("/reviewed-site/{company_id}")
+def register_reviewed_site(company_id: int, payload: ReviewedSiteIn, db: Session = Depends(get_db)):
+    """Owner explicitly records a reviewed institutional site; no external fetch."""
+    if not payload.ownership_reviewed:
+        raise HTTPException(422, "Confirme a titularidade do site com base em fonte pública.")
+    context = _reviewed_site_context(company_id, payload, db)
+    _persist_reviewed_site(db, *context)
+    db.commit()
+    return {"website": context[1], "ownership_reviewed": True, "external_check": False,
+            "note": "Revisão declarada pelo proprietário. Nenhuma coleta executada."}
+
+
+class ReviewedSiteCandidate(ReviewedSiteIn):
+    cnpj: str = Field(min_length=14, max_length=24)
+
+
+class ReviewedSiteBatchIn(BaseModel):
+    items: list[ReviewedSiteCandidate] = Field(min_length=1, max_length=5)
+    confirm: bool = False
+
+
+@router.post("/reviewed-sites/batch")
+def prepare_reviewed_sites(payload: ReviewedSiteBatchIn, db: Session = Depends(get_db)):
+    """Preview or atomically register reviewed sites and enqueue at most five exact CNPJs."""
+    from app.services.cnpj import clean_cnpj, is_valid_cnpj
+    from app.services.contact_discovery_queue import enqueue
+    from app.db.models import ContactDiscoveryItem
+
+    keys = [clean_cnpj(item.cnpj) for item in payload.items]
+    if len(set(keys)) != len(keys):
+        raise HTTPException(422, "Não repita CNPJs no lote.")
+    if payload.confirm and not all(item.ownership_reviewed for item in payload.items):
+        raise HTTPException(422, "Confirme a titularidade de todos os sites selecionados.")
+    results, contexts = [], []
+    for key, item in zip(keys, payload.items):
+        row = {"cnpj": key, "status": "invalid_cnpj"}
+        results.append(row)
+        if not is_valid_cnpj(key):
+            continue
+        peers = db.query(Company).filter(sql_cnpj(Company.cnpj) == key).limit(2).all()
+        if len(peers) != 1:
+            row["status"] = "ambiguous_cnpj" if peers else "not_found"
+            continue
+        company = peers[0]
+        if is_blocked(db, company) or company.pipeline_stage == "nao_contatar":
+            row["status"] = "suppressed"
+            continue
+        if str(company.cnae_main or "").startswith("8291"):
+            row["status"] = "competitor"
+            continue
+        try:
+            context = _reviewed_site_context(company.id, item, db)
+        except HTTPException as exc:
+            row["status"] = {403: "suppressed", 409: "conflicting_site"}.get(exc.status_code, "review_required")
+            continue
+        if db.query(ContactDiscoveryItem.id).filter(
+            ContactDiscoveryItem.company_id == company.id,
+            ContactDiscoveryItem.status.in_(("queued", "running")),
+        ).first():
+            row["status"] = "already_queued"
+            continue
+        contexts.append(context)
+        row.update(status="ready", company_id=company.id, name=company.name)
+    if not payload.confirm:
+        return {"items": results, "job_id": None, "preview": True, "ready": len(contexts)}
+    if len(contexts) != len(payload.items):
+        raise HTTPException(409, "Um ou mais registros mudaram ou exigem revisão. Consulte o lote novamente.")
+    # One transaction: enqueue commits the site records, audit entries and the queue together.
+    try:
+        for context in contexts:
+            _persist_reviewed_site(db, *context)
+        job_id = enqueue(db, [ctx[0].id for ctx in contexts])
+    except Exception:
+        db.rollback()
+        raise
+    return {"items": results, "job_id": job_id, "preview": False, "ready": len(contexts),
+            "note": "Sites registrados e fila preparada. Nenhuma coleta ou mensagem executada."}
+
+
 class BatchDiscoveryIn(BaseModel):
     company_ids: list[int] = Field(min_length=1, max_length=5)
+
+
+def _discovery_block_reason(db, company):
+    """Apply the same corporate identity rules at collection time, not only in the UI."""
+    from app.services.cnpj import clean_cnpj, is_valid_cnpj
+    from app.services.contact_readiness import corporate_identity
+    if company is None:
+        return 'not_found'
+    if is_blocked(db, company) or company.pipeline_stage == 'nao_contatar':
+        return 'suppressed'
+    key = clean_cnpj(company.cnpj)
+    if not is_valid_cnpj(key):
+        return 'invalid_cnpj'
+    peers = db.query(Company).filter(sql_cnpj(Company.cnpj) == key).all()
+    if any(peer.pipeline_stage == 'nao_contatar' for peer in peers):
+        return 'suppressed'
+    if not peers or any(str(peer.registration_status or '').strip().upper() != 'ATIVA'
+                        or not corporate_identity(peer.legal_nature, peer.name) for peer in peers):
+        return 'ineligible_registry'
+    if any(str(peer.cnae_main or '').startswith('8291') for peer in peers):
+        return 'competitor'
+    if not company.website:
+        return 'missing_website'
+    sites = {str(peer.website).strip().rstrip('/') for peer in peers if str(peer.website or '').strip()}
+    if len(sites) != 1:
+        return 'conflicting_site'
+    return None
 
 
 @router.post('/discover-batch')
@@ -355,21 +523,15 @@ def discover_batch(payload: BatchDiscoveryIn, db: Session = Depends(get_db)):
     """Bounded manual batch of official sites. Each company commits independently."""
     from app.collectors import site_contacts
     from app.services.safe_http import validate_url
-    from app.services.cnpj import is_valid_cnpj
     import httpx
     results = []
     for company_id in dict.fromkeys(payload.company_ids):
         row = {'company_id': company_id, 'added': 0, 'pages_read': 0}
         try:
             company = db.get(Company, company_id)
-            if company is None:
-                row['status'] = 'not_found'
-            elif is_blocked(db, company):
-                row['status'] = 'suppressed'
-            elif not is_valid_cnpj(company.cnpj):
-                row['status'] = 'invalid_cnpj'
-            elif not company.website:
-                row['status'] = 'missing_website'
+            blocked = _discovery_block_reason(db, company)
+            if blocked:
+                row['status'] = blocked
             else:
                 website = company.website
                 validate_url(website if '://' in website else 'https://' + website)
@@ -377,7 +539,7 @@ def discover_batch(payload: BatchDiscoveryIn, db: Session = Depends(get_db)):
                 # Recheck opt-out after network work, before any insertion.
                 db.expire_all()
                 company = db.get(Company, company_id)
-                if not company or is_blocked(db, company) or company.website != website:
+                if _discovery_block_reason(db, company) or company.website != website:
                     row['status'] = 'changed_or_suppressed'
                 else:
                     candidates = [('email', x['email'], x['source_url']) for x in result['emails']]

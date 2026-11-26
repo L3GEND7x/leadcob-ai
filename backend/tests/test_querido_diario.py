@@ -141,3 +141,22 @@ def test_capture_querido_diario_validates_ibge_code():
     from app.main import app
     with TestClient(app) as client:
         assert client.post("/api/capture/querido-diario", params={"territory_ids": "13A2603"}).status_code == 400
+
+
+def test_invalid_gazette_payloads_are_not_counted_as_success(monkeypatch):
+    for payload in ({}, {"gazettes": None}, {"gazettes": {}}, {"gazettes": [None]},
+                    {"gazettes": [], "total_gazettes": "invalid"}):
+        monkeypatch.setattr(querido_diario, "request_json", lambda *a, **kw: payload)
+        result = querido_diario.search_gazettes(["1302603"], terms=["cobrança"], pause=0)
+        assert result["pages_read"] == 0
+        assert result["records"] == []
+        assert len(result["errors"]) == 1
+
+
+def test_valid_empty_gazette_payload_is_success(monkeypatch):
+    monkeypatch.setattr(querido_diario, "request_json",
+                        lambda *a, **kw: {"gazettes": [], "total_gazettes": 0})
+    result = querido_diario.search_gazettes(["1302603"], terms=["cobrança"], pause=0)
+    assert result["pages_read"] == 1
+    assert result["records"] == []
+    assert result["errors"] == []

@@ -4,11 +4,12 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from sqlalchemy import select, func
-from app.db.models import Company, BusinessContact, Suppression
+from app.db.models import Company, BusinessContact
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
 from app.collectors.site_contacts import _role_box, published_channels
 from html import escape
 from app.services.safe_http import validate_url
+from app.services.contact_suppression import suppression_keys
 
 DIRECT = ("email", "phone", "whatsapp", "linkedin", "instagram", "facebook")
 
@@ -16,6 +17,11 @@ DIRECT = ("email", "phone", "whatsapp", "linkedin", "instagram", "facebook")
 def _corporate(nature):
     text = str(nature or "").strip()
     return bool(text) and "individual" not in text.casefold() and not text.startswith(("213", "2.1.3"))
+
+
+def corporate_identity(nature, name):
+    """Use the same conservative corporate identity rule in all lead views."""
+    return _corporate(nature) and not re.search(r"[0-9]{11}\s*$", str(name or ""))
 
 
 def _institutional_contact(kind, value):
@@ -57,13 +63,7 @@ def contactability(db, uf="AM", city="Manaus"):
     city = city.strip()
     if not re.fullmatch("[A-Z]{2}", uf) or not city or len(city) > 100:
         raise ValueError("UF e município inválidos.")
-    blocked_ids = set(db.scalars(select(Suppression.company_id).where(
-        Suppression.company_id.isnot(None))))
-    blocked_cnpjs = {clean_cnpj(x) for x in db.scalars(select(Suppression.cnpj).where(
-        Suppression.cnpj.isnot(None)))}
-    if blocked_ids:
-        blocked_cnpjs.update(clean_cnpj(x) for x in db.scalars(
-            select(Company.cnpj).where(Company.id.in_(blocked_ids))) if x)
+    blocked_ids, blocked_cnpjs = suppression_keys(db)
 
     scope = (func.upper(func.trim(Company.state)) == uf,
              func.lower(func.trim(Company.city)) == city.lower())
@@ -88,14 +88,13 @@ def contactability(db, uf="AM", city="Manaus"):
         if not rows or any(x[1] != "ATIVA" for x in rows):
             continue
         active += 1
-        companies = [x for x in rows if _corporate(x[2]) and
-                     not re.search(r"[0-9]{11}\s*$", str(x[4] or ""))]
-        if not companies:
+        # A single inconsistent duplicate quarantines the entire local CNPJ.
+        if not all(corporate_identity(x[2], x[4]) for x in rows):
             continue
-        for x in companies:
+        for x in rows:
             corporate_ids[x[0]] = cnpj
-        sites = {str(x[3]).strip() for x in companies if x[3] and str(x[3]).strip()}
-        if len(sites) == 1:
+        sites = {str(x[3]).strip() for x in rows if x[3] and str(x[3]).strip()}
+        if len(sites) == 1 and _source_url(next(iter(sites))):
             with_site += 1
         elif len(sites) > 1:
             conflicting_sites += 1
@@ -146,5 +145,6 @@ def contactability(db, uf="AM", city="Manaus"):
                        "verified_with_source_url":len(verified_sourced[k])} for k in DIRECT},
         "note":"Contagem de CNPJs distintos da base local; apenas canais institucionais válidos cadastrados. "
                "Verificado indica revisão interna, não confirma entrega, consentimento, base legal ou intenção de compra. "
+               "Duplicatas locais com natureza inconsistente ficam em revisão; site consistente exige URL formalmente válida. "
                "Um CNPJ pode ter vários canais. Base não é censo oficial."
     }

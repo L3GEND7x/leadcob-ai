@@ -8,10 +8,10 @@ import re
 from collections import defaultdict
 
 from sqlalchemy import select, func
-from app.db.models import Company, BusinessContact
+from app.db.models import Company, BusinessContact, Opportunity
 from app.services.cnpj import clean_cnpj, is_valid_cnpj
 from app.services.contact_readiness import (
-    _corporate, _institutional_contact, _source_url,
+    corporate_identity, _institutional_contact, _source_url,
 )
 from app.services.contact_suppression import suppression_keys
 
@@ -64,15 +64,10 @@ def targets(db, uf, city, kind, limit=50, offset=0):
                for row in rows):
             continue
         active += 1
-        eligible = [
-            row for row in rows
-            if _corporate(row.legal_nature)
-            and not re.search(r"[0-9]{11}\s*$", str(row.name or ""))
-        ]
-        if not eligible:
+        if not all(corporate_identity(row.legal_nature, row.name) for row in rows):
             continue
-        corporate_groups[key] = eligible
-        for row in eligible:
+        corporate_groups[key] = rows
+        for row in rows:
             corporate[row.id] = key
 
     present, verified, sourced_verified = set(), set(), set()
@@ -95,6 +90,22 @@ def targets(db, uf, city, kind, limit=50, offset=0):
                     sourced_verified.add(key)
     finally:
         contact_stream.close()
+
+    # Signals are evidence for research, never proof of a hiring or outsourcing intent.
+    signal_keys = set()
+    verified_signal_keys = set()
+    for company_id, source, name, signal_verified in db.execute(select(
+        Opportunity.company_id, Opportunity.source_url, Opportunity.source_name,
+        Opportunity.is_verified,
+    ).join(Company, Company.id == Opportunity.company_id).where(
+        *scope, Opportunity.status.in_(("review", "qualified")),
+        Opportunity.kind.in_(("hiring", "outsourcing", "public_procurement")),
+    )).yield_per(500):
+        key = corporate.get(company_id)
+        if key and _source_url(source) and str(name or "").strip() and str(name).strip().casefold() != "demonstração":
+            signal_keys.add(key)
+            if signal_verified is True:
+                verified_signal_keys.add(key)
 
     items = []
     for key, rows in corporate_groups.items():
@@ -120,8 +131,11 @@ def targets(db, uf, city, kind, limit=50, offset=0):
             "name": row.name,
             "discovery_ready": ready,
             "reason": reason,
+            "has_sourced_signal": key in signal_keys,
+            "has_reviewed_signal": key in verified_signal_keys,
         })
-    items.sort(key=lambda item: (not item["discovery_ready"], item["company_id"]))
+    items.sort(key=lambda item: (not item["has_reviewed_signal"], not item["has_sourced_signal"],
+                                 not item["discovery_ready"], item["company_id"]))
     return {
         "uf": uf, "city": city, "kind": kind,
         "active_unique_cnpjs": active,
@@ -131,11 +145,12 @@ def targets(db, uf, city, kind, limit=50, offset=0):
         "with_verified_sourced_channel": len(sourced_verified),
         "missing_channel": len(items),
         "ready_for_site_discovery": sum(item["discovery_ready"] for item in items),
+        "with_sourced_signal_missing_channel": sum(item["has_sourced_signal"] for item in items),
         "items": items[offset:offset + limit],
         "note": (
             "Apenas CNPJs empresariais ativos, não suprimidos, com status consistente "
-            "e canais institucionais válidos na base local. Ausência de registro não "
+            "e identidade empresarial consistente na base local. Ausência de registro não "
             "comprova ausência do canal. Site exige revisão de titularidade; nenhuma "
-            "coleta ocorre nesta consulta."
+            "coleta ocorre nesta consulta. Sinais registrados com fonte formal priorizam pesquisa, não confirmam demanda."
         ),
     }

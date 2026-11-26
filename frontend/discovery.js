@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id),base='/api/contacts/discovery-jobs',size=50;
 let csrf='',offset=0,itemOffset=0,job=null,busy=false;
 const labels={queued:'Na fila',running:'Processando',completed:'Concluído',failed:'Falhou',skipped:'Ignorado'};
-const reasons={completed:'Pesquisa concluída',suppressed:'Empresa suprimida',not_found:'Empresa não encontrada',missing_website:'Sem site cadastrado',invalid_cnpj:'CNPJ inválido',changed_or_suppressed:'Cadastro alterado ou suprimido',unavailable:'Site indisponível',error:'Falha de processamento',lease_expired:'Execução interrompida',invalid_claim_metadata:'Reserva inconsistente',attempts_exhausted:'Tentativas esgotadas'};
+const reasons={completed:'Pesquisa concluída',suppressed:'Empresa suprimida',not_found:'Empresa não encontrada',missing_website:'Sem site cadastrado',invalid_cnpj:'CNPJ inválido',ineligible_registry:'Cadastro PJ ativo não confirmado',competitor:'Concorrente — excluído',conflicting_site:'Sites conflitantes — revisar',changed_or_suppressed:'Cadastro alterado ou suprimido',unavailable:'Site indisponível',error:'Falha de processamento',lease_expired:'Execução interrompida',invalid_claim_metadata:'Reserva inconsistente',attempts_exhausted:'Tentativas esgotadas'};
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
 function notice(text){$('notice').textContent=text;}
 async function api(path,method='GET',payload){
@@ -55,7 +55,7 @@ async function coverage(){
  try{
  const r=await api('/api/contacts/coverage?'+qs);
  const grid=el('div',undefined,'metrics');
- for(const [label,value] of [['Empresas elegíveis',r.eligible_company_records],['Com canal cadastrado',r.with_any_channel],['Sem canal cadastrado',r.without_registered_channel],['Com canal verificado',r.with_any_verified_channel]]){
+ for(const [label,value] of [['Registros de empresas (não CNPJs únicos)',r.eligible_company_records],['Registros com canal cadastrado',r.with_any_channel],['Registros sem canal cadastrado',r.without_registered_channel],['Registros com canal marcado como verificado',r.with_any_verified_channel]]){
  const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(value).toLocaleString('pt-BR')));grid.append(card);}
  root.replaceChildren(grid);
  for(const [kind,label] of Object.entries(channelNames)){
@@ -167,6 +167,23 @@ $('qualification-next').addEventListener('click',()=>run(async()=>{qualification
 
 
 let targetsQuery=null,targetsOffset=0,preparedIds=[];
+function reviewedSiteForm(item){
+ const form=el('form'),website=el('input'),source=el('input'),evidence=el('textarea'),reviewed=el('input');
+ website.type='url';website.required=true;website.maxLength=500;website.placeholder='https://site-oficial.com.br';
+ source.type='url';source.required=true;source.maxLength=1000;source.placeholder='https://fonte-publica.com.br/pagina';
+ evidence.required=true;evidence.minLength=12;evidence.maxLength=1000;evidence.placeholder='Como o site foi vinculado ao CNPJ?';
+ reviewed.type='checkbox';reviewed.required=true;
+ for(const [title,input] of [['Site institucional',website],['URL da fonte',source],['Evidência de titularidade',evidence],['Conferi a titularidade em fonte pública',reviewed]]){
+  const label=el('label',title);label.append(input);form.append(label);
+ }
+ const submit=el('button','Registrar site revisado','secondary');submit.type='submit';form.append(submit);
+ form.addEventListener('submit',e=>{e.preventDefault();if(busy)return;run(async()=>{
+  await api('/api/contacts/reviewed-site/'+encodeURIComponent(item.company_id),'POST',{website:website.value,source_url:source.value,evidence:evidence.value,ownership_reviewed:reviewed.checked});
+  await loadTargets();return 'Site registrado. Selecione a empresa para preparar a fila; canais ainda não coletados.';
+ });});
+ return form;
+}
+
 async function loadTargets(){
  const root=$('targets-results');preparedIds=[];
  $('targets-prev').disabled=$('targets-next').disabled=$('targets-prepare').disabled=true;
@@ -175,7 +192,7 @@ async function loadTargets(){
  const qs=new URLSearchParams(targetsQuery);qs.set('limit','50');qs.set('offset',String(targetsOffset));
  const r=await api('/api/contacts/discovery-targets?'+qs);
  const grid=el('div',undefined,'metrics');
- for(const [label,key] of [['CNPJs ativos únicos','active_unique_cnpjs'],['CNPJs empresariais elegíveis','active_corporate_cnpjs'],['Com canal institucional válido','with_channel'],['Com canal verificado','with_verified_channel'],['Verificado com URL de origem','with_verified_sourced_channel'],['Sem canal válido','missing_channel'],['Com site para pesquisa','ready_for_site_discovery']]){
+ for(const [label,key] of [['CNPJs ativos únicos','active_unique_cnpjs'],['CNPJs empresariais elegíveis','active_corporate_cnpjs'],['Com canal institucional válido','with_channel'],['Com canal verificado','with_verified_channel'],['Verificado com URL de origem','with_verified_sourced_channel'],['Sem canal válido','missing_channel'],['Com site para pesquisa','ready_for_site_discovery'],['Com sinal e canal ausente','with_sourced_signal_missing_channel']]){
   const card=el('div',undefined,'metric');card.append(el('span',label),el('strong',Number(r[key]).toLocaleString('pt-BR')));grid.append(card);
  }
  root.replaceChildren(grid,el('p',r.note));
@@ -183,6 +200,11 @@ async function loadTargets(){
  const row=el('article',undefined,'record'),link=el('a','Revisar ficha e canais');
  link.href='/#/empresa/'+encodeURIComponent(x.company_id);
  row.append(el('strong',x.name),el('p',x.cnpj+' · '+({registered_site:'Site cadastrado — revisar',conflicting_sites:'Sites conflitantes',invalid_site:'URL de site inválida — revisar',missing_site:'Sem site cadastrado'}[x.reason]||x.reason)),link);
+ if(x.has_sourced_signal)row.append(el('p',x.has_reviewed_signal?'Sinal revisado com fonte registrada — priorizar pesquisa':'Sinal com fonte registrada — ainda a confirmar'));
+ if(x.reason==='missing_site'){
+  const search=el('a','Pesquisar site oficial (busca externa)');search.href='https://duckduckgo.com/?'+new URLSearchParams({q:'"'+x.name+'" "'+x.cnpj+'" site oficial contato'}).toString();search.target='_blank';search.rel='noopener noreferrer';
+  const details=el('details');details.append(el('summary','Registrar site após conferir'),reviewedSiteForm(x));row.append(search,details);
+ }
  if(x.discovery_ready){const label=el('label','Incluir após revisar titularidade'),check=el('input');check.type='checkbox';check.addEventListener('change',()=>{preparedIds=check.checked?[...new Set([...preparedIds,x.company_id])]:preparedIds.filter(id=>id!==x.company_id);$('targets-prepare').disabled=!preparedIds.length;});label.append(check);row.append(label);}
  root.append(row);
  }
@@ -208,3 +230,56 @@ async function loadWorkerDiagnostics(){
  }catch(e){root.replaceChildren(el('p',e.message));throw e;}
 }
 $('worker-refresh').addEventListener('click',()=>run(loadWorkerDiagnostics));
+
+
+// Review imported public institutional sources without a separate local Python script.
+let reviewedSelection=[];
+const reviewedReasons={ready:'Pronto para revisão',invalid_cnpj:'CNPJ inválido',not_found:'Ausente da base',ambiguous_cnpj:'Cadastro duplicado — revisar',suppressed:'Não contatar',competitor:'Concorrente — excluído',conflicting_site:'Site conflitante',review_required:'Cadastro ou fonte exige revisão',already_queued:'Já possui pesquisa pendente'};
+function reviewedPublicUrl(raw){
+ const url=new URL(raw);
+ if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error('URL de fonte inválida.');
+ return url.href;
+}
+$('reviewed-file').addEventListener('change',()=>{reviewedSelection=[];$('reviewed-prepare').disabled=true;$('reviewed-results').replaceChildren();});
+$('reviewed-import').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
+ const root=$('reviewed-results'),file=$('reviewed-file').files[0];
+ reviewedSelection=[];$('reviewed-prepare').disabled=true;root.replaceChildren();
+ if(!file||file.size>20000)throw Error('Selecione JSON de até 20 KB.');
+ let data;
+ try{data=JSON.parse(await file.text());}catch(_){throw Error('Arquivo JSON inválido.');}
+ if(!Array.isArray(data)||data.length<1||data.length>5)throw Error('Informe de 1 a 5 registros.');
+ const items=data.map(x=>{
+  if(!x||typeof x.cnpj!=='string'||typeof x.website!=='string'||typeof x.source_url!=='string'||typeof x.evidence!=='string')throw Error('Cada registro exige cnpj, website, source_url e evidence.');
+  reviewedPublicUrl(x.website);reviewedPublicUrl(x.source_url);
+  return {cnpj:x.cnpj,website:x.website,source_url:x.source_url,evidence:x.evidence,ownership_reviewed:false};
+ });
+ const response=await api('/api/contacts/reviewed-sites/batch','POST',{items,confirm:false});
+ if(response.preview!==true||response.items.length!==items.length)throw Error('Resposta de conciliação inválida.');
+ root.replaceChildren(el('p',response.ready+' de '+items.length+' CNPJs disponíveis para revisão.'));
+ response.items.forEach((result,i)=>{
+  const item=items[i],row=el('article',undefined,'record'),source=el('a','Abrir fonte institucional');
+  source.href=reviewedPublicUrl(item.source_url);source.target='_blank';source.rel='noopener noreferrer';
+  row.append(el('strong',result.name||result.cnpj),el('p',result.cnpj+' · '+(reviewedReasons[result.status]||'Revisar')),el('p',item.evidence),source);
+  if(result.status==='ready'){
+   const label=el('label','Conferi a titularidade e a finalidade institucional'),check=el('input');check.type='checkbox';
+   check.addEventListener('change',()=>{reviewedSelection=check.checked?[...reviewedSelection,item]:reviewedSelection.filter(x=>x!==item);$('reviewed-prepare').disabled=!reviewedSelection.length;});
+   label.append(check);row.append(label);
+  }
+  root.append(row);
+ });
+ return 'Conciliação concluída. Nenhuma gravação realizada.';
+});});
+$('reviewed-prepare').addEventListener('click',()=>{
+ if(!reviewedSelection.length||!confirm('Registrar os sites selecionados e criar uma fila de pesquisa? Nenhuma coleta será iniciada agora.'))return;
+ run(async()=>{
+  const items=reviewedSelection.map(x=>({...x,ownership_reviewed:true}));
+  $('reviewed-prepare').disabled=true;
+  try{
+   const response=await api('/api/contacts/reviewed-sites/batch','POST',{items,confirm:true});
+   if(!Number.isInteger(response.job_id)||response.preview!==false)throw Error('Fila não confirmada; confira o histórico.');
+   reviewedSelection=[];$('reviewed-results').replaceChildren(el('p','Lote #'+response.job_id+' criado.'));$('reviewed-import').reset();
+   job=response.job_id;offset=itemOffset=0;await history();await detail();
+   return 'Sites registrados e fila preparada. Acione Processar 1 empresa agora.';
+  }catch(e){reviewedSelection=[];$('reviewed-results').replaceChildren(el('p','Confira o histórico e faça uma nova conciliação antes de repetir.'));throw e;}
+ });
+});

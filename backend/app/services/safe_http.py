@@ -49,11 +49,13 @@ def public_client():
                         timeout=8, headers={"User-Agent": "LeadCobAI/0.6 (institutional contact research)"})
 
 
-def bounded_get(client, url, allowed_host, deadline, max_bytes=400_000):
+def bounded_get(client, url, allowed_host, deadline, max_bytes=400_000, *, allow_url=None):
     for _ in range(4):
         parsed = validate_url(url)
         if parsed.hostname.lower().removeprefix("www.") != allowed_host.lower().removeprefix("www."):
             raise ValueError("Redirecionamento para outro domínio bloqueado.")
+        if allow_url is not None and not allow_url(url):
+            raise ValueError("robots.txt não permite ler o destino.")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise ValueError("Tempo máximo de leitura excedido.")

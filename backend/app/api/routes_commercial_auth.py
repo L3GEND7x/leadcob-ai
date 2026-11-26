@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.account_access import AccessDenied, authorize, issue_session, revoke_session
 from app.core.config import settings
+from app.core.client_ip import client_ip
 from app.core.security import auth_enabled, stamp
 from app.db.database import SessionLocal
 from app.db.models import AccountSession, LoginAttempt
@@ -61,7 +62,7 @@ def login(payload: Login, request: Request):
     _enabled()
     _origin(request)
     now = datetime.now(timezone.utc)
-    peer = request.client.host if request.client else 'unknown'
+    peer = client_ip(request)
     email = payload.email.strip().casefold()
     with SessionLocal() as db:
         peer_key = 'commercial-peer:' + hashlib.sha256(peer.encode()).hexdigest()

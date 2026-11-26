@@ -2,6 +2,29 @@
 
 ## Não lançado
 
+
+
+- Enriquecimento: importação de até cinco sites institucionais pesquisados com conciliação exata por CNPJ, prévia sem gravação e criação de fila após revisão explícita; sem coleta automática.
+
+- Coleta institucional: respeita robots.txt também antes de seguir redirecionamentos no site, sem acessar páginas proibidas.
+
+
+
+
+
+- Corrige erro na central de enriquecimento quando existem oportunidades: a verificação do sinal não sobrescreve a contagem de CNPJs com contatos verificados.
+
+- Enriquecimento: prioriza empresas sem canal com sinais de fonte formal, incluindo sinais a confirmar, e permite registrar site institucional revisado com fonte e evidência antes de criar a fila. Sem coleta ou mensagens automáticas.
+
+- Fontes de dados: diferencia validação histórica, coleta concluída, parcial, em andamento e falha; mostra o último lote por família, horário e contagens. Falha ao consultar o histórico não é exibida como ausência de captações.
+- **Segurança do login atrás do proxy (P1)**: com `TRUSTED_PROXY_CIDRS` (ex.: `100.64.0.0/10` na Railway), o limite de
+  tentativas do painel e das contas comerciais usa o `X-Real-IP` do visitante, e não o endereço do proxy, que muda a cada
+  requisição. Desligado por padrão; procedimento de ativação e teste em `docs/operacao-railway.md`.
+- Acessibilidade: o campo de data de cada tarefa na Agenda ganhou nome acessível (axe-core apontava 2 campos sem rótulo).
+- **Encontrar empresas (P1)**: ordenado por pontuação, o total exibido passou a ser o real do filtro. Antes, a busca
+  mostrava "de 3.000" mesmo com mais empresas na base, porque só as 3.000 de maior capital social são pontuadas por vez.
+  A resposta traz `total` (real), `scored` e `partial`; o paginador mostra os dois números e a nota explica o limite.
+
 - Assinaturas comerciais administrativas por organização, vigência, cancelamento e consulta privada. Migração inclui catálogo inicial inativo: Essential R$ 27, Professional R$ 117 e Enterprise R$ 397. Sem cobrança automática ou bloqueio por assinatura nesta etapa.
 - Catálogo administrativo de planos versionados em BRL, preços em centavos e limites configuráveis. Nenhum plano ou cobrança criado automaticamente; aplicação de limites depende da assinatura.
 - Central de enriquecimento: cobertura por canal, UF e município, com contagens distintas de registros elegíveis e separação de contatos verificados.
