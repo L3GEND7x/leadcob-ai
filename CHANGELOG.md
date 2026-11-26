@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Enriquecimento: diagnóstico seguro por motivo de indisponibilidade (HTTP, robots.txt, transporte, redirecionamento e limites), registrado na fila e no ensaio externo sem revelar corpo de resposta ou credenciais.
+
 
 
 - Enriquecimento: importação de até cinco sites institucionais pesquisados com conciliação exata por CNPJ, prévia sem gravação e criação de fila após revisão explícita; sem coleta automática.

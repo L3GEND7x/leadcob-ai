@@ -139,6 +139,34 @@ def published_channels(html, source_url):
     return list(channels.values())
 
 
+class DiscoveryUnavailable(ValueError):
+    """Stable diagnostic code; never includes the remote body, URL or exception text."""
+    def __init__(self, code):
+        self.code = code
+        super().__init__("Pesquisa institucional indisponível: " + code)
+
+
+def network_reason(exc):
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, httpx.ConnectError):
+        return "connect_error"
+    if isinstance(exc, httpx.HTTPError):
+        return "transport_error"
+    if isinstance(exc, OSError):
+        return "network_os_error"
+    if isinstance(exc, ValueError):
+        return {
+            "Redirecionamento para outro domínio bloqueado.": "redirect_blocked",
+            "robots.txt não permite ler o destino.": "robots_denied",
+            "Tempo máximo de leitura excedido.": "deadline",
+            "Limite de tamanho ou tempo da página excedido.": "page_limit",
+            "Limite de redirecionamentos excedido.": "redirect_limit",
+            "Destino interno bloqueado.": "destination_blocked",
+        }.get(str(exc), "invalid_response")
+    return "unexpected_error"
+
+
 def discover(website: str, client: httpx.Client | None = None, max_pages: int = 4) -> dict:
     website = (website or "").strip()
     if not re.match(r"^(https?://)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(:\d+)?(/.*)?$", website):
@@ -152,16 +180,18 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
     domain = _root(u.hostname)
     own = client is None
     client = client or public_client()
-    found, pages, notes, channels = {}, [], [], {}
+    found, pages, notes, channels, reasons = {}, [], [], {}, []
     try:
         robots = RobotFileParser()
         try:
             r = bounded_get(client, base + "/robots.txt", u.hostname, deadline)
             if r.status_code not in (200, 404):
-                raise ValueError("Não foi possível verificar robots.txt.")
+                raise DiscoveryUnavailable("robots_http_" + str(r.status_code))
             robots.parse(r.text.splitlines() if r.status_code == 200 else [])
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ValueError("Não foi possível verificar robots.txt.") from exc
+        except DiscoveryUnavailable:
+            raise
+        except (httpx.HTTPError, ValueError, OSError) as exc:
+            raise DiscoveryUnavailable("robots_" + network_reason(exc)) from exc
         queue, seen = [website if "://" in website else "https://" + website], set()
         while queue and len(pages) < max_pages:
             url = queue.pop(0)
@@ -170,14 +200,17 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
             seen.add(url)
             if not robots.can_fetch(UA, url):
                 notes.append(f"robots.txt não permite ler {url}")
+                reasons.append("robots_denied")
                 continue
             try:
                 resp = bounded_get(client, url, u.hostname, deadline,
                                    allow_url=lambda target: robots.can_fetch(UA, target))
-            except (httpx.HTTPError, ValueError) as exc:
+            except (httpx.HTTPError, ValueError, OSError) as exc:
+                reasons.append(network_reason(exc))
                 notes.append(f"{url}: {type(exc).__name__}")
                 continue
             if resp.status_code != 200 or "html" not in resp.headers.get("content-type", "html"):
+                reasons.append("page_http_" + str(resp.status_code) if resp.status_code != 200 else "non_html")
                 notes.append(f"{url}: HTTP {resp.status_code}")
                 continue
             final_host = urlparse(str(resp.url)).hostname or ""
@@ -211,4 +244,4 @@ def discover(website: str, client: httpx.Client | None = None, max_pages: int = 
         if own:
             client.close()
     return {"domain": domain, "pages_read": pages, "emails": [{"email": e, "source_url": s} for e, s in found.items()],
-            "channels": list(channels.values()), "notes": notes[:10]}
+            "channels": list(channels.values()), "notes": notes[:10], "reason_codes": sorted(set(reasons))[:10]}

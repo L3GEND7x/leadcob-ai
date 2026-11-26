@@ -559,13 +559,17 @@ def discover_batch(payload: BatchDiscoveryIn, db: Session = Depends(get_db)):
                         except (HTTPException, ValueError):
                             continue
                     row['pages_read'] = len(result['pages_read'])
+                    row['reason_codes'] = result.get('reason_codes', [])[:10]
                     row['status'] = 'completed' if row['pages_read'] else 'unavailable'
                     db.add(AuditLog(event='contacts_batch_discovery', entity_type='company',
                                     entity_id=company_id, details=dict(row)))
                     db.commit()
-        except (ValueError, httpx.HTTPError):
+        except site_contacts.DiscoveryUnavailable as exc:
             db.rollback()
-            row.update(status='unavailable', added=0)
+            row.update(status='unavailable', added=0, reason_codes=[exc.code])
+        except (ValueError, httpx.HTTPError, OSError) as exc:
+            db.rollback()
+            row.update(status='unavailable', added=0, reason_codes=[site_contacts.network_reason(exc)])
         except Exception:
             db.rollback()
             row.update(status='error', added=0)

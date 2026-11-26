@@ -11,7 +11,7 @@ from pathlib import Path
 from time import sleep
 from urllib.parse import urlsplit
 
-from app.collectors.site_contacts import discover, _role_box
+from app.collectors.site_contacts import discover, _role_box, DiscoveryUnavailable, network_reason
 from app.services.cnpj import is_valid_cnpj
 
 
@@ -36,12 +36,16 @@ def probe(items, *, collect=discover, wait=sleep):
         try:
             batch = collect(row["website"], max_pages=2)
             result["pages_read"] = len(batch["pages_read"])
+            result["reason_codes"] = batch.get("reason_codes", [])
             result["status"] = "not_found" if batch["pages_read"] else "unavailable"
             match = next((x for x in batch["emails"] if x["email"] == row["expected_email"]), None)
             if match and match["source_url"] in batch["pages_read"]:
                 result.update(status="published", expected_email_found=True,
                               email=row["expected_email"], source_url=match["source_url"])
+        except DiscoveryUnavailable as exc:
+            result["reason_codes"] = [exc.code]
         except Exception as exc:
+            result["reason_codes"] = [network_reason(exc)]
             result["error_type"] = type(exc).__name__
         report["items"].append(result)
     report["companies_processed"] = len(report["items"])
