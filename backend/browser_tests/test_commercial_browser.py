@@ -150,6 +150,8 @@ def test_owner_discovery_has_explicit_manual_queue_action(viewport):
         expect(page.locator("#detail")).to_be_hidden()
         expect(page.locator("#create")).to_be_visible()
         expect(page.locator("#export-contacts")).to_be_visible()
+        expect(page.locator("#reviewed-file")).to_have_count(1)
+        expect(page.locator("#reviewed-prepare")).to_be_disabled()
         expect(page.get_by_role("button",name="Medir contactabilidade")).to_be_visible()
         page.get_by_role("button",name="Medir contactabilidade").click()
         expect(page.locator("#contactability-results")).to_contain_text("CNPJs empresariais elegíveis")
