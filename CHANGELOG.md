@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Coletor institucional: evita descompressão duplicada de robots.txt e HTML gzip/deflate, mantendo limites sobre o corpo descomprimido, política de robots e proteção SSRF; o ensaio externo passa a executar também quando o transporte/coletor muda.
+
 - Enriquecimento: diagnóstico seguro por motivo de indisponibilidade (HTTP, robots.txt, transporte, redirecionamento e limites), registrado na fila e no ensaio externo sem revelar corpo de resposta ou credenciais.
 
 
