@@ -1,0 +1,36 @@
+name: Piloto institucional externo (somente leitura)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/institutional-pilot.yml'
+      - 'backend/benchmarks/institutional_pilot.py'
+      - 'backend/benchmarks/institutional_pilot_manaus.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: institutional-pilot-readonly
+  cancel-in-progress: false
+jobs:
+  public-site-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install existing HTTP dependency
+        run: python -m pip install httpx==0.28.1
+      - name: Collect explicitly published role addresses with existing collector
+        working-directory: backend
+        run: PYTHONPATH=. python benchmarks/institutional_pilot.py --output "$RUNNER_TEMP/institutional-pilot.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: institutional-pilot-public-evidence
+          path: ${{ runner.temp }}/institutional-pilot.json
+          if-no-files-found: warn
+          retention-days: 14

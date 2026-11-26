@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Ágil Transportes e Logística",
+    "cnpj": "18054044000160",
+    "website": "https://www.agiltransportes.com/contato.html",
+    "expected_email": "contato@agiltransportes.com"
+  },
+  {
+    "name": "A M Consultoria e Auditoria Contábil",
+    "cnpj": "62806802000140",
+    "website": "https://amconsultoriacontabil.com.br/sobre/",
+    "expected_email": "contato@amconsultoriacontabil.com.br"
+  },
+  {
+    "name": "Albatroz Network",
+    "cnpj": "34904187000170",
+    "website": "https://albatroznetwork.com.br/contatos/",
+    "expected_email": "contato@albatroznetwork.com.br"
+  },
+  {
+    "name": "Mania Telecom",
+    "cnpj": "10208800000156",
+    "website": "https://www.maniatelecom.com.br/",
+    "expected_email": "contato@maniatelecom.com.br"
+  },
+  {
+    "name": "Converge Tecnologia",
+    "cnpj": "18718109000124",
+    "website": "https://convergetec.com.br/contato/",
+    "expected_email": "financeiro@convergetec.com.br"
+  }
+]
