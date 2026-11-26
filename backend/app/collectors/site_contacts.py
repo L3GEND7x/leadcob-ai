@@ -147,6 +147,8 @@ class DiscoveryUnavailable(ValueError):
 
 
 def network_reason(exc):
+    if isinstance(exc, httpx.DecodingError):
+        return "content_decoding_error"
     if isinstance(exc, httpx.TimeoutException):
         return "timeout"
     if isinstance(exc, httpx.ConnectError):

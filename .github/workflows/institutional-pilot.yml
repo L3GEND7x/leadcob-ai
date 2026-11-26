@@ -5,6 +5,8 @@ on:
       - '.github/workflows/institutional-pilot.yml'
       - 'backend/benchmarks/institutional_pilot.py'
       - 'backend/benchmarks/institutional_pilot_manaus.json'
+      - 'backend/app/collectors/site_contacts.py'
+      - 'backend/app/services/safe_http.py'
   workflow_dispatch:
 permissions:
   contents: read
