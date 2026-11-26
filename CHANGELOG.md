@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Radar PNCP: valida snapshots e confirmações, distingue vazio legítimo de falha, registra volume real e cobertura parcial; job retorna erro em captura incompleta e oferece diagnóstico sem banco.
+
 - Enriquecimento: diagnóstico seguro por motivo de indisponibilidade (HTTP, robots.txt, transporte, redirecionamento e limites), registrado na fila e no ensaio externo sem revelar corpo de resposta ou credenciais.
 
 
