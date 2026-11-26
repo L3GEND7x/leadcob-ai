@@ -104,3 +104,7 @@ Assistente IA fora da interface e da entrega atual. Esta decisão prevalece sobr
 ### Bloqueio de CI após #212
 
 O teste duplicado em backend/browser_tests/test_commercial_browser.py ainda esperava Assistente IA. Branch chatgpt/assistant-removal-browser-regression-213 ajusta a expectativa, sem restaurar o menu. Validar todos os workflows, depois merge pelo proprietário e deploy da revisão aprovada. Próximas prioridades: piloto institucional e diagnóstico de coletas parciais reais.
+
+## Retomada de 26/11/2026 após #220
+
+Consulte `docs/auditoria-retomada-2026-11-26.md`: #222 corrigiu descompressão e passou piloto externo 5/5, merge/implantação autorizados pelo proprietário. Produção fixada em 68d812124bb5fec26687361ee23d99865d8a089d, Railway SUCCESS. #223 trata integridade do Radar; #224 qualificação com origem e duplicatas globais. Nenhum lote produtivo, cron, gasto novo ou liberação comercial autorizado por essa decisão. Os gates de autenticação, piloto e cobertura continuam abertos.
