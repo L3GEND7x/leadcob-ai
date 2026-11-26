@@ -80,7 +80,7 @@ def finish(db, item_id, token, result):
         return False
     if status=='completed':
         target='completed'
-    elif status in {'suppressed','not_found','missing_website','invalid_cnpj','changed_or_suppressed'}:
+    elif status in {'suppressed','not_found','missing_website','invalid_cnpj','changed_or_suppressed','ineligible_registry','competitor','conflicting_site'}:
         target='skipped'
     else:
         target='queued' if item.attempts<MAX_ATTEMPTS else 'failed'

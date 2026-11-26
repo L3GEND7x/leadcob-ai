@@ -10,3 +10,6 @@ O proprietário autorizou PRs para validação no Actions, mantendo CI verde ant
 5. Selecionar o lote e processar uma empresa por acionamento; revisar contatos a verificar. Medir canais e fontes antes/depois.
 
 Amostra de cinco sites pesquisados externamente em Manaus disponibilizada ao proprietário fora do repositório. Não presumir existência na base nem demanda por cobrança. Não inserir contatos automaticamente ou criar cadastro inexistente. A autenticação e a confirmação são do proprietário. Sem API paga, nova infraestrutura ou carga nacional. CI e piloto real não comprovados por esta alteração. Testes novos verificam prévia, confirmação, supressão, atomicidade, limite/deduplicação e existência do controle no navegador.
+## Revalidação no processamento (26/11/2026)
+
+O lote e o worker reutilizam discover_batch. O processamento passa a bloquear cadastros inválidos, inativos, individuais, concorrentes, suprimidos ou com sites conflitantes, inclusive duplicatas globais do mesmo CNPJ; revalida depois da rede. Testes sintéticos cobrem bloqueios sem requisições e alteração cadastral durante pesquisa. Estados terminais ignorados pela fila e traduzidos no painel. Não altera as rotas manuais individuais legadas, que ainda requerem revisão própria. CI obrigatório antes de merge; nenhuma coleta real executada por este PR.

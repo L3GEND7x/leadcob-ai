@@ -491,26 +491,47 @@ class BatchDiscoveryIn(BaseModel):
     company_ids: list[int] = Field(min_length=1, max_length=5)
 
 
+def _discovery_block_reason(db, company):
+    """Apply the same corporate identity rules at collection time, not only in the UI."""
+    from app.services.cnpj import clean_cnpj, is_valid_cnpj
+    from app.services.contact_readiness import corporate_identity
+    if company is None:
+        return 'not_found'
+    if is_blocked(db, company) or company.pipeline_stage == 'nao_contatar':
+        return 'suppressed'
+    key = clean_cnpj(company.cnpj)
+    if not is_valid_cnpj(key):
+        return 'invalid_cnpj'
+    peers = db.query(Company).filter(sql_cnpj(Company.cnpj) == key).all()
+    if any(peer.pipeline_stage == 'nao_contatar' for peer in peers):
+        return 'suppressed'
+    if not peers or any(str(peer.registration_status or '').strip().upper() != 'ATIVA'
+                        or not corporate_identity(peer.legal_nature, peer.name) for peer in peers):
+        return 'ineligible_registry'
+    if any(str(peer.cnae_main or '').startswith('8291') for peer in peers):
+        return 'competitor'
+    if not company.website:
+        return 'missing_website'
+    sites = {str(peer.website).strip().rstrip('/') for peer in peers if str(peer.website or '').strip()}
+    if len(sites) != 1:
+        return 'conflicting_site'
+    return None
+
+
 @router.post('/discover-batch')
 def discover_batch(payload: BatchDiscoveryIn, db: Session = Depends(get_db)):
     """Bounded manual batch of official sites. Each company commits independently."""
     from app.collectors import site_contacts
     from app.services.safe_http import validate_url
-    from app.services.cnpj import is_valid_cnpj
     import httpx
     results = []
     for company_id in dict.fromkeys(payload.company_ids):
         row = {'company_id': company_id, 'added': 0, 'pages_read': 0}
         try:
             company = db.get(Company, company_id)
-            if company is None:
-                row['status'] = 'not_found'
-            elif is_blocked(db, company):
-                row['status'] = 'suppressed'
-            elif not is_valid_cnpj(company.cnpj):
-                row['status'] = 'invalid_cnpj'
-            elif not company.website:
-                row['status'] = 'missing_website'
+            blocked = _discovery_block_reason(db, company)
+            if blocked:
+                row['status'] = blocked
             else:
                 website = company.website
                 validate_url(website if '://' in website else 'https://' + website)
@@ -518,7 +539,7 @@ def discover_batch(payload: BatchDiscoveryIn, db: Session = Depends(get_db)):
                 # Recheck opt-out after network work, before any insertion.
                 db.expire_all()
                 company = db.get(Company, company_id)
-                if not company or is_blocked(db, company) or company.website != website:
+                if _discovery_block_reason(db, company) or company.website != website:
                     row['status'] = 'changed_or_suppressed'
                 else:
                     candidates = [('email', x['email'], x['source_url']) for x in result['emails']]
