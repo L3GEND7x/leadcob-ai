@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id),base='/api/contacts/discovery-jobs',size=50;
 let csrf='',offset=0,itemOffset=0,job=null,busy=false;
 const labels={queued:'Na fila',running:'Processando',completed:'Concluído',failed:'Falhou',skipped:'Ignorado'};
-const reasons={completed:'Pesquisa concluída',suppressed:'Empresa suprimida',not_found:'Empresa não encontrada',missing_website:'Sem site cadastrado',invalid_cnpj:'CNPJ inválido',changed_or_suppressed:'Cadastro alterado ou suprimido',unavailable:'Site indisponível',error:'Falha de processamento',lease_expired:'Execução interrompida',invalid_claim_metadata:'Reserva inconsistente',attempts_exhausted:'Tentativas esgotadas'};
+const reasons={completed:'Pesquisa concluída',suppressed:'Empresa suprimida',not_found:'Empresa não encontrada',missing_website:'Sem site cadastrado',invalid_cnpj:'CNPJ inválido',ineligible_registry:'Cadastro PJ ativo não confirmado',competitor:'Concorrente — excluído',conflicting_site:'Sites conflitantes — revisar',changed_or_suppressed:'Cadastro alterado ou suprimido',unavailable:'Site indisponível',error:'Falha de processamento',lease_expired:'Execução interrompida',invalid_claim_metadata:'Reserva inconsistente',attempts_exhausted:'Tentativas esgotadas'};
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
 function notice(text){$('notice').textContent=text;}
 async function api(path,method='GET',payload){
