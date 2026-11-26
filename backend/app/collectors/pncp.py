@@ -107,6 +107,23 @@ def request_json(client: httpx.Client, url: str, params=None, attempts: int = 4,
     raise PNCPUnavailable(f"{type(last).__name__}: {str(last)[:200]}")
 
 
+def _page(payload, field, total_field):
+    """Reject malformed snapshots instead of reporting successful empty capture."""
+    if payload is None:  # request_json accepts only HTTP 204/404 as absent
+        return [], 0
+    if not isinstance(payload, dict) or not isinstance(payload.get(field), list):
+        raise ValueError("invalid_page_shape")
+    rows = payload[field]
+    total = payload.get(total_field)
+    if type(total) is not int or total < 0 or total < len(rows):
+        raise ValueError("invalid_page_total")
+    if not all(isinstance(row, dict) for row in rows):
+        raise ValueError("invalid_page_record")
+    if not rows and total:
+        raise ValueError("incomplete_page")
+    return rows, total
+
+
 # ---------------------------------------------------------------- normalização
 def normalize_record(row: dict) -> dict:
     """Registro da API oficial de consulta (publicação ou detalhe)."""
@@ -213,8 +230,14 @@ def search_opportunities(terms=None, only_open: bool = True, max_pages: int = 2,
                 except (PNCPUnavailable, httpx.HTTPStatusError) as exc:
                     errors.append(f"busca '{term}' p.{page}: {exc}")
                     break
+                try:
+                    items, total = _page(payload, "items", "total")
+                    if any(not clean(row.get("numero_controle_pncp")) or not clean(row.get("description")) for row in items):
+                        raise ValueError("invalid_search_record")
+                except ValueError as exc:
+                    errors.append(f"busca '{term}' p.{page}: {exc}")
+                    break
                 pages_read += 1
-                items = (payload or {}).get("items") or []
                 for raw in items:
                     if not isinstance(raw, dict):
                         continue
@@ -225,8 +248,10 @@ def search_opportunities(terms=None, only_open: bool = True, max_pages: int = 2,
                     if term not in matched[key]:
                         matched[key].append(term)
                 time.sleep(pause)
-                total = int((payload or {}).get("total") or 0)
-                if len(items) < PAGE_SIZE_SEARCH or page * PAGE_SIZE_SEARCH >= total:
+                if page * PAGE_SIZE_SEARCH >= total:
+                    break
+                if len(items) < PAGE_SIZE_SEARCH or page == max_pages:
+                    errors.append(f"busca '{term}': coverage_limited")
                     break
 
         records, confirmed = [], 0
@@ -240,6 +265,11 @@ def search_opportunities(terms=None, only_open: bool = True, max_pages: int = 2,
                 except (PNCPUnavailable, httpx.HTTPStatusError) as exc:
                     official = None
                     errors.append(f"confirmação {item['control']}: {exc}")
+                if official and (not isinstance(official, dict)
+                        or clean(official.get("numeroControlePNCP")) != item["control"]
+                        or not clean(official.get("objetoCompra") or official.get("objeto"))):
+                    errors.append(f"confirmação {item['control']}: invalid_official_record")
+                    official = None
                 if official:
                     item = merge_official(item, official)
                     item["evidence_level"] = "confirmada_api_oficial"
@@ -260,12 +290,12 @@ def scan_publications(days: int = 7, max_pages: int = 2, terms=None, pause: floa
     14 dias). O filtro textual é aplicado localmente.
     """
     now = now or datetime.now(timezone.utc)
-    end = date.today()
+    end = now.date()
     start = end - timedelta(days=days)
     base = {"dataInicial": start.strftime("%Y%m%d"), "dataFinal": end.strftime("%Y%m%d"),
             "tamanhoPagina": PAGE_SIZE_PUBLICACAO}
     folded = [t.casefold() for t in (terms or DEFAULT_TERMS)]
-    records, seen, errors, pages_read, total_available = [], set(), [], 0, 0
+    records, seen, errors, pages_read, total_available, records_read = [], set(), [], 0, 0, 0
     with _client() as client:
         for modality in SCAN_MODALITIES:
             for page in range(1, max_pages + 1):
@@ -275,12 +305,23 @@ def scan_publications(days: int = 7, max_pages: int = 2, terms=None, pause: floa
                 except (PNCPUnavailable, httpx.HTTPStatusError) as exc:
                     errors.append(f"modalidade {modality} p.{page}: {exc}")
                     break
-                if not payload:
+                try:
+                    rows, total = _page(payload, "data", "totalRegistros")
+                    page_count = payload.get("totalPaginas") if payload is not None else 0
+                    if type(page_count) is not int or page_count < 0 or (rows and not page_count):
+                        raise ValueError("invalid_page_count")
+                    if any(not clean(row.get("numeroControlePNCP") or row.get("numeroControlePncp"))
+                           or not clean(row.get("objetoCompra") or row.get("objeto") or row.get("descricao"))
+                           or not isinstance(row.get("orgaoEntidade") or {}, dict)
+                           or not isinstance(row.get("unidadeOrgao") or {}, dict) for row in rows):
+                        raise ValueError("invalid_publication_record")
+                except ValueError as exc:
+                    errors.append(f"modalidade {modality} p.{page}: {exc}")
                     break
                 pages_read += 1
+                records_read += len(rows)
                 if page == 1:
-                    total_available += int(payload.get("totalRegistros") or 0)
-                rows = payload.get("data") or []
+                    total_available += total
                 for raw in rows:
                     if not isinstance(raw, dict):
                         continue
@@ -293,11 +334,16 @@ def scan_publications(days: int = 7, max_pages: int = 2, terms=None, pause: floa
                     item["evidence_level"] = "confirmada_api_oficial"
                     records.append(_finish(item, hits, now))
                 time.sleep(pause)
-                if page >= int(payload.get("totalPaginas") or 0) or len(rows) < PAGE_SIZE_PUBLICACAO:
+                if page >= page_count and page * PAGE_SIZE_PUBLICACAO >= total:
+                    break
+                if len(rows) < PAGE_SIZE_PUBLICACAO or page == max_pages:
+                    errors.append(f"modalidade {modality}: coverage_limited")
                     break
     return {"mode": "varredura", "records": records, "pages_read": pages_read, "confirmed": len(records),
             "errors": errors, "date_from": start.isoformat(), "date_to": end.isoformat(),
-            "coverage_note": f"{pages_read * PAGE_SIZE_PUBLICACAO} de {total_available} registros publicados no período foram lidos."}
+            "records_read": records_read, "total_available": total_available,
+            "coverage_complete": not errors,
+            "coverage_note": f"{records_read} de {total_available} registros publicados nas modalidades consultadas foram lidos; não representa cobertura integral do PNCP."}
 
 
 # Compatibilidade com a v0.2
