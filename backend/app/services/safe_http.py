@@ -72,6 +72,12 @@ def bounded_get(client, url, allowed_host, deadline, max_bytes=400_000, *, allow
                 if size > max_bytes or time.monotonic() > deadline:
                     raise ValueError("Limite de tamanho ou tempo da página excedido.")
                 chunks.append(chunk)
-            return httpx.Response(response.status_code, headers=response.headers,
+            # iter_bytes() has already decoded Content-Encoding. Reusing that
+            # header makes Response decode the plain body a second time. Wire
+            # framing/length also no longer describes these buffered bytes.
+            headers = response.headers.copy()
+            for name in ("content-encoding", "content-length", "transfer-encoding"):
+                headers.pop(name, None)
+            return httpx.Response(response.status_code, headers=headers,
                                   content=b"".join(chunks), request=httpx.Request("GET", url))
     raise ValueError("Limite de redirecionamentos excedido.")
