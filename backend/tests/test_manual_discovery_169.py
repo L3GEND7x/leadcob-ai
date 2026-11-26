@@ -40,11 +40,11 @@ def test_manual_discovery_requires_owner_csrf_and_processes_one_selected_job(tmp
     with Session() as db:
         db.add_all([
             Company(id=11,name="Fixture LTDA",cnpj=_cnpj(11),state="AM",
-                    city="Manaus",registration_status="ATIVA",website="https://example.com"),
+                    city="Manaus",registration_status="ATIVA",legal_nature="Sociedade Empresária Limitada",website="https://example.com"),
             Company(id=12,name="Empresa suprimida",cnpj=_cnpj(12),state="AM",
-                    city="Manaus",registration_status="ATIVA",website="https://example.com"),
+                    city="Manaus",registration_status="ATIVA",legal_nature="Sociedade Empresária Limitada",website="https://example.com"),
             Company(id=13,name="Outra fila",cnpj=_cnpj(13),state="AM",
-                    city="Manaus",registration_status="ATIVA",website="https://example.org"),
+                    city="Manaus",registration_status="ATIVA",legal_nature="Sociedade Empresária Limitada",website="https://example.org"),
         ])
         db.flush()
         db.add(Suppression(company_id=12,reason="opt-out teste"))
