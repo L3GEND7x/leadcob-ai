@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Enriquecimento: importação de até cinco sites institucionais pesquisados com conciliação exata por CNPJ, prévia sem gravação e criação de fila após revisão explícita; sem coleta automática.
+
 - Coleta institucional: respeita robots.txt também antes de seguir redirecionamentos no site, sem acessar páginas proibidas.
 
 
