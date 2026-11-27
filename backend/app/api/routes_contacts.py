@@ -145,11 +145,17 @@ def discover_from_site(company_id: int, db: Session = Depends(get_db)):
     c = db.get(Company, company_id)
     if not c: raise HTTPException(404, "Empresa não encontrada")
     if is_blocked(db, c): raise HTTPException(403, "Empresa em lista de supressão")
-    if not c.website: raise HTTPException(400, "Cadastre primeiro o site institucional da empresa (confirmado por você) na ficha.")
+    _require_discovery_eligible(db, c)
+    website = c.website
     try:
-        result = site_contacts.discover(c.website)
+        result = site_contacts.discover(website)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    db.expire_all()
+    c = db.get(Company, company_id)
+    _require_discovery_eligible(db, c)
+    if c.website != website:
+        raise HTTPException(409, "Site alterado durante a pesquisa; revise antes de repetir.")
     added = 0
     for item in result["emails"]:
         try:
@@ -200,6 +206,7 @@ def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
     if is_blocked(db, c):
         raise HTTPException(403, "Empresa em lista de supressão")
 
+    _require_discovery_eligible(db, c, allow_missing_website=True)
     added = 0
     candidates = []
     search_notes = []
@@ -224,6 +231,11 @@ def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
         except Exception:
             found = []
             search_notes.append("Pesquisa automática indisponível; nenhum domínio foi confirmado.")
+        db.expire_all()
+        c = db.get(Company, company_id)
+        _require_discovery_eligible(db, c, allow_missing_website=True)
+        if c.website:
+            raise HTTPException(409, "Site alterado durante a pesquisa; revise antes de repetir.")
         for result in found:
             current = db.query(DomainCandidate).filter_by(company_id=c.id, website=result["website"]).first()
             if not current:
@@ -250,7 +262,15 @@ def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
     discovered = {"pages_read": [], "emails": [], "channels": [], "notes": []}
     if c.website:
         try:
-            discovered = site_contacts.discover(c.website)
+            website = c.website
+            db.flush()
+            discovered = site_contacts.discover(website)
+            db.expire_all()
+            c = db.get(Company, company_id)
+            _require_discovery_eligible(db, c)
+            if c.website != website:
+                db.rollback()
+                raise HTTPException(409, "Site alterado durante a pesquisa; revise antes de repetir.")
             for item in discovered["emails"]:
                 if insert(db, c, "email", item["email"], "Site institucional (leitura automática)",
                           item["source_url"], department_from_email(item["email"])):
@@ -296,6 +316,7 @@ def search_domain(company_id: int, db: Session = Depends(get_db)):
     c = db.get(Company, company_id)
     if not c or is_blocked(db, c):
         raise HTTPException(404, 'Empresa indisponível.')
+    _require_discovery_eligible(db, c, allow_missing_website=True)
     if not settings.brave_search_api_key:
         query = f'"{c.name}" "{c.cnpj or ""}" site oficial contato'
         return {
@@ -308,6 +329,9 @@ def search_domain(company_id: int, db: Session = Depends(get_db)):
     except Exception as exc:
         # Details from the search service may contain the key or internal URLs.
         raise HTTPException(502, 'Pesquisa de domínios indisponível. Tente novamente depois.') from exc
+    db.expire_all()
+    c = db.get(Company, company_id)
+    _require_discovery_eligible(db, c, allow_missing_website=True)
     items = []
     for result in results:
         current = db.query(DomainCandidate).filter_by(company_id=c.id, website=result['website']).first()
@@ -510,12 +534,34 @@ def _discovery_block_reason(db, company):
         return 'ineligible_registry'
     if any(str(peer.cnae_main or '').startswith('8291') for peer in peers):
         return 'competitor'
+    sites = {str(peer.website).strip().rstrip('/') for peer in peers if str(peer.website or '').strip()}
+    if len(sites) > 1:
+        return 'conflicting_site'
     if not company.website:
         return 'missing_website'
-    sites = {str(peer.website).strip().rstrip('/') for peer in peers if str(peer.website or '').strip()}
     if len(sites) != 1:
         return 'conflicting_site'
     return None
+
+
+def _require_discovery_eligible(db, company, *, allow_missing_website=False):
+    """Enforce batch eligibility on legacy individual collection routes too."""
+    reason = _discovery_block_reason(db, company)
+    if reason == 'missing_website' and allow_missing_website:
+        return
+    errors = {
+        'not_found': (404, 'Empresa não encontrada.'),
+        'suppressed': (403, 'Empresa bloqueada para contato.'),
+        'invalid_cnpj': (422, 'CNPJ inválido; revise o cadastro antes de pesquisar.'),
+        'ineligible_registry': (422, 'Exige cadastro ativo e natureza empresarial consistente.'),
+        'competitor': (422, 'Empresa de cobrança excluída da pesquisa de contatos.'),
+        'missing_website': (400, 'Cadastre primeiro o site institucional confirmado na ficha.'),
+        'conflicting_site': (409, 'Sites conflitantes para o mesmo CNPJ; revise o cadastro.'),
+    }
+    if reason:
+        db.rollback()
+        status, detail = errors[reason]
+        raise HTTPException(status, detail)
 
 
 @router.post('/discover-batch')

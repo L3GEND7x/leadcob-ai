@@ -108,3 +108,11 @@ O teste duplicado em backend/browser_tests/test_commercial_browser.py ainda espe
 ## Retomada de 26/11/2026 após #220
 
 Consulte `docs/auditoria-retomada-2026-11-26.md`: #222 corrigiu descompressão e passou piloto externo 5/5, merge/implantação autorizados pelo proprietário. Produção fixada em 68d812124bb5fec26687361ee23d99865d8a089d, Railway SUCCESS. #223 trata integridade do Radar; #224 qualificação com origem e duplicatas globais. Nenhum lote produtivo, cron, gasto novo ou liberação comercial autorizado por essa decisão. Os gates de autenticação, piloto e cobertura continuam abertos.
+
+## Retomada de 27/11: proteção das rotas individuais
+
+Main confirmado em 43f9857fa101d70c3892fe6450e183beb0b4c23a (#223/#224 integrados com autorização). Último deploy comprovado em 26/11: Railway 82994a74-42e3-414d-b984-ffcd4faa0991, mesmo SHA; smoke anônimo final 29/29. A sessão autenticada precisa ser restabelecida em 27/11. Assistente IA permanece removido.
+
+Branch `codex/contact-eligibility-guards`: as rotas individuais de coleta e busca de domínio podiam contornar os critérios da fila. Agora reutilizam a validação de elegibilidade e revalidam cadastro/supressão após a consulta externa. Testes cobrem cadastro inativo/individual/incompleto, CNPJ inválido, concorrente, opt-out, duplicata fora da cidade e opt-out durante consulta. Validação local: compileall aprovado; 460 testes aprovados, 12 avisos de depreciação. CI e merge desta mudança ainda pendentes. Sem migração ou ativação de serviços.
+
+Piloto autorizado pelo proprietário: cinco CNPJs (Ágil, A M Consultoria, Albatroz, Mania Telecom e Converge), sem envio, API paga ou rotina recorrente. Em 26/11 foi criada apenas Ágil, ID 23359, CNPJ 18054044000160, razão social FELIPE LOPES FRANCO LTDA, ainda sem enriquecimento cadastral e sem coleta. Não duplicar. Os outros quatro ainda não foram cadastrados nesta execução. A interface não expõe o endpoint existente de atualização cadastral: corrigir antes de liberar a coleta. O piloto e a homologação integral continuam pendentes.
