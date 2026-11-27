@@ -164,3 +164,46 @@ def test_owner_discovery_has_explicit_manual_queue_action(viewport):
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
         assert not errors,errors
         browser.close()
+
+
+@pytest.mark.parametrize('width', [1280, 390])
+def test_owner_registry_refresh_feedback_and_unsaved_edits(width):
+    """UI with synthetic registry response; real persistence is tested separately."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={'width': width, 'height': 844})
+        page.goto(URL)
+        page.locator('#login-form [name="username"]').fill('admin')
+        page.locator('#login-form [name="password"]').fill('local-ci-owner-133')
+        page.get_by_role('button', name='Entrar', exact=True).click()
+        expect(page.get_by_role('heading', name='Central de comando', exact=True)).to_be_visible()
+        page.goto(URL + '/#/empresas')
+        page.get_by_role('button', name='＋ Adicionar empresa', exact=True).click()
+        form = page.locator('#companyform')
+        form.locator('[name="name"]').fill('Empresa de teste cadastral ' + str(width))
+        form.locator('[name="cnpj"]').fill('11222333000181' if width == 1280 else '12345678000195')
+        form.get_by_role('button', name='Adicionar', exact=True).click()
+        button = page.get_by_role('button', name='Atualizar cadastro pelo CNPJ', exact=True)
+        expect(button).to_be_visible()
+        status = page.locator('#company-registry-status')
+        calls = []
+        def unavailable(route):
+            calls.append(route.request.method)
+            route.fulfill(status=502, json={'detail': 'Consulta temporariamente indisponível'})
+        page.route('**/api/companies/*/enrich', unavailable)
+        button.click()
+        expect(status).to_contain_text('Consulta temporariamente indisponível')
+        expect(button).to_be_enabled()
+        assert calls == ['POST']
+        page.unroute('**/api/companies/*/enrich', unavailable)
+        page.route('**/api/companies/*/enrich', lambda route: route.fulfill(json={'id': 1}))
+        button.click()
+        expect(page.locator('#toast')).to_contain_text('Cadastro atualizado')
+        expect(button).to_be_enabled()
+        page.locator('#f-stage [name="notes"]').fill('Edição local não salva')
+        expect(button).to_be_disabled()
+        expect(status).to_contain_text('Salve as alterações')
+        expect(page.locator('#f-stage [name="notes"]')).to_have_value('Edição local não salva')
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
+        expect(page.locator('#nav [data-v="assistente"]')).to_have_count(0)
+        browser.close()

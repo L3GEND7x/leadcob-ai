@@ -108,3 +108,9 @@ O teste duplicado em backend/browser_tests/test_commercial_browser.py ainda espe
 ## Retomada de 26/11/2026 após #220
 
 Consulte `docs/auditoria-retomada-2026-11-26.md`: #222 corrigiu descompressão e passou piloto externo 5/5, merge/implantação autorizados pelo proprietário. Produção fixada em 68d812124bb5fec26687361ee23d99865d8a089d, Railway SUCCESS. #223 trata integridade do Radar; #224 qualificação com origem e duplicatas globais. Nenhum lote produtivo, cron, gasto novo ou liberação comercial autorizado por essa decisão. Os gates de autenticação, piloto e cobertura continuam abertos.
+
+## Atualização cadastral na ficha (27/11)
+
+Branch `codex/company-registry-refresh` expõe o endpoint existente POST /api/companies/{id}/enrich na ficha. Consulta manual e individual, sem buscar contatos, enviar mensagens ou ativar cron. Mostra fonte/data cadastral, espera e falhas; preserva edições locais feitas antes ou durante a consulta e registra evento `company_registry_refreshed` sem resposta bruta do provedor. Testes de backend verificam persistência cadastral, preservação de opt-out/anotações/site e ausência de contatos; teste de navegador desktop/mobile usa respostas sintéticas de sucesso/falha. Testes sintéticos não homologam a BrasilAPI em produção.
+
+Motivo: piloto autorizado encontrou cadastro manual sem situação/natureza e não havia ação visível para atualizá-lo. Não contornar a elegibilidade nem duplicar o ID 23359. Merge/implantação deste PR dependem da aprovação do proprietário; execução das cinco empresas já foi autorizada.
