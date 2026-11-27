@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 let session=null, moduleName='leads', offset=0, epoch=0, busy=false;
 const size=50;
 const stages={identified:'Identificado',contacted:'Contatado',negotiation:'Negociação',won:'Ganho',lost:'Perdido'};
-const names={prospects:'Pesquisa cadastral',leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações',assistant:'Inteligência da organização',subscription:'Meu plano'};
+const names={prospects:'Pesquisa cadastral',leads:'CRM',tasks:'Agenda',portfolios:'Carteiras financeiras',contacts:'Contatos institucionais',settings:'Configurações',subscription:'Meu plano'};
 const channels={email:'E-mail',phone:'Telefone',whatsapp:'WhatsApp',website:'Site',linkedin:'LinkedIn',instagram:'Instagram',facebook:'Facebook'};
 function el(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function status(message){$('notice').textContent=message;}
@@ -102,23 +102,6 @@ async function load(){if(!session)return;const version=++epoch;const current=mod
  }));
  }
  }catch(e){if(version===epoch)root.replaceChildren(el('p',e.message));throw e;}
- }));
- return;
- }
- if(current==='assistant'){
- const x=await workspace('assistant/context');if(version!==epoch)return;
- const root=$('results');
- root.replaceChildren(record('Resumo da sua organização',['Leads: '+x.lead_count,'Tarefas pendentes: '+x.pending_tasks,'Carteiras: '+x.portfolio_count]),record('Funil comercial',Object.entries(stages).map(([key,label])=>label+': '+(x.lead_stages[key]||0))),record('Empresas com canais cadastrados',Object.entries(channels).map(([key,label])=>label+': '+(x.companies_by_channel[key]||0))),el('p',x.note));
- const history=await workspace('assistant/history');if(version!==epoch)return;
- const panel=el('section');panel.append(el('h3','Meu histórico privado'));
- for(const item of history)panel.append(record(item.prompt,[item.answer||('Estado: '+item.status)]));
- if(!history.length)panel.append(el('p','Nenhuma solicitação registrada.'));
- root.append(panel);
- if(x.generation_enabled&&canWrite())$('form-area').append(form([field('prompt','Pergunta (não inclua dados pessoais ou confidenciais)','textarea')],'Enviar à IA',async v=>{
- if(!v.prompt.trim()||v.prompt.length>2000)throw Error('Informe até 2.000 caracteres.');
- if(!confirm('Enviar sua pergunta e os indicadores agregados da organização ao provedor de IA?'))return;
- const response=await workspace('assistant/generate','POST',{request_id:crypto.randomUUID(),prompt:v.prompt});
- await load();if(response.status!=='completed')throw Error('Não foi possível gerar a resposta. Consulte o histórico antes de reenviar.');
  }));
  return;
  }
