@@ -2,7 +2,7 @@
 
 ## Não lançado
 
-- Ficha empresarial: atualização manual dos dados cadastrais pelo CNPJ, com fonte/data e evento de auditoria; impede recarregar enquanto houver edições locais não salvas. Não coleta contatos nem envia mensagens.
+
 
 
 - Enriquecimento: diagnóstico seguro por motivo de indisponibilidade (HTTP, robots.txt, transporte, redirecionamento e limites), registrado na fila e no ensaio externo sem revelar corpo de resposta ou credenciais.
