@@ -11,3 +11,15 @@ Finalidade limitada à inteligência comercial B2B. Priorizar dados empresariais
 - DataJud: só dados agregados (contagens), sem partes; nada identifica pessoas.
 - CRM (v0.5): lista de supressão bloqueia contato, mudança de etapa, busca padrão, inteligência do dia e exportação. Intervalo mínimo entre contatos configurável. Toda mudança de etapa, supressão, exportação e configuração vai para a auditoria (`audit_logs`). O sistema não envia mensagens.
 - Dados fictícios: exemplos de demonstração só com `DEMO_SEED=true`; removidos dos bancos existentes no startup.
+
+## Retenção operacional preparada (27/11/2026)
+
+A configuração `contact_retention_days` permanece vazia por padrão. Sem um prazo aprovado, o job não seleciona nem altera contatos. Quando houver política formal, somente canais institucionais inválidos há mais tempo que o prazo ou associados a uma supressão igualmente antiga serão elegíveis.
+
+Execute primeiro a prévia, limitada e sem escrita:
+
+```bash
+python -m app.jobs.contact_retention --max-items 500
+```
+
+`--apply` é necessário para anonimizar. A operação substitui o valor por identificador aleatório irreversível, remove a URL de origem e mantém um registro agregado na auditoria, sem copiar o e-mail, telefone ou perfil social. O cursor `--after-id` continua lotes truncados. O job não foi agendado e não deve ser ativado antes da definição do prazo, revisão jurídica da política e backup recente.
