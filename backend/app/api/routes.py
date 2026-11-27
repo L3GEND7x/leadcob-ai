@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.agents.pipeline import run_pipeline
 from app.collectors import cnpj_api, datajud, jobboards, pncp, querido_diario
 from app.db.database import get_db
-from app.db.models import CaptureRun, Company, MarketSnapshot, Opportunity
+from app.db.models import AuditLog, CaptureRun, Company, MarketSnapshot, Opportunity
 from app.schemas import OpportunityCreate
 from app.services.cnpj import clean_cnpj, format_cnpj
 from app.services.procurement import parse_dt, score_procurement
@@ -490,6 +490,8 @@ def enrich_company(company_id: int, db: Session = Depends(get_db)):
     data = _lookup_or_http_error(c.cnpj)
     data["target_profile"] = c.target_profile or profile_for(data.get("cnae_principal"))
     apply_registry(c, data, source=f"{data['source']} (dados abertos da Receita Federal)")
+    db.add(AuditLog(event="company_registry_refreshed", entity_type="company", entity_id=c.id,
+                    details={"source": data["source"]}))
     db.commit(); db.refresh(c)
     return serialize_company(c, len(c.opportunities))
 

@@ -2,7 +2,7 @@
 
 ## Não lançado
 
-- Contatos: rotas individuais passam a exigir a mesma elegibilidade empresarial da fila, incluindo supressão global, cadastro ativo, natureza jurídica e consistência entre duplicatas; revalidam bloqueios após pesquisas externas.
+
 
 
 - Enriquecimento: diagnóstico seguro por motivo de indisponibilidade (HTTP, robots.txt, transporte, redirecionamento e limites), registrado na fila e no ensaio externo sem revelar corpo de resposta ou credenciais.

@@ -474,6 +474,7 @@ async function viewEmpresa(id) {
       <div class="bigscore">${pill(c.score, c.band, c.band_label)}<small>${esc(c.band_label)} · etapa: ${esc(c.stage_label)}</small><small>${esc(sd.disclaimer)}</small></div></div>
     ${c.blocked_reason ? `<div class="blocked">⛔ ${esc(c.blocked_reason)} Contatos e mudanças de etapa ficam bloqueados.</div>` : ''}
     ${c.pending_note ? `<div class="warnbox" style="margin:0 0 14px">${esc(c.pending_note)}</div>` : ''}
+    <div class="actions" style="margin:0 0 14px"><button id="company-registry-refresh" ${c.cnpj ? '' : 'disabled'}>Atualizar cadastro pelo CNPJ</button><span id="company-registry-status" class="note" role="status" aria-live="polite">${c.registry_updated_at ? 'Cadastro consultado em ' + when(c.registry_updated_at) + '. ' : ''}Consulta dados cadastrais públicos. Não busca contatos nem envia mensagens.</span></div>
     <div class="sheet"><div class="stack">
       ${panel('Etapa e próxima atividade', '', `<form id="f-stage" class="form">
         <label class="f">Etapa<select name="stage" ${suppressed ? 'disabled' : ''}>${opts(STAGE_OPTS, c.stage)}</select></label>
@@ -594,6 +595,33 @@ async function verifyContact(cid, status) {
   try { await send(`/contacts/${cid}/verify?status=${status}`, 'PATCH'); toast('Contato atualizado.'); loadCompanyContacts(SHEET.id); }
   catch (e) { toast(errMsg(e), 7000, true); }
 }
+async function refreshCompanyRegistry(id, button) {
+  if (button.disabled) return;
+  const status = $('company-registry-status');
+  button.disabled = true;
+  button.textContent = 'Consultando cadastro…';
+  status.textContent = 'Consultando os dados públicos do CNPJ…';
+  try {
+    await send('/companies/' + id + '/enrich', 'POST');
+    if ($('company-registry-status') !== status) return;
+    if (button.dataset.dirty === 'true') {
+      status.textContent = 'Cadastro atualizado. Salve as alterações locais para recarregar a ficha.';
+      return;
+    }
+    await viewEmpresa(id);
+    toast('Cadastro atualizado. Confira situação e natureza jurídica antes de coletar contatos.', 9000);
+  } catch (err) {
+    if ($('company-registry-status') === status) {
+      status.textContent = errMsg(err, 'Não foi possível atualizar o cadastro. Tente novamente.');
+    }
+  } finally {
+    if (button.isConnected) {
+      button.disabled = button.dataset.dirty === 'true';
+      button.textContent = 'Atualizar cadastro pelo CNPJ';
+    }
+  }
+}
+
 function bindSheet(c) {
   loadCompanyContacts(c.id);
   loadContactMap(c.id);
@@ -606,7 +634,13 @@ function bindSheet(c) {
     try { await send('/contacts', 'POST', body); toast('Contato adicionado (a verificar).'); fc.reset(); loadCompanyContacts(c.id); }
     catch (err) { toast(errMsg(err), 7000, true); }
   });
+  const registryButton = $('company-registry-refresh');
+  registryButton?.addEventListener('click', () => refreshCompanyRegistry(c.id, registryButton));
   const fs = $('f-stage');
+  fs.addEventListener('input', () => {
+    if (registryButton) { registryButton.disabled = true; registryButton.dataset.dirty = 'true'; }
+    $('company-registry-status').textContent = 'Salve as alterações da ficha antes de atualizar o cadastro.';
+  });
   fs.stage.addEventListener('change', () => { $('lost-box').style.display = fs.stage.value === 'perdido' ? '' : 'none'; });
   fs.addEventListener('submit', async e => {
     e.preventDefault();
