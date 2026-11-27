@@ -2,6 +2,8 @@
 
 ## Não lançado
 
+- Interface: remove a entrada e o fluxo de IA também do workspace comercial; o backend permanece desligado e sem chamadas ao provedor.
+
 - LGPD: retenção configurável de contatos institucionais inválidos ou vinculados a empresas suprimidas, desativada por padrão, com prévia obrigatória, lote limitado, cursor de continuação e auditoria sem registrar o valor do contato.
 
 

@@ -23,7 +23,9 @@ def test_commercial_workspace(viewport):
         page.locator('#form-area [name="name"]').fill("Lead E2E " + str(viewport["width"]))
         page.get_by_role("button",name="Adicionar lead").click()
         expect(page.locator("#results")).to_contain_text("Lead E2E " + str(viewport["width"]))
-        for label,title in [("Agenda","Agenda"),("Carteiras","Carteiras financeiras"),("Contatos","Contatos institucionais"),("Configurações","Configurações"),("Inteligência da organização","Inteligência da organização"),("Meu plano","Meu plano")]:
+        expect(page.locator('#nav [data-module="assistant"]')).to_have_count(0)
+        expect(page.get_by_text("Inteligência da organização",exact=True)).to_have_count(0)
+        for label,title in [("Agenda","Agenda"),("Carteiras","Carteiras financeiras"),("Contatos","Contatos institucionais"),("Configurações","Configurações"),("Meu plano","Meu plano")]:
             page.get_by_role("button",name=label,exact=True).click()
             expect(page.locator("#module-title")).to_have_text(title)
             expect(page.locator("#results")).not_to_contain_text("Carregando")

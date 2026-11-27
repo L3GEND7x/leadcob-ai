@@ -12,8 +12,13 @@ def test_assistant_is_removed_from_owner_navigation():
     assert "assistente: viewAssistente" not in app
     assert "history.replaceState(null, '', '#/inicio')" in app
     commercial = (ROOT / "frontend" / "commercial.html").read_text(encoding="utf-8")
+    commercial_js = (ROOT / "frontend" / "commercial.js").read_text(encoding="utf-8")
     assert '#/assistente' not in commercial
     assert 'src="/static/assistant.js"' not in commercial
+    assert 'data-module="assistant"' not in commercial
+    assert "Inteligência da organização" not in commercial
+    assert "current==='assistant'" not in commercial_js
+    assert "assistant/generate" not in commercial_js
 
     # The commercial flow remains visible and ordered around action.
     assert index.index("Central de comando") < index.index("Inteligência do dia")
