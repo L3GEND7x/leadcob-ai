@@ -38,7 +38,7 @@ def test_discovery_channels_filters_counts_and_suppression(monkeypatch):
     from app.collectors import site_contacts
     ensure_schema()
     with SessionLocal() as db:
-        company = Company(name="CHANNELS TEST", state="AM", city="Manaus", website="https://empresa.com.br")
+        company = Company(name="CHANNELS TEST", cnpj="12345678000195", registration_status="ATIVA", legal_nature="Sociedade Empresária Limitada", state="AM", city="Manaus", website="https://empresa.com.br")
         db.add(company)
         db.commit()
         cid = company.id
@@ -90,7 +90,7 @@ def test_domain_search_without_provider_offers_public_search(monkeypatch):
     monkeypatch.setattr(settings, "brave_search_api_key", "")
     ensure_schema()
     with SessionLocal() as db:
-        company = Company(name="BUSCA & CONTATO TESTE")
+        company = Company(name="BUSCA & CONTATO TESTE", cnpj="12345678000195", registration_status="ATIVA", legal_nature="Sociedade Empresária Limitada")
         db.add(company)
         db.commit()
         cid = company.id
@@ -150,7 +150,7 @@ def test_enrich_contact_map_finds_verified_domain_and_institutional_channels(mon
     ensure_schema()
     monkeypatch.setattr(settings, "brave_search_api_key", "chave-de-teste")
     with SessionLocal() as db:
-        company = Company(name="MUNICIPIO MAPA TESTE", cnpj="12345678000190", segment="Órgão público",
+        company = Company(name="MUNICIPIO MAPA TESTE", cnpj="12345678000195", registration_status="ATIVA", legal_nature="Município", segment="Órgão público",
                           state="PB", city="Caraúbas")
         db.add(company); db.flush()
         db.add(Opportunity(company_id=company.id, kind="public_procurement", source_key="mapa-contato-teste",
@@ -161,7 +161,7 @@ def test_enrich_contact_map_finds_verified_domain_and_institutional_channels(mon
     monkeypatch.setattr(domain_search, "search", lambda company, key: [{
         "website": "https://caraubas.pb.gov.br",
         "source_url": "https://search.example/result",
-        "evidence": "CNPJ 12345678000190 encontrado na página inicial do domínio.",
+        "evidence": "CNPJ 12345678000195 encontrado na página inicial do domínio.",
         "status": "cnpj_no_site",
     }])
     monkeypatch.setattr(site_contacts, "discover", lambda website: {
