@@ -282,6 +282,13 @@ def enrich_contact_map(company_id: int, db: Session = Depends(get_db)):
         except ValueError as exc:
             discovered["notes"].append(str(exc))
 
+    # A failed read can still overlap a new opt-out. Recheck before committing
+    # channels synchronized from the sheet or a newly selected domain too.
+    db.flush()
+    db.expire_all()
+    c = db.get(Company, company_id)
+    _require_discovery_eligible(db, c, allow_missing_website=True)
+
     if not c.institutional_email:
         email = db.query(BusinessContact).filter_by(company_id=c.id, kind="email").filter(
             BusinessContact.status != "invalido").order_by(BusinessContact.status.desc(), BusinessContact.id).first()

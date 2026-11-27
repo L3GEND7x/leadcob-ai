@@ -102,3 +102,16 @@ def test_opt_out_during_domain_search_discards_candidates(db, monkeypatch, actio
     assert db.query(DomainCandidate).count() == 0
     assert db.query(BusinessContact).count() == 0
     assert db.get(Company, row.id).website is None
+
+
+def test_opt_out_during_failed_site_read_still_aborts_enrichment(db, monkeypatch):
+    row = company(db)
+    def fetch(website):
+        row.pipeline_stage = 'nao_contatar'
+        db.commit()
+        raise ValueError('Site indisponível')
+    monkeypatch.setattr(site_contacts, 'discover', fetch)
+    with pytest.raises(HTTPException) as error:
+        enrich_contact_map(row.id, db)
+    assert error.value.status_code == 403
+    assert db.query(BusinessContact).filter(BusinessContact.kind == 'email').count() == 0
